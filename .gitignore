@@ -1,0 +1,20 @@
+# Build & Framework binaries (TOO LARGE FOR GITHUB)
+Qt/
+build/
+.vscode/
+
+# Build artifacts
+*.exe
+*.dll
+*.pdb
+*.obj
+*.ilk
+*.exp
+*.lib
+
+# Logs
+aqtinstall.log
+*.log
+
+# Git state
+.git/
