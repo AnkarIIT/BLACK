@@ -392,7 +392,7 @@
                 <div class="shield-icon">&#128737;</div>
                 <div class="report-text">
                     <div class="report-title">Privacy Protection</div>
-                    <div class="report-desc">Safari has prevented 142 trackers from profiling you in the last 7 days.</div>
+                    <div class="report-desc">BLACK has prevented 142 trackers from profiling you in the last 7 days.</div>
                 </div>
             </div>
         </div>
@@ -430,6 +430,15 @@
 
     <script>
         const searchInput = document.getElementById('searchInput');
+
+        // Dynamic Greeting
+        const greetingHeader = document.querySelector('.greeting h1');
+        if (greetingHeader) {
+            const hour = new Date().getHours();
+            if (hour < 12) greetingHeader.textContent = 'Good morning';
+            else if (hour < 18) greetingHeader.textContent = 'Good afternoon';
+            else greetingHeader.textContent = 'Good evening';
+        }
 
         searchInput.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {

@@ -137,11 +137,16 @@ BrowserWindow::BrowserWindow(QWidget *parent)
     setupUi();
     setupTabBar();
     setupSidebar();
+    setupFindBar();
+    setupDownloads();
     setupTabOverlay();
     setupKeyboardShortcuts();
     applyTheme();
 
-    addNewTab(QUrl(QStringLiteral("qrc:/startpage.html")));
+    restoreSession();
+    if (m_tabs.isEmpty()) {
+        addNewTab(QUrl(QStringLiteral("qrc:/startpage.html")));
+    }
 
     connect(m_urlBar, &QLineEdit::returnPressed, this, &BrowserWindow::navigateToUrl);
 
@@ -150,10 +155,12 @@ BrowserWindow::BrowserWindow(QWidget *parent)
     });
 }
 
-BrowserWindow::~BrowserWindow() = default;
+BrowserWindow::~BrowserWindow() {
+    saveSession();
+}
 
 // ── Window Control ──────────────────────────────────────────────────────────
-void BrowserWindow::closeWindow()    { close(); }
+void BrowserWindow::closeWindow()    { saveSession(); close(); }
 void BrowserWindow::minimizeWindow() { showMinimized(); }
 void BrowserWindow::maximizeWindow() {
     if (isMaximized()) showNormal(); else showMaximized();
@@ -161,10 +168,14 @@ void BrowserWindow::maximizeWindow() {
 
 // ── Mouse Events (frameless window) ────────────────────────────────────────
 void BrowserWindow::mousePressEvent(QMouseEvent *event) {
-    if (event->button() == Qt::LeftButton && event->pos().y() < 32) {
-        m_isDragging = true;
-        m_dragPosition = event->globalPosition().toPoint() - frameGeometry().topLeft();
-        event->accept();
+    if (event->button() == Qt::LeftButton && event->pos().y() < 52) {
+        QWidget *child = childAt(event->pos());
+        if (!child || child == m_toolbar || child == m_central) {
+            m_isDragging = true;
+            m_dragPosition = event->globalPosition().toPoint() - frameGeometry().topLeft();
+            event->accept();
+            return;
+        }
     }
 }
 
@@ -407,6 +418,16 @@ void BrowserWindow::setupSidebar()
     m_sidebarLayout->addWidget(m_sidebarSearch);
     m_sidebarLayout->addSpacing(8);
 
+    connect(m_sidebarSearch, &QLineEdit::textChanged, this, [this](const QString &query) {
+        QString q = query.trimmed().toLower();
+        for (int i = 0; i < m_sidebarItems.count(); ++i) {
+            if (i < m_sidebarItemTexts.count()) {
+                QString text = m_sidebarItemTexts[i]->text().toLower();
+                m_sidebarItems[i]->setVisible(q.isEmpty() || text.contains(q));
+            }
+        }
+    });
+
     auto addSectionHeader = [this](const QString &title) {
         QLabel *lbl = new QLabel(title, m_sidebar);
         m_sidebarLayout->addWidget(lbl);
@@ -523,6 +544,12 @@ void BrowserWindow::setupTabOverlay()
 
 void BrowserWindow::showTabOverview()
 {
+    for (int i = 0; i < m_tabs.count(); ++i) {
+        if (m_tabs[i].view) {
+            m_tabs[i].thumbnail = m_tabs[i].view->grab().scaled(240, 150, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+        }
+    }
+
     m_overviewVisible = true;
     rebuildOverviewGrid();
 
@@ -585,6 +612,15 @@ QWidget* BrowserWindow::buildOverviewCard(int index)
     // Info
     QVBoxLayout *info = new QVBoxLayout;
     info->setSpacing(2);
+
+    if (!tab.thumbnail.isNull()) {
+        QLabel *thumbLbl = new QLabel(card);
+        thumbLbl->setPixmap(tab.thumbnail);
+        thumbLbl->setFixedSize(100, 65);
+        thumbLbl->setScaledContents(true);
+        thumbLbl->setStyleSheet(QStringLiteral("border-radius: 6px; border: 0.5px solid rgba(0,0,0,0.15);"));
+        lay->addWidget(thumbLbl);
+    }
 
     QString shownTitle = tab.title.isEmpty() ? QStringLiteral("New Tab") : tab.title;
     QLabel *titleLbl = new QLabel(truncate(shownTitle, 24));
@@ -694,6 +730,7 @@ void BrowserWindow::addNewTab(const QUrl &url) {
         for (int i = 0; i < m_tabs.count(); ++i) {
             if (m_tabs[i].view == view) {
                 m_tabs[i].loading = false;
+                if (ok) saveHistoryItem(m_tabs[i].title, m_tabs[i].url);
                 break;
             }
         }
@@ -725,7 +762,6 @@ void BrowserWindow::closeTab(int index) {
     if (index < 0 || index >= m_tabs.count()) return;
 
     if (m_tabs.count() == 1) {
-        // Open a fresh start page instead of closing the window
         addNewTab(QUrl(QStringLiteral("qrc:/startpage.html")));
     }
 
@@ -741,7 +777,14 @@ void BrowserWindow::closeTab(int index) {
     v->deleteLater();
     m_tabs.removeAt(index);
 
-    int newIdx = qMin(m_currentTabIndex, m_tabs.count() - 1);
+    if (m_tabs.isEmpty()) return;
+
+    int newIdx = m_currentTabIndex;
+    if (index <= m_currentTabIndex) {
+        newIdx = qMax(0, m_currentTabIndex - 1);
+    }
+    newIdx = qMin(newIdx, m_tabs.count() - 1);
+
     m_currentTabIndex = -1;
     setCurrentTab(newIdx);
 
@@ -914,6 +957,19 @@ void BrowserWindow::navigateToUrl() {
 void BrowserWindow::updateUrlBar(const QUrl &url) {
     if (m_currentTabIndex < 0 || m_currentTabIndex >= m_tabs.count()) return;
     m_urlBar->setText(shortUrl(url.toString()));
+
+    if (m_shieldInside) {
+        if (url.scheme() == QStringLiteral("https")) {
+            m_shieldInside->setIcon(createSvgIcon(svgShield, 16, QStringLiteral("#34c759"))); // Green secure shield
+            m_shieldInside->setToolTip(QStringLiteral("Connection is secure (HTTPS) — BLACK Protection Active"));
+        } else if (url.scheme() == QStringLiteral("http")) {
+            m_shieldInside->setIcon(createSvgIcon(svgShield, 16, QStringLiteral("#ff3b30"))); // Red unsecure shield
+            m_shieldInside->setToolTip(QStringLiteral("Connection is Not Secure (HTTP)"));
+        } else {
+            m_shieldInside->setIcon(createSvgIcon(svgShield, 16, textSecondary()));
+            m_shieldInside->setToolTip(QStringLiteral("Privacy Report"));
+        }
+    }
 }
 
 void BrowserWindow::updateNavigationState() {
@@ -974,9 +1030,9 @@ void BrowserWindow::setWindowTitleFromTab() {
     if (m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count()) {
         QString title = m_tabs[m_currentTabIndex].title;
         if (title.isEmpty()) title = QStringLiteral("New Tab");
-        setWindowTitle(title + QStringLiteral(" — Safari"));
+        setWindowTitle(title + QStringLiteral(" — BLACK"));
     } else {
-        setWindowTitle(QStringLiteral("Safari"));
+        setWindowTitle(QStringLiteral("BLACK"));
     }
 }
 
@@ -1013,8 +1069,10 @@ void BrowserWindow::setupKeyboardShortcuts()
     addShortcut(QStringLiteral("Ctrl+Shift+R"), [this]() {
         if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) v->reload();
     });
+    addShortcut(QStringLiteral("Ctrl+F"), [this]() { showFindBar(); });
     addShortcut(QStringLiteral("Escape"), [this]() {
-        if (m_overviewVisible) hideTabOverview();
+        if (m_findBar && m_findBar->isVisible()) hideFindBar();
+        else if (m_overviewVisible) hideTabOverview();
         else if (m_sidebarVisible) toggleSidebar();
     });
     addShortcut(QStringLiteral("Ctrl+Shift+L"), [this]() { toggleSidebar(); });
@@ -1202,4 +1260,217 @@ void BrowserWindow::updateWebViewBackgrounds()
 // ═══════════════════════════════════════════════════════════════════════════
 void BrowserWindow::contextMenuEvent(QContextMenuEvent *event) {
     Q_UNUSED(event);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Find in Page implementation ───────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+void BrowserWindow::setupFindBar() {
+    m_findBar = new QWidget(m_central);
+    m_findBar->setObjectName(QStringLiteral("FindBar"));
+    m_findBar->setFixedHeight(36);
+    m_findBar->setVisible(false);
+
+    QHBoxLayout *lay = new QHBoxLayout(m_findBar);
+    lay->setContentsMargins(12, 4, 12, 4);
+    lay->setSpacing(6);
+
+    m_findInput = new QLineEdit(m_findBar);
+    m_findInput->setPlaceholderText(QStringLiteral("Find in page\u2026"));
+    m_findInput->setFixedWidth(200);
+
+    m_findMatchCount = new QLabel(m_findBar);
+    m_findMatchCount->setStyleSheet(QStringLiteral("color: #8e8e93; font-size: 11px;"));
+
+    m_findPrevBtn = new QToolButton(m_findBar);
+    m_findPrevBtn->setText(QStringLiteral("\u25B2"));
+    m_findPrevBtn->setToolTip(QStringLiteral("Previous match"));
+
+    m_findNextBtn = new QToolButton(m_findBar);
+    m_findNextBtn->setText(QStringLiteral("\u25BC"));
+    m_findNextBtn->setToolTip(QStringLiteral("Next match"));
+
+    m_findCloseBtn = new QToolButton(m_findBar);
+    m_findCloseBtn->setText(QStringLiteral("\u2715"));
+    m_findCloseBtn->setToolTip(QStringLiteral("Close find bar (Esc)"));
+
+    lay->addWidget(m_findInput);
+    lay->addWidget(m_findMatchCount);
+    lay->addWidget(m_findPrevBtn);
+    lay->addWidget(m_findNextBtn);
+    lay->addStretch();
+    lay->addWidget(m_findCloseBtn);
+
+    QLayout *rootLayout = centralWidget()->layout();
+    static_cast<QVBoxLayout*>(rootLayout)->insertWidget(2, m_findBar);
+
+    connect(m_findInput, &QLineEdit::textChanged, this, [this](const QString &text) {
+        if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) {
+            v->findText(text, QWebEnginePage::FindFlags(), [this](const QWebEngineFindTextResult &result) {
+                if (result.numberOfMatches() > 0)
+                    m_findMatchCount->setText(QStringLiteral("%1 of %2").arg(result.activeMatch()).arg(result.numberOfMatches()));
+                else
+                    m_findMatchCount->setText(m_findInput->text().isEmpty() ? QString() : QStringLiteral("No matches"));
+            });
+        }
+    });
+    connect(m_findInput, &QLineEdit::returnPressed, this, &BrowserWindow::findNext);
+    connect(m_findNextBtn, &QToolButton::clicked, this, &BrowserWindow::findNext);
+    connect(m_findPrevBtn, &QToolButton::clicked, this, &BrowserWindow::findPrevious);
+    connect(m_findCloseBtn, &QToolButton::clicked, this, &BrowserWindow::hideFindBar);
+}
+
+void BrowserWindow::showFindBar() {
+    if (!m_findBar) setupFindBar();
+    m_findBar->setVisible(true);
+    m_findInput->setFocus();
+    m_findInput->selectAll();
+}
+
+void BrowserWindow::hideFindBar() {
+    if (m_findBar) {
+        m_findBar->setVisible(false);
+        if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget()))
+            v->findText(QString());
+    }
+}
+
+void BrowserWindow::findNext() {
+    if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) {
+        v->findText(m_findInput->text());
+    }
+}
+
+void BrowserWindow::findPrevious() {
+    if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) {
+        v->findText(m_findInput->text(), QWebEnginePage::FindBackward);
+    }
+}
+
+void BrowserWindow::setupDownloads() {
+    connect(QWebEngineProfile::defaultProfile(), &QWebEngineProfile::downloadRequested, this, [this](QWebEngineDownloadRequest *download) {
+        DownloadItemInfo info;
+        info.fileName = download->downloadFileName();
+        info.receivedBytes = download->receivedBytes();
+        info.totalBytes = download->totalBytes();
+        info.state = 0;
+        m_downloadsList.append(info);
+
+        int idx = m_downloadsList.count() - 1;
+        download->accept();
+
+        connect(download, &QWebEngineDownloadRequest::receivedBytesChanged, this, [this, idx, download]() {
+            if (idx < m_downloadsList.count()) {
+                m_downloadsList[idx].receivedBytes = download->receivedBytes();
+                m_downloadsList[idx].totalBytes = download->totalBytes();
+            }
+        });
+
+        connect(download, &QWebEngineDownloadRequest::isFinishedChanged, this, [this, idx, download]() {
+            if (idx < m_downloadsList.count()) {
+                m_downloadsList[idx].state = download->isFinished() ? 1 : 2;
+                m_downloadsButton->setToolTip(QStringLiteral("Downloads (%1 completed)").arg(m_downloadsList.count()));
+            }
+        });
+
+        m_downloadsButton->setToolTip(QStringLiteral("Downloading %1\u2026").arg(download->downloadFileName()));
+    });
+
+    connect(m_downloadsButton, &QToolButton::clicked, this, &BrowserWindow::showDownloadsMenu);
+}
+
+void BrowserWindow::showDownloadsMenu() {
+    QMenu menu(this);
+    if (m_downloadsList.isEmpty()) {
+        menu.addAction(QStringLiteral("No Downloads"))->setEnabled(false);
+    } else {
+        for (const auto &item : m_downloadsList) {
+            QString status = item.state == 1 ? QStringLiteral("Completed") : (item.state == 2 ? QStringLiteral("Failed") : QStringLiteral("%1 MB").arg(item.receivedBytes / (1024 * 1024)));
+            menu.addAction(QStringLiteral("%1 — %2").arg(item.fileName, status));
+        }
+    }
+    menu.exec(m_downloadsButton->mapToGlobal(QPoint(0, m_downloadsButton->height())));
+}
+
+void BrowserWindow::saveSession() {
+    QString configPath = QDir::currentPath() + QStringLiteral("/session.json");
+    QFile file(configPath);
+    if (file.open(QIODevice::WriteOnly)) {
+        QJsonArray array;
+        for (const TabInfo &tab : m_tabs) {
+            if (!tab.url.isEmpty() && !tab.url.startsWith(QStringLiteral("qrc:")))
+                array.append(tab.url);
+        }
+        QJsonObject obj;
+        obj[QStringLiteral("tabs")] = array;
+        obj[QStringLiteral("currentIndex")] = m_currentTabIndex;
+        file.write(QJsonDocument(obj).toJson());
+    }
+}
+
+void BrowserWindow::restoreSession() {
+    QString configPath = QDir::currentPath() + QStringLiteral("/session.json");
+    QFile file(configPath);
+    if (file.open(QIODevice::ReadOnly)) {
+        QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+        if (doc.isObject()) {
+            QJsonArray array = doc.object()[QStringLiteral("tabs")].toArray();
+            int restoreIdx = doc.object()[QStringLiteral("currentIndex")].toInt(0);
+            if (!array.isEmpty()) {
+                // Clear initial default start tab
+                while (!m_tabs.isEmpty()) {
+                    closeTab(0);
+                }
+                for (const QJsonValue &v : array) {
+                    addNewTab(QUrl(v.toString()));
+                }
+                if (restoreIdx >= 0 && restoreIdx < m_tabs.count())
+                    setCurrentTab(restoreIdx);
+            }
+        }
+    }
+}
+
+void BrowserWindow::saveHistoryItem(const QString &title, const QString &url) {
+    if (url.isEmpty() || url.startsWith(QStringLiteral("qrc:"))) return;
+    QString historyPath = QDir::currentPath() + QStringLiteral("/history.json");
+    QJsonArray historyArray;
+    QFile readFile(historyPath);
+    if (readFile.open(QIODevice::ReadOnly)) {
+        historyArray = QJsonDocument::fromJson(readFile.readAll()).array();
+        readFile.close();
+    }
+    QJsonObject item;
+    item[QStringLiteral("title")] = title.isEmpty() ? shortUrl(url) : title;
+    item[QStringLiteral("url")] = url;
+    item[QStringLiteral("timestamp")] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    historyArray.prepend(item);
+
+    // Keep max 500 history entries
+    while (historyArray.count() > 500) historyArray.removeLast();
+
+    QFile writeFile(historyPath);
+    if (writeFile.open(QIODevice::WriteOnly)) {
+        writeFile.write(QJsonDocument(historyArray).toJson());
+    }
+}
+
+void BrowserWindow::saveBookmark(const QString &title, const QString &url) {
+    if (url.isEmpty() || url.startsWith(QStringLiteral("qrc:"))) return;
+    QString bookmarkPath = QDir::currentPath() + QStringLiteral("/bookmarks.json");
+    QJsonArray bookmarkArray;
+    QFile readFile(bookmarkPath);
+    if (readFile.open(QIODevice::ReadOnly)) {
+        bookmarkArray = QJsonDocument::fromJson(readFile.readAll()).array();
+        readFile.close();
+    }
+    QJsonObject item;
+    item[QStringLiteral("title")] = title.isEmpty() ? shortUrl(url) : title;
+    item[QStringLiteral("url")] = url;
+    bookmarkArray.append(item);
+
+    QFile writeFile(bookmarkPath);
+    if (writeFile.open(QIODevice::WriteOnly)) {
+        writeFile.write(QJsonDocument(bookmarkArray).toJson());
+    }
 }

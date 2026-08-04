@@ -25,6 +25,7 @@ struct TabInfo {
     QString title;
     QString url;
     QIcon icon;
+    QPixmap thumbnail;
     bool loading = false;
 };
 
@@ -141,8 +142,28 @@ private:
     QList<TabInfo> m_tabs;
     int            m_currentTabIndex;
 
+    QWidget     *m_findBar;
+    QLineEdit   *m_findInput;
+    QLabel      *m_findMatchCount;
+    QToolButton *m_findNextBtn;
+    QToolButton *m_findPrevBtn;
+    QToolButton *m_findCloseBtn;
+
+    void setupFindBar();
+    void showFindBar();
+    void hideFindBar();
+    void findNext();
+    void findPrevious();
+    void setupDownloads();
+    void showDownloadsMenu();
+    void saveSession();
+    void restoreSession();
+    void saveHistoryItem(const QString &title, const QString &url);
+    void saveBookmark(const QString &title, const QString &url);
+
     QList<QWidget*> m_tabWidgets;
     QList<QUrl>     m_closedTabs;
+    QList<DownloadItemInfo> m_downloadsList;
 };
 
 #endif
