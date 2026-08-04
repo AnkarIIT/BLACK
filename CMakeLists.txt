@@ -1,22 +1,25 @@
 cmake_minimum_required(VERSION 3.16)
-project(BrowserClone LANGUAGES CXX)
+project(SafariClone VERSION 1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
 
-# Find Qt6 components including WebEngineWidgets
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets Svg)
-qt_standard_project_setup()
 
-# Set application executable
-add_executable(BrowserClone
+qt_add_executable(SafariClone
     main.cpp
     BrowserWindow.cpp
     BrowserWindow.h
+    SafariWebView.cpp
+    SafariWebView.h
+    SafariTheme.cpp
+    SafariTheme.h
+    resources.qrc
 )
 
-# Link against Qt libraries
-target_link_libraries(BrowserClone PRIVATE
+target_link_libraries(SafariClone PRIVATE
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets
@@ -24,8 +27,13 @@ target_link_libraries(BrowserClone PRIVATE
     Qt6::Svg
 )
 
-# Deployment requirements (Windows/macOS specific GUI handles)
-set_target_properties(BrowserClone PROPERTIES
+if(MSVC)
+    target_compile_options(SafariClone PRIVATE /W4)
+else()
+    target_compile_options(SafariClone PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+set_target_properties(SafariClone PROPERTIES
     WIN32_EXECUTABLE ON
     MACOSX_BUNDLE ON
 )

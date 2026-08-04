@@ -1,19 +1,33 @@
 #include <QApplication>
+#include <QGuiApplication>
+#include <QScreen>
 #include <QWebEngineProfile>
 #include <QWebEngineSettings>
 #include "BrowserWindow.h"
 
 int main(int argc, char *argv[])
 {
-    // Initialize WebEngine before app creation to avoid some OpenGL issues if relevant
-    QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
     QApplication app(argc, argv);
+    app.setApplicationName("Safari");
+    app.setOrganizationName("Apple");
+    app.setApplicationDisplayName("Safari");
 
-    // Apply basic application styling
-    app.setStyleSheet("QMainWindow { background-color: #f7f7f7; }");
+    QWebEngineProfile::defaultProfile()->settings()->setAttribute(
+        QWebEngineSettings::FullScreenSupportEnabled, true);
 
     BrowserWindow window;
-    window.resize(1200, 800);
+
+    const QSize desired(1400, 900);
+    QScreen *screen = QGuiApplication::primaryScreen();
+    if (screen) {
+        const QRect avail = screen->availableGeometry();
+        const QSize cap = QSize(avail.width() * 9 / 10, avail.height() * 9 / 10);
+        window.resize(desired.boundedTo(cap));
+        window.move(avail.center() - QPoint(window.width() / 2, window.height() / 2));
+    } else {
+        window.resize(desired);
+    }
+
     window.show();
 
     return app.exec();

@@ -1,11 +1,15 @@
-
 #include "BrowserWindow.h"
+#include "SafariWebView.h"
+#include "SafariTheme.h"
 #include <QFrame>
 #include <QStyle>
 #include <QtSvg/QSvgRenderer>
 #include <QPainter>
 #include <QPixmap>
 #include <QApplication>
+#include <QGuiApplication>
+#include <QStyleHints>
+#include <QColor>
 #include <QWebEngineHistory>
 #include <QClipboard>
 #include <QDir>
@@ -19,26 +23,74 @@
 #include <QEvent>
 #include <QCoreApplication>
 #include <QFile>
+#include <QShortcut>
+#include <QContextMenuEvent>
+#include <QMenu>
+#include <QAction>
+#include <QTimer>
+#include <QWebEngineProfile>
+#include <QActionGroup>
+#include <QDesktopServices>
+#include <functional>
+#include <utility>
 
-// ── SVG strings ──────────────────────────────────────────────────────────────
-const QString svgSidebar   = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><line x1=\"9\" y1=\"3\" x2=\"9\" y2=\"21\"/></svg>";
-const QString svgBack      = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"15 18 9 12 15 6\"/></svg>";
-const QString svgForward   = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"9 18 15 12 9 6\"/></svg>";
-const QString svgShield    = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z\"/></svg>";
-const QString svgReload    = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.59-8.31l4.25-4.26\"/></svg>";
-const QString svgShare     = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8\"/><polyline points=\"16 6 12 2 8 6\"/><line x1=\"12\" y1=\"2\" x2=\"12\" y2=\"15\"/></svg>";
-const QString svgAddTab    = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\"><line x1=\"12\" y1=\"5\" x2=\"12\" y2=\"19\"/><line x1=\"5\" y1=\"12\" x2=\"19\" y2=\"12\"/></svg>";
-const QString svgClose_tl  = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#4b0000\" stroke-width=\"3\" stroke-linecap=\"round\"><line x1=\"18\" y1=\"6\" x2=\"6\" y2=\"18\"/><line x1=\"6\" y1=\"6\" x2=\"18\" y2=\"18\"/></svg>";
-const QString svgMinimize_tl = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#5b4000\" stroke-width=\"3\" stroke-linecap=\"round\"><line x1=\"5\" y1=\"12\" x2=\"19\" y2=\"12\"/></svg>";
-const QString svgMaximize_tl = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#004b00\" stroke-width=\"3\" stroke-linecap=\"round\"><polyline points=\"15 3 21 3 21 9\"/><polyline points=\"9 21 3 21 3 15\"/><line x1=\"21\" y1=\"3\" x2=\"14\" y2=\"10\"/><line x1=\"3\" y1=\"21\" x2=\"10\" y2=\"14\"/></svg>";
-// Grid icon (4 small squares like Safari's tab overview button)
-const QString svgGrid      = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\"/></svg>";
-// Small X for closing a tab / overview card
-const QString svgX         = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2.5\" stroke-linecap=\"round\"><line x1=\"18\" y1=\"6\" x2=\"6\" y2=\"18\"/><line x1=\"6\" y1=\"6\" x2=\"18\" y2=\"18\"/></svg>";
+// ── Safari Color Palette (dynamic, follows system theme) ─────────────────────
+static QString bgWindow()      { return SafariTheme::instance().bgWindow; }
+static QString bgToolbar()     { return SafariTheme::instance().bgToolbar; }
+static QString bgTabBar()      { return SafariTheme::instance().bgTabBar; }
+static QString bgUrlBar()      { return SafariTheme::instance().bgUrlBar; }
+static QString bgSidebar()     { return SafariTheme::instance().bgSidebar; }
+static QString tabActive()     { return SafariTheme::instance().tabActive; }
+static QString tabInactive()   { return SafariTheme::instance().tabInactive; }
+static QString tabHover()      { return SafariTheme::instance().tabHover; }
+static QString cardBg()        { return SafariTheme::instance().cardBg; }
+static QString textPrimary()   { return SafariTheme::instance().textPrimary; }
+static QString textSecondary() { return SafariTheme::instance().textSecondary; }
+static QString textTertiary()  { return SafariTheme::instance().textTertiary; }
+static QString accent()        { return SafariTheme::instance().accent; }
+static QString accentHover()   { return SafariTheme::instance().accentHover; }
+static QString border()        { return SafariTheme::instance().border; }
+static QString hover()         { return SafariTheme::instance().hover; }
+static QString searchBg()      { return SafariTheme::instance().searchBg; }
+static QString selectedBg()    { return SafariTheme::instance().selectedBg; }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-static QString truncate(const QString &s, int max = 22) {
-    return s.length() > max ? s.left(max - 1) + "…" : s;
+// ── SVG Icons (Safari-style, stroke-based) ─────────────────────────────────
+static const QString svgBack       = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"15 18 9 12 15 6\"/></svg>";
+static const QString svgForward    = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"9 18 15 12 9 6\"/></svg>";
+static const QString svgSidebar    = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><line x1=\"9\" y1=\"3\" x2=\"9\" y2=\"21\"/></svg>";
+static const QString svgReload     = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21.5 2v6h-6\"/><path d=\"M21.34 15.57a10 10 0 1 1-.59-8.31L21.5 8\"/></svg>";
+static const QString svgStop       = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"6\" y=\"6\" width=\"12\" height=\"12\" rx=\"1\"/></svg>";
+static const QString svgShare      = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8\"/><polyline points=\"16 6 12 2 8 6\"/><line x1=\"12\" y1=\"2\" x2=\"12\" y2=\"15\"/></svg>";
+static const QString svgDownloads  = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><polyline points=\"7 10 12 15 17 10\"/><line x1=\"12\" y1=\"15\" x2=\"12\" y2=\"3\"/></svg>";
+static const QString svgTabOverview = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"/></svg>";
+static const QString svgPlus        = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\"><line x1=\"12\" y1=\"5\" x2=\"12\" y2=\"19\"/><line x1=\"5\" y1=\"12\" x2=\"19\" y2=\"12\"/></svg>";
+static const QString svgSearch      = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"11\" cy=\"11\" r=\"8\"/><line x1=\"21\" y1=\"21\" x2=\"16.65\" y2=\"16.65\"/></svg>";
+static const QString svgShield      = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z\"/></svg>";
+static const QString svgClose       = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2.5\" stroke-linecap=\"round\"><line x1=\"18\" y1=\"6\" x2=\"6\" y2=\"18\"/><line x1=\"6\" y1=\"6\" x2=\"18\" y2=\"18\"/></svg>";
+static const QString svgBookmarks   = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z\"/></svg>";
+static const QString svgReadingList = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"6\" cy=\"12\" r=\"2\"/><circle cx=\"12\" cy=\"12\" r=\"2\"/><circle cx=\"18\" cy=\"12\" r=\"2\"/><line x1=\"8\" y1=\"12\" x2=\"16\" y2=\"12\"/></svg>";
+static const QString svgHistory     = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><polyline points=\"12 6 12 12 16 14\"/></svg>";
+static const QString svgTabGroups   = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"4\" width=\"20\" height=\"16\" rx=\"2\"/><line x1=\"2\" y1=\"10\" x2=\"22\" y2=\"10\"/></svg>";
+static const QString svgiCloud      = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z\"/></svg>";
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+static QString truncate(const QString &s, int max = 20) {
+    return s.length() > max ? s.left(max - 1) + QStringLiteral("\u2026") : s;
+}
+
+static QString shortUrl(const QString &url) {
+    QString display = url;
+    if (display.startsWith(QStringLiteral("file://")))
+        return QStringLiteral("Start Page");
+    if (display.startsWith(QStringLiteral("https://")))
+        display.remove(0, 8);
+    else if (display.startsWith(QStringLiteral("http://")))
+        display.remove(0, 7);
+    if (display.startsWith(QStringLiteral("www.")))
+        display.remove(0, 4);
+    if (display.endsWith(QStringLiteral("/")))
+        display.chop(1);
+    return display;
 }
 
 // =============================================================================
@@ -46,70 +98,116 @@ BrowserWindow::BrowserWindow(QWidget *parent)
     : QMainWindow(parent)
     , m_tabStack(new QStackedWidget(this))
     , m_urlBar(new QLineEdit(this))
-    , m_sidebarButton(new QToolButton(this))
+    , m_urlContainer(nullptr)
+    , m_shieldInside(nullptr)
+    , m_central(nullptr)
     , m_backButton(new QToolButton(this))
     , m_forwardButton(new QToolButton(this))
+    , m_sidebarButton(new QToolButton(this))
     , m_reloadButton(new QToolButton(this))
-    , m_shieldButton(new QToolButton(this))
     , m_shareButton(new QToolButton(this))
+    , m_downloadsButton(new QToolButton(this))
+    , m_tabOverviewButton(new QToolButton(this))
     , m_addTabButton(new QToolButton(this))
-    , m_groupTabsButton(new QToolButton(this))
-    , m_tabCountLabel(nullptr)
+    , m_closeButton(nullptr)
+    , m_minimizeButton(nullptr)
+    , m_maximizeButton(nullptr)
+    , m_loadingBar(nullptr)
     , m_overviewOverlay(nullptr)
-    , m_overviewPanel(nullptr)
+    , m_overviewTitle(nullptr)
+    , m_overviewDoneButton(nullptr)
+    , m_overviewNewTabButton(nullptr)
     , m_overviewVisible(false)
+    , m_sidebar(nullptr)
+    , m_sidebarLayout(nullptr)
+    , m_sidebarSearch(nullptr)
+    , m_sidebarVisible(false)
+    , m_urlFocused(false)
     , m_isDragging(false)
+    , m_currentTabIndex(-1)
 {
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint |
                    Qt::WindowSystemMenuHint |
                    Qt::WindowMinimizeButtonHint |
                    Qt::WindowMaximizeButtonHint);
     setAttribute(Qt::WA_TranslucentBackground);
+    setMinimumSize(800, 500);
+    setFont(QFont("SF Pro Display", 13));
 
     setupUi();
+    setupTabBar();
+    setupSidebar();
     setupTabOverlay();
+    setupKeyboardShortcuts();
+    applyTheme();
 
-    setStyleSheet("QMainWindow { background-color: transparent; }");
-    setFont(QFont("Segoe UI", 10));
-
-    addNewTab(QUrl("https://www.apple.com"));
+    addNewTab(QUrl(QStringLiteral("qrc:/startpage.html")));
 
     connect(m_urlBar, &QLineEdit::returnPressed, this, &BrowserWindow::navigateToUrl);
+
+    connect(&SafariTheme::instance(), &SafariTheme::schemeChanged, this, [this]() {
+        applyTheme();
+    });
 }
 
-BrowserWindow::~BrowserWindow() {}
+BrowserWindow::~BrowserWindow() = default;
 
-// ── Window control ───────────────────────────────────────────────────────────
+// ── Window Control ──────────────────────────────────────────────────────────
 void BrowserWindow::closeWindow()    { close(); }
 void BrowserWindow::minimizeWindow() { showMinimized(); }
-void BrowserWindow::maximizeWindow() { if (isMaximized()) showNormal(); else showMaximized(); }
+void BrowserWindow::maximizeWindow() {
+    if (isMaximized()) showNormal(); else showMaximized();
+}
 
-// ── Mouse drag (frameless window) ────────────────────────────────────────────
+// ── Mouse Events (frameless window) ────────────────────────────────────────
 void BrowserWindow::mousePressEvent(QMouseEvent *event) {
-    if (event->button() == Qt::LeftButton && event->pos().y() < 60) {
+    if (event->button() == Qt::LeftButton && event->pos().y() < 32) {
         m_isDragging = true;
         m_dragPosition = event->globalPosition().toPoint() - frameGeometry().topLeft();
         event->accept();
     }
 }
+
 void BrowserWindow::mouseMoveEvent(QMouseEvent *event) {
     if (event->buttons() & Qt::LeftButton && m_isDragging) {
+        if (isMaximized()) {
+            showNormal();
+            m_dragPosition = QPoint(width() / 2, 16);
+        }
         move(event->globalPosition().toPoint() - m_dragPosition);
         event->accept();
     }
 }
-void BrowserWindow::mouseReleaseEvent(QMouseEvent *) { m_isDragging = false; }
+
+void BrowserWindow::mouseReleaseEvent(QMouseEvent *) {
+    m_isDragging = false;
+}
+
+void BrowserWindow::mouseDoubleClickEvent(QMouseEvent *event) {
+    if (event->button() == Qt::LeftButton && event->pos().y() < 32) {
+        maximizeWindow();
+        event->accept();
+    }
+}
 
 void BrowserWindow::resizeEvent(QResizeEvent *event) {
     QMainWindow::resizeEvent(event);
-    // keep overlay same size as window
     if (m_overviewOverlay) m_overviewOverlay->setGeometry(rect());
-    rebuildInlineTabBar();
 }
 
-// ── Icon helper ──────────────────────────────────────────────────────────────
-QIcon BrowserWindow::createSvgIcon(const QString &svgData, int size, QString color) {
-    QString filled = svgData.contains("%1") ? svgData.arg(color) : svgData;
+void BrowserWindow::changeEvent(QEvent *event) {
+    QMainWindow::changeEvent(event);
+    if (event->type() == QEvent::ThemeChange) {
+        SafariTheme::Scheme s =
+            (QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark)
+                ? SafariTheme::Scheme::Dark : SafariTheme::Scheme::Light;
+        SafariTheme::instance().setScheme(s);
+    }
+}
+
+// ── Icon Helper ─────────────────────────────────────────────────────────────
+QIcon BrowserWindow::createSvgIcon(const QString &svgData, int size, const QString &color) {
+    QString filled = svgData.contains(QStringLiteral("%1")) ? svgData.arg(color) : svgData;
     QSvgRenderer renderer(filled.toUtf8());
     QPixmap pix(size, size);
     pix.fill(Qt::transparent);
@@ -119,290 +217,320 @@ QIcon BrowserWindow::createSvgIcon(const QString &svgData, int size, QString col
     return QIcon(pix);
 }
 
-// ── Traffic light helper ─────────────────────────────────────────────────────
-QToolButton* BrowserWindow::createTrafficLight(const QString &color, const QString &hoverColor, const QString &) {
-    QToolButton *btn = new QToolButton(this);
-    btn->setFixedSize(14, 14);
+// ── Traffic Light Helper ────────────────────────────────────────────────────
+QToolButton* BrowserWindow::createTrafficLight(const QString &color, const QString &hoverColor) {
+    auto *btn = new QToolButton(this);
+    btn->setFixedSize(12, 12);
     btn->setStyleSheet(QString(
-        "QToolButton { background-color: %1; border-radius: 7px; border: 1px solid rgba(0,0,0,0.1); }"
-        "QToolButton:hover { background-color: %2; }").arg(color, hoverColor));
+        "QToolButton { background-color: %1; border-radius: 6px; border: 0.5px solid rgba(0,0,0,0.12); }"
+        "QToolButton:hover { background-color: %2; }"
+    ).arg(color, hoverColor));
     return btn;
 }
 
-// ── Setup Main UI ─────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Setup Main UI (Safari Style) ──────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
 void BrowserWindow::setupUi()
 {
-    QWidget *centralWidget = new QWidget(this);
-    centralWidget->setObjectName("CentralContainer");
-    centralWidget->setStyleSheet(
-        "#CentralContainer { background-color: #F2F2F7; border-radius: 16px; border: 1px solid rgba(0,0,0,0.08); }"
-    );
-    setCentralWidget(centralWidget);
+    m_central = new QWidget(this);
+    m_central->setObjectName(QStringLiteral("CentralWidget"));
+    setCentralWidget(m_central);
 
-    QVBoxLayout *mainLayout = new QVBoxLayout(centralWidget);
-    mainLayout->setContentsMargins(0, 0, 0, 0);
-    mainLayout->setSpacing(0);
+    QVBoxLayout *rootLayout = new QVBoxLayout(m_central);
+    rootLayout->setContentsMargins(0, 0, 0, 0);
+    rootLayout->setSpacing(0);
 
-    // ── Top bar ───────────────────────────────────────────────────────────
-    m_topBar = new QFrame(centralWidget);
-    m_topBar->setObjectName("TopBar");
-    m_topBar->setFixedHeight(56);
-    m_topBar->setStyleSheet(
-        "#TopBar { background-color: rgba(255,255,255,0.88); "
-        "border-bottom: 1px solid rgba(0,0,0,0.08); "
-        "border-top-left-radius: 16px; border-top-right-radius: 16px; }"
-    );
+    // ── Toolbar ────────────────────────────────────────────────────────────
+    m_toolbar = new QWidget(m_central);
+    m_toolbar->setObjectName(QStringLiteral("Toolbar"));
+    m_toolbar->setFixedHeight(52);
 
-    m_navLayout = new QHBoxLayout(m_topBar);
-    m_navLayout->setContentsMargins(14, 0, 14, 0);
-    m_navLayout->setSpacing(8);
+    QHBoxLayout *toolbarLayout = new QHBoxLayout(m_toolbar);
+    toolbarLayout->setContentsMargins(12, 0, 12, 0);
+    toolbarLayout->setSpacing(6);
 
     // Traffic lights
-    m_closeButton    = createTrafficLight("#FF5F56", "#E0443E");
-    m_minimizeButton = createTrafficLight("#FFBD2E", "#DEA124");
-    m_maximizeButton = createTrafficLight("#27C93F", "#1AAB29");
-    m_navLayout->addWidget(m_closeButton);
-    m_navLayout->addSpacing(4);
-    m_navLayout->addWidget(m_minimizeButton);
-    m_navLayout->addSpacing(4);
-    m_navLayout->addWidget(m_maximizeButton);
-    m_navLayout->addSpacing(14);
+    m_closeButton    = createTrafficLight(QStringLiteral("#ff5f56"), QStringLiteral("#e0443e"));
+    m_minimizeButton = createTrafficLight(QStringLiteral("#ffbd2e"), QStringLiteral("#dea124"));
+    m_maximizeButton = createTrafficLight(QStringLiteral("#27c93f"), QStringLiteral("#1aab29"));
 
     connect(m_closeButton,    &QToolButton::clicked, this, &BrowserWindow::closeWindow);
     connect(m_minimizeButton, &QToolButton::clicked, this, &BrowserWindow::minimizeWindow);
     connect(m_maximizeButton, &QToolButton::clicked, this, &BrowserWindow::maximizeWindow);
 
-    // Flat icon button style
-    const QString flatBtn =
-        "QToolButton { border: none; background: transparent; border-radius: 10px; padding: 6px; }"
-        "QToolButton:hover { background-color: rgba(60,60,67,0.10); }"
-        "QToolButton:disabled { opacity: 0.25; }";
+    QHBoxLayout *trafficLayout = new QHBoxLayout();
+    trafficLayout->setContentsMargins(8, 0, 8, 0);
+    trafficLayout->setSpacing(6);
+    trafficLayout->addWidget(m_closeButton);
+    trafficLayout->addWidget(m_minimizeButton);
+    trafficLayout->addWidget(m_maximizeButton);
+    trafficLayout->addSpacing(8);
+    toolbarLayout->addLayout(trafficLayout);
 
-    m_sidebarButton->setIcon(createSvgIcon(svgSidebar, 18));
-    m_sidebarButton->setStyleSheet(flatBtn);
-    m_navLayout->addWidget(m_sidebarButton);
+    m_sidebarButton->setToolTip(QStringLiteral("Toggle Sidebar"));
+    connect(m_sidebarButton, &QToolButton::clicked, this, &BrowserWindow::toggleSidebar);
+    toolbarLayout->addWidget(m_sidebarButton);
 
-    m_backButton->setIcon(createSvgIcon(svgBack, 18));
-    m_backButton->setStyleSheet(flatBtn);
-    m_navLayout->addWidget(m_backButton);
+    toolbarLayout->addSpacing(2);
 
-    m_forwardButton->setIcon(createSvgIcon(svgForward, 18));
-    m_forwardButton->setStyleSheet(flatBtn);
-    m_navLayout->addWidget(m_forwardButton);
+    m_backButton->setToolTip(QStringLiteral("Back"));
+    toolbarLayout->addWidget(m_backButton);
 
-    m_navLayout->addSpacing(4);
+    m_forwardButton->setToolTip(QStringLiteral("Forward"));
+    toolbarLayout->addWidget(m_forwardButton);
 
-    // ── Inline tab strip ─────────────────────────────────────────────────
-    // Safari compact mode: tabs live between nav buttons and the URL bar.
-    // Hidden when only 1 tab is open.
-    m_tabStrip = new QWidget(m_topBar);
-    m_tabStrip->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    m_tabStripLayout = new QHBoxLayout(m_tabStrip);
-    m_tabStripLayout->setContentsMargins(0, 6, 0, 6);
-    m_tabStripLayout->setSpacing(6);
-    m_tabStrip->setVisible(false);
-    m_navLayout->addWidget(m_tabStrip, 10);
+    m_reloadButton->setToolTip(QStringLiteral("Reload"));
+    toolbarLayout->addWidget(m_reloadButton);
 
-    m_navLayout->addSpacing(4);
+    toolbarLayout->addSpacing(6);
 
-    // ── URL / Address bar ─────────────────────────────────────────────────
-    m_urlBar->setStyleSheet(
-        "QLineEdit { "
-        "   background-color: rgba(0,0,0,0.04); "
-        "   color: #1D1D1F; "
-        "   border: 1px solid rgba(0,0,0,0.10); "
-        "   border-radius: 18px; "
-        "   padding: 0 42px; "
-        "   font-size: 13px; "
-        "   font-weight: 400; "
-        "}"
-        "QLineEdit:focus { "
-        "   background-color: #FFFFFF; "
-        "   border: 1px solid rgba(0,0,0,0.16); "
-        "   color: #1D1D1F; "
-        "}"
-    );
-    m_urlBar->setPlaceholderText("Search or enter website name");
-    m_urlBar->setAlignment(Qt::AlignLeft);
-    m_urlBar->setMinimumHeight(34);
-    m_urlBar->setMaximumHeight(34);
+    // URL Bar (container with shield icon + borderless line edit)
+    m_urlBar->setPlaceholderText(QStringLiteral("Search or enter website name"));
+    m_urlBar->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    m_urlBar->setMinimumHeight(30);
+    m_urlBar->setMaximumHeight(30);
+    m_urlBar->setMinimumWidth(200);
+    m_urlBar->installEventFilter(this);
 
-    // Shield left, reload right — inside address bar
-    m_shieldButton->setIcon(createSvgIcon(svgShield, 16, "#007AFF"));
-    m_shieldButton->setStyleSheet("border: none; background: transparent;");
-    m_shieldButton->setFixedSize(22, 22);
+    m_urlContainer = new QFrame(m_toolbar);
+    m_urlContainer->setObjectName(QStringLiteral("UrlContainer"));
 
-    m_reloadButton->setIcon(createSvgIcon(svgReload, 16, "#5C5C5E"));
-    m_reloadButton->setStyleSheet("border: none; background: transparent;");
-    m_reloadButton->setFixedSize(22, 22);
-
-    QHBoxLayout *urlLayout = new QHBoxLayout(m_urlBar);
+    QHBoxLayout *urlLayout = new QHBoxLayout(m_urlContainer);
     urlLayout->setContentsMargins(8, 0, 8, 0);
-    urlLayout->addWidget(m_shieldButton);
-    urlLayout->addStretch();
-    urlLayout->addWidget(m_reloadButton);
+    urlLayout->setSpacing(4);
 
-    m_urlBar->setMinimumWidth(180); 
-    m_navLayout->addWidget(m_urlBar, 2); // Lower stretch factor for the URL bar side piece
+    m_shieldInside = new QToolButton(m_urlContainer);
+    m_shieldInside->setFixedSize(18, 18);
+    m_shieldInside->setToolTip(QStringLiteral("Privacy Report"));
+    urlLayout->addWidget(m_shieldInside);
 
-    m_navLayout->addSpacing(8);
+    urlLayout->addWidget(m_urlBar, 1);
+    toolbarLayout->addWidget(m_urlContainer, 1);
 
-    // ── Right controls ────────────────────────────────────────────────────
-    m_shareButton->setIcon(createSvgIcon(svgShare, 18));
-    m_shareButton->setStyleSheet(flatBtn);
-    m_navLayout->addWidget(m_shareButton);
+    toolbarLayout->addSpacing(6);
 
-    m_addTabButton->setIcon(createSvgIcon(svgAddTab, 18));
-    m_addTabButton->setStyleSheet(flatBtn);
-    m_navLayout->addWidget(m_addTabButton);
+    // Right side buttons
+    m_shareButton->setToolTip(QStringLiteral("Share"));
+    connect(m_shareButton, &QToolButton::clicked, this, &BrowserWindow::shareAction);
+    toolbarLayout->addWidget(m_shareButton);
 
-    // Tab overview (grid) button — with badge on top
-    QWidget *gridBtnWrapper = new QWidget(m_topBar);
-    gridBtnWrapper->setFixedSize(38, 38);
-    gridBtnWrapper->setStyleSheet("background: transparent;");
+    m_downloadsButton->setToolTip(QStringLiteral("Downloads"));
+    toolbarLayout->addWidget(m_downloadsButton);
 
-    m_groupTabsButton->setParent(gridBtnWrapper);
-    m_groupTabsButton->setGeometry(0, 0, 38, 38);
-    m_groupTabsButton->setIcon(createSvgIcon(svgGrid, 18));
-    m_groupTabsButton->setStyleSheet(flatBtn);
+    m_tabOverviewButton->setToolTip(QStringLiteral("Tab Overview"));
+    connect(m_tabOverviewButton, &QToolButton::clicked, this, &BrowserWindow::toggleTabOverview);
+    toolbarLayout->addWidget(m_tabOverviewButton);
 
-    // Count badge (e.g. "1")
-    m_tabCountLabel = new QLabel("1", gridBtnWrapper);
-    m_tabCountLabel->setAlignment(Qt::AlignCenter);
-    m_tabCountLabel->setFixedSize(16, 14);
-    m_tabCountLabel->move(22, 2);   // top-right of the button
-    m_tabCountLabel->setStyleSheet(
-        "QLabel { "
-        "   background-color: #007AFF; "
-        "   color: white; "
-        "   font-size: 9px; "
-        "   font-weight: 700; "
-        "   border-radius: 4px; "
-        "}"
-    );
-    m_tabCountLabel->raise();
+    rootLayout->addWidget(m_toolbar);
 
-    m_navLayout->addWidget(gridBtnWrapper);
+    // ── Loading Bar ────────────────────────────────────────────────────────
+    m_loadingBar = new QLabel(m_central);
+    m_loadingBar->setFixedHeight(2);
+    m_loadingBar->setVisible(false);
+    rootLayout->addWidget(m_loadingBar);
 
-    // ── Assemble ──────────────────────────────────────────────────────────
-    mainLayout->addWidget(m_topBar);
-    mainLayout->addWidget(m_tabStack, 1);
+    // ── Content area (sidebar + tab stack) ─────────────────────────────────
+    m_sidebar = new QFrame(m_central);
+    m_sidebar->setObjectName(QStringLiteral("Sidebar"));
+    m_sidebar->setFixedWidth(260);
+    m_sidebar->setVisible(false);
 
-    // ── Separator line ────────────────────────────────────────────────────
-    QFrame *separator = new QFrame(centralWidget);
-    separator->setFrameShape(QFrame::HLine);
-    separator->setFixedHeight(1);
-    separator->setStyleSheet("background: rgba(0,0,0,0.08);");
-    mainLayout->insertWidget(1, separator); // insert between topBar and tabStack
+    QHBoxLayout *contentRow = new QHBoxLayout();
+    contentRow->setContentsMargins(0, 0, 0, 0);
+    contentRow->setSpacing(0);
 
-    // ── Connections ───────────────────────────────────────────────────────
-    connect(m_addTabButton,    &QToolButton::clicked, this, &BrowserWindow::addTabAction);
-    connect(m_shareButton,     &QToolButton::clicked, this, &BrowserWindow::shareAction);
-    connect(m_groupTabsButton, &QToolButton::clicked, this, [this](){
-        m_overviewVisible ? hideTabOverview() : showTabOverview();
+    contentRow->addWidget(m_sidebar);
+    contentRow->addWidget(m_tabStack, 1);
+
+    rootLayout->addLayout(contentRow, 1);
+
+    // ── Connect Navigation ─────────────────────────────────────────────────
+    connect(m_backButton, &QToolButton::clicked, this, [this]() {
+        if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget()))
+            v->back();
     });
-    connect(m_backButton,    &QToolButton::clicked, this, [this](){
-        if (auto* v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) v->back();
+    connect(m_forwardButton, &QToolButton::clicked, this, [this]() {
+        if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget()))
+            v->forward();
     });
-    connect(m_forwardButton, &QToolButton::clicked, this, [this](){
-        if (auto* v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) v->forward();
-    });
-    connect(m_reloadButton,  &QToolButton::clicked, this, [this](){
-        if (auto* v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) v->reload();
+    connect(m_reloadButton, &QToolButton::clicked, this, [this]() {
+        if (m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count()) {
+            QWebEngineView *v = m_tabs[m_currentTabIndex].view;
+            if (m_tabs[m_currentTabIndex].loading) v->stop();
+            else v->reload();
+        }
     });
 }
 
-// ── Tab Overview Overlay ──────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Tab Bar Setup ─────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+void BrowserWindow::setupTabBar()
+{
+    m_tabBar = new QWidget(centralWidget());
+    m_tabBar->setObjectName(QStringLiteral("TabBar"));
+    m_tabBar->setFixedHeight(36);
+
+    m_tabBarLayout = new QHBoxLayout(m_tabBar);
+    m_tabBarLayout->setContentsMargins(76, 0, 4, 0);
+    m_tabBarLayout->setSpacing(2);
+    m_tabBarLayout->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+
+    // Add tab button
+    m_addTabButton->setFixedSize(26, 26);
+    m_addTabButton->setToolTip(QStringLiteral("New Tab"));
+    connect(m_addTabButton, &QToolButton::clicked, this, &BrowserWindow::addTabAction);
+
+    // Insert tab bar into root layout (between toolbar and tab stack)
+    QLayout *rootLayout = centralWidget()->layout();
+    static_cast<QVBoxLayout*>(rootLayout)->insertWidget(2, m_tabBar);
+
+    m_tabBarLayout->addStretch();
+    m_tabBarLayout->addWidget(m_addTabButton);
+    m_tabBarLayout->addSpacing(4);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Sidebar Setup ─────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+void BrowserWindow::setupSidebar()
+{
+    m_sidebarLayout = new QVBoxLayout(m_sidebar);
+    m_sidebarLayout->setContentsMargins(12, 8, 12, 12);
+    m_sidebarLayout->setSpacing(4);
+
+    // Sidebar search
+    m_sidebarSearch = new QLineEdit(m_sidebar);
+    m_sidebarSearch->setPlaceholderText(QStringLiteral("\U0001F50D  Search tabs, bookmarks\u2026"));
+    m_sidebarSearch->setFixedHeight(28);
+    m_sidebarLayout->addWidget(m_sidebarSearch);
+    m_sidebarLayout->addSpacing(8);
+
+    auto addSectionHeader = [this](const QString &title) {
+        QLabel *lbl = new QLabel(title, m_sidebar);
+        m_sidebarLayout->addWidget(lbl);
+        m_sidebarHeaders.append(lbl);
+    };
+
+    auto addSidebarItem = [this](const QString &icon, const QString &text, bool isActive = false) -> QFrame* {
+        QFrame *item = new QFrame(m_sidebar);
+        item->setFixedHeight(28);
+        item->setCursor(Qt::PointingHandCursor);
+        item->setProperty("sidebarActive", isActive);
+
+        QHBoxLayout *lay = new QHBoxLayout(item);
+        lay->setContentsMargins(8, 2, 8, 2);
+        lay->setSpacing(6);
+
+        QLabel *iconLbl = new QLabel(icon, item);
+        iconLbl->setFixedSize(18, 18);
+        iconLbl->setAlignment(Qt::AlignCenter);
+        lay->addWidget(iconLbl);
+
+        QLabel *textLbl = new QLabel(text, item);
+        lay->addWidget(textLbl, 1);
+
+        m_sidebarLayout->addWidget(item);
+        m_sidebarItems.append(item);
+        m_sidebarItemIcons.append(iconLbl);
+        m_sidebarItemTexts.append(textLbl);
+        return item;
+    };
+
+    // Tab Groups
+    addSectionHeader(QStringLiteral("Tab Groups"));
+    addSidebarItem(QStringLiteral("\U0001F4C2"), QStringLiteral("All Tabs"), true);
+    addSidebarItem(QStringLiteral("\U0001F4CB"), QStringLiteral("Personal"));
+    addSidebarItem(QStringLiteral("\U0001F4BC"), QStringLiteral("Work"));
+
+    m_sidebarLayout->addSpacing(8);
+
+    // Bookmarks
+    addSectionHeader(QStringLiteral("Bookmarks"));
+    addSidebarItem(QStringLiteral("\u2B50"), QStringLiteral("Favorites"));
+    addSidebarItem(svgBookmarks, QStringLiteral("Bookmarks"));
+    addSidebarItem(svgReadingList, QStringLiteral("Reading List"));
+
+    m_sidebarLayout->addSpacing(8);
+
+    // Recently Closed
+    addSectionHeader(QStringLiteral("Recently Closed"));
+    addSidebarItem(svgHistory, QStringLiteral("No recent items"));
+
+    m_sidebarLayout->addSpacing(8);
+
+    // iCloud
+    addSidebarItem(svgiCloud, QStringLiteral("iCloud Tabs"));
+
+    m_sidebarLayout->addStretch();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Tab Overview Overlay ──────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
 void BrowserWindow::setupTabOverlay()
 {
-    // Semi-transparent full-window dimmer
     m_overviewOverlay = new QWidget(this);
-    m_overviewOverlay->setObjectName("OverviewOverlay");
+    m_overviewOverlay->setObjectName(QStringLiteral("OverviewOverlay"));
     m_overviewOverlay->setGeometry(rect());
-    m_overviewOverlay->setStyleSheet(
-        "#OverviewOverlay { background-color: rgba(28,28,30,0.36); }"
-    );
     m_overviewOverlay->setVisible(false);
     m_overviewOverlay->raise();
 
-    // White panel — slides up from bottom
     m_overviewPanel = new QWidget(m_overviewOverlay);
-    m_overviewPanel->setObjectName("OverviewPanel");
-    m_overviewPanel->setStyleSheet(
-        "#OverviewPanel { background-color: #FFFFFF; border-radius: 18px; }"
-    );
+    m_overviewPanel->setObjectName(QStringLiteral("OverviewPanel"));
 
     QVBoxLayout *panelLayout = new QVBoxLayout(m_overviewPanel);
-    panelLayout->setContentsMargins(20, 16, 20, 20);
-    panelLayout->setSpacing(12);
+    panelLayout->setContentsMargins(16, 12, 16, 16);
+    panelLayout->setSpacing(10);
 
-    QFrame *dragHandle = new QFrame(m_overviewPanel);
-    dragHandle->setFixedSize(40, 4);
-    dragHandle->setStyleSheet("background: rgba(60,60,67,0.18); border-radius: 2px;");
-    panelLayout->addWidget(dragHandle, 0, Qt::AlignHCenter);
-
-    // Panel header
-    QHBoxLayout *hdr = new QHBoxLayout;
-    QLabel *title = new QLabel("Tabs", m_overviewPanel);
-    title->setStyleSheet("font-size: 17px; font-weight: 700; color: #1D1D1F;");
-    hdr->addWidget(title);
+    // Header
+    QHBoxLayout *hdr = new QHBoxLayout();
+    m_overviewTitle = new QLabel(QStringLiteral("Tabs"), m_overviewPanel);
+    hdr->addWidget(m_overviewTitle);
     hdr->addStretch();
 
-    QPushButton *doneBtn = new QPushButton("Done", m_overviewPanel);
-    doneBtn->setStyleSheet(
-        "QPushButton { background: transparent; border: none; color: #007AFF; font-size: 15px; font-weight: 600; padding: 0; }"
-        "QPushButton:hover { color: #0051D5; }"
-    );
-    connect(doneBtn, &QPushButton::clicked, this, &BrowserWindow::hideTabOverview);
-    hdr->addWidget(doneBtn);
+    m_overviewDoneButton = new QPushButton(QStringLiteral("Done"), m_overviewPanel);
+    connect(m_overviewDoneButton, &QPushButton::clicked, this, &BrowserWindow::hideTabOverview);
+    hdr->addWidget(m_overviewDoneButton);
     panelLayout->addLayout(hdr);
 
-    // Scroll area for the grid
+    // Scroll area with grid
     m_overviewScroll = new QScrollArea(m_overviewPanel);
     m_overviewScroll->setWidgetResizable(true);
     m_overviewScroll->setFrameShape(QFrame::NoFrame);
-    m_overviewScroll->setStyleSheet("background: transparent;");
+    m_overviewScroll->setStyleSheet(QStringLiteral("background: transparent;"));
 
     m_overviewGrid = new QWidget;
-    m_overviewGrid->setStyleSheet("background: transparent;");
+    m_overviewGrid->setStyleSheet(QStringLiteral("background: transparent;"));
     m_overviewGridLayout = new QGridLayout(m_overviewGrid);
-    m_overviewGridLayout->setSpacing(18);
+    m_overviewGridLayout->setSpacing(14);
     m_overviewGridLayout->setContentsMargins(0, 0, 0, 0);
-    m_overviewGridLayout->setColumnStretch(0, 1);
-    m_overviewGridLayout->setColumnStretch(1, 1);
-    m_overviewGridLayout->setColumnStretch(2, 1);
 
     m_overviewScroll->setWidget(m_overviewGrid);
     panelLayout->addWidget(m_overviewScroll);
 
-    // New Tab button at bottom
-    QPushButton *newTabBtn = new QPushButton("+ New Tab", m_overviewPanel);
-    newTabBtn->setStyleSheet(
-        "QPushButton { background-color: #007AFF; color: white; border-radius: 12px; "
-        "font-size: 14px; font-weight: 600; padding: 10px 0; border: none; }"
-        "QPushButton:hover { background-color: #0051D5; }"
-    );
-    connect(newTabBtn, &QPushButton::clicked, this, [this](){
+    // New tab button
+    m_overviewNewTabButton = new QPushButton(QStringLiteral("+ New Tab"), m_overviewPanel);
+    connect(m_overviewNewTabButton, &QPushButton::clicked, this, [this]() {
         hideTabOverview();
         addTabAction();
     });
-    panelLayout->addWidget(newTabBtn);
+    panelLayout->addWidget(m_overviewNewTabButton);
 
-    // Click overlay to dismiss
     m_overviewOverlay->installEventFilter(this);
 }
-
-
 
 void BrowserWindow::showTabOverview()
 {
     m_overviewVisible = true;
     rebuildOverviewGrid();
 
-    // Size the panel: 80% of window height, full width minus margins
-    int pw = width();
-    int ph = (int)(height() * 0.82);
-    m_overviewPanel->setGeometry(0, height() - ph, pw, ph);
+    int pw = qMin(width() - 80, 900);
+    int ph = qMin(height() - 80, 600);
+    int px = (width() - pw) / 2;
+    int py = (height() - ph) / 2;
+    m_overviewPanel->setGeometry(px, py, pw, ph);
 
     m_overviewOverlay->setGeometry(rect());
     m_overviewOverlay->setVisible(true);
@@ -415,65 +543,72 @@ void BrowserWindow::hideTabOverview()
     m_overviewOverlay->setVisible(false);
 }
 
-// ── Overview card builder ─────────────────────────────────────────────────────
+void BrowserWindow::toggleTabOverview()
+{
+    if (m_overviewVisible) hideTabOverview();
+    else showTabOverview();
+}
+
 QWidget* BrowserWindow::buildOverviewCard(int index)
 {
     const TabInfo &tab = m_tabs[index];
     bool isActive = (index == m_currentTabIndex);
 
-    QFrame *card = new QFrame;
-    card->setObjectName("OverviewCard");
-    card->setMinimumWidth(220);
-    card->setMaximumWidth(400);
-    card->setFixedHeight(118);
+    auto *card = new QFrame;
+    card->setObjectName(QStringLiteral("OverviewCard"));
+    card->setMinimumWidth(200);
+    card->setMaximumWidth(320);
+    card->setFixedHeight(100);
     card->setStyleSheet(QString(
-        "#OverviewCard { background-color: %1; border-radius: 16px; "
-        "border: %2; box-shadow: 0 20px 45px rgba(0,0,0,0.08); }"
-    ).arg(isActive ? "#FFFFFF" : "#F7F7FA",
-          isActive ? "1px solid rgba(0,0,0,0.10)" : "1px solid rgba(0,0,0,0.08)"));
+        "#OverviewCard { background-color: %1; border-radius: 10px; border: 1.5px solid %2; }"
+    ).arg(isActive ? tabActive() : cardBg(),
+         isActive ? accent() : border()));
+    card->setCursor(Qt::PointingHandCursor);
 
     QHBoxLayout *lay = new QHBoxLayout(card);
-    lay->setContentsMargins(14, 14, 14, 14);
-    lay->setSpacing(12);
+    lay->setContentsMargins(12, 12, 12, 12);
+    lay->setSpacing(10);
 
-    QFrame *preview = new QFrame(card);
-    preview->setFixedSize(108, 80);
-    preview->setStyleSheet(
-        "background: #E9E9EE; border-radius: 14px;"
-    );
-    lay->addWidget(preview);
+    // Favicon
+    QLabel *iconLbl = new QLabel(card);
+    QPixmap pix = tab.icon.pixmap(20, 20);
+    if (!pix.isNull()) {
+        iconLbl->setPixmap(pix);
+    } else {
+        iconLbl->setText(QStringLiteral("\U0001F310"));
+        iconLbl->setStyleSheet(QString("font-size: 16px; background: transparent; color: %1;").arg(textSecondary()));
+    }
+    iconLbl->setFixedSize(20, 20);
+    iconLbl->setAlignment(Qt::AlignCenter);
+    lay->addWidget(iconLbl);
 
+    // Info
     QVBoxLayout *info = new QVBoxLayout;
-    info->setSpacing(4);
+    info->setSpacing(2);
 
-    QLabel *titleLbl = new QLabel(truncate(tab.title.isEmpty() ? "New Tab" : tab.title));
-    titleLbl->setStyleSheet("font-size: 14px; font-weight: 700; color: #1D1D1F;");
+    QString shownTitle = tab.title.isEmpty() ? QStringLiteral("New Tab") : tab.title;
+    QLabel *titleLbl = new QLabel(truncate(shownTitle, 24));
+    titleLbl->setStyleSheet(QString("font-size: 13px; font-weight: 600; color: %1; background: transparent;").arg(textPrimary()));
     info->addWidget(titleLbl);
 
-    QLabel *urlLbl = new QLabel(truncate(tab.url, 38));
-    urlLbl->setStyleSheet("font-size: 12px; color: #6E6E73;");
+    QString shownUrl = tab.url.isEmpty() ? QString() : shortUrl(tab.url);
+    QLabel *urlLbl = new QLabel(truncate(shownUrl, 30));
+    urlLbl->setStyleSheet(QString("font-size: 11px; color: %1; background: transparent;").arg(textSecondary()));
     info->addWidget(urlLbl);
     info->addStretch();
 
-    lay->addLayout(info);
-    lay->addStretch();
+    lay->addLayout(info, 1);
 
-    // Close button (×)
-    QPushButton *closeBtn = new QPushButton("✕", card);
-    closeBtn->setFixedSize(24, 24);
-    closeBtn->setStyleSheet(
-        "QPushButton { background: rgba(0,0,0,0.07); border-radius: 12px; "
-        "color: #8E8E93; font-size: 11px; font-weight: 700; border: none; }"
-        "QPushButton:hover { background: rgba(255,59,48,0.18); color: #FF3B30; }"
-    );
-    int capturedIndex = index;
-    connect(closeBtn, &QPushButton::clicked, this, [this, capturedIndex](){
-        closeTab(capturedIndex);
-    });
-    lay->addWidget(closeBtn);
+    // Close button
+    QPushButton *closeBtn = new QPushButton(QStringLiteral("\u2715"), card);
+    closeBtn->setFixedSize(20, 20);
+    closeBtn->setStyleSheet(QString(
+        "QPushButton { background: transparent; border: none; color: %1; font-size: 10px; border-radius: 10px; }"
+        "QPushButton:hover { background: rgba(255,59,48,0.12); color: #ff3b30; }"
+    ).arg(textSecondary()));
+    connect(closeBtn, &QPushButton::clicked, this, [this, index]() { closeTab(index); });
+    lay->addWidget(closeBtn, 0, Qt::AlignTop);
 
-    // Click card → switch to tab
-    card->setCursor(Qt::PointingHandCursor);
     card->installEventFilter(this);
     card->setProperty("tabIndex", index);
 
@@ -482,243 +617,91 @@ QWidget* BrowserWindow::buildOverviewCard(int index)
 
 void BrowserWindow::rebuildOverviewGrid()
 {
-    // Clear old cards
     QLayoutItem *item;
     while ((item = m_overviewGridLayout->takeAt(0)) != nullptr) {
         if (item->widget()) item->widget()->deleteLater();
         delete item;
     }
 
-    int columns = qMax(1, width() / 320);
-    int row = 0;
-    int col = 0;
+    int columns = qMax(2, qMin(4, width() / 280));
+    int row = 0, col = 0;
     for (int i = 0; i < m_tabs.count(); ++i) {
         QWidget *card = buildOverviewCard(i);
         m_overviewGridLayout->addWidget(card, row, col);
-        col++;
-        if (col >= columns) {
-            col = 0;
-            row++;
-        }
-    }
-
-    // Fill remaining columns with empty spacers to keep layout balanced
-    while (col < columns && col > 0) {
-        m_overviewGridLayout->addItem(new QSpacerItem(20, 20, QSizePolicy::Expanding, QSizePolicy::Minimum), row, col);
-        col++;
+        if (++col >= columns) { col = 0; row++; }
     }
 }
 
-// ── Inline tab strip (Safari-style) ───────────────────────────────────────
-void BrowserWindow::rebuildInlineTabBar()
-{
-    // Clear ALL pills
-    while (m_tabStripLayout->count() > 0) {
-        QLayoutItem *item = m_tabStripLayout->takeAt(0);
-        if (item->widget()) item->widget()->deleteLater();
-        delete item;
-    }
-
-    bool multiTab = m_tabs.count() > 1;
-    m_tabStrip->setVisible(multiTab);
-    if (!multiTab) return;
-
-    int tabCount = m_tabs.count();
-    
-    // Safari-like spacing: tighter at extremes, more breathing room in the middle
-    int spacing = (tabCount > 40) ? 0 : (tabCount > 20 ? 2 : 3);
-    m_tabStripLayout->setSpacing(spacing);
-    m_tabStripLayout->setContentsMargins(0, 2, 0, 2);
-
-    int totalStripWidth = m_tabStrip->width();
-    if (totalStripWidth < 260) totalStripWidth = 260;
-    int availableWidth = totalStripWidth - (tabCount - 1) * spacing;
-    int estWidth = qMax(50, availableWidth / tabCount);
-
-    bool showText = estWidth >= 100;
-    bool showCloseBtn = estWidth >= 120;
-
-    for (int i = 0; i < tabCount; ++i) {
-        bool active = (i == m_currentTabIndex);
-        const TabInfo &tab = m_tabs[i];
-
-        // Safari-style frame
-        QFrame *pill = new QFrame(m_tabStrip);
-        pill->setObjectName(active ? "SafariActiveTab" : "SafariInactiveTab");
-        pill->setFixedHeight(34);
-        pill->setMinimumWidth(50);
-        pill->setMaximumWidth(280);
-        pill->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-        pill->setToolTip(tab.title.isEmpty() ? "New Tab" : tab.title);
-
-        if (active) {
-            // Active tab: white background with soft shadow effect
-            pill->setStyleSheet(
-                "#SafariActiveTab { "
-                "background: #FFFFFF; "
-                "border-radius: 16px; "
-                "border: 1px solid rgba(0,0,0,0.06); "
-                "box-shadow: 0 4px 12px rgba(0,0,0,0.08); "
-                "}"
-            );
-        } else {
-            // Inactive tab: very subtle, semi-transparent
-            pill->setStyleSheet(
-                "#SafariInactiveTab { "
-                "background: rgba(120,120,128,0.04); "
-                "border-radius: 16px; "
-                "border: 1px solid rgba(120,120,128,0.05); "
-                "}"
-                "#SafariInactiveTab:hover { "
-                "background: rgba(120,120,128,0.10); "
-                "border: 1px solid rgba(120,120,128,0.10); "
-                "}"
-            );
-        }
-
-        QHBoxLayout *lay = new QHBoxLayout(pill);
-        lay->setContentsMargins(10, 0, (showCloseBtn ? 6 : 10), 0);
-        lay->setSpacing(6);
-
-        // Favicon: always visible
-        QLabel *iconLabel = new QLabel(pill);
-        QPixmap pix = tab.icon.pixmap(16, 16);
-        if (pix.isNull()) {
-            iconLabel->setText("🌐");
-            iconLabel->setStyleSheet("font-size: 13px; color: #999;");
-        } else {
-            iconLabel->setPixmap(pix);
-        }
-        iconLabel->setFixedSize(16, 16);
-        iconLabel->setAlignment(Qt::AlignCenter);
-        lay->addWidget(iconLabel, 0, Qt::AlignCenter);
-
-        // Title: shown only when there's space
-        if (showText) {
-            QString shownText = tab.title.isEmpty() ? "New Tab" : tab.title;
-            QLabel *lbl = new QLabel(truncate(shownText, qMax(1, estWidth / 11)), pill);
-            lbl->setStyleSheet(QString(
-                "color: %1; "
-                "font-size: 12px; "
-                "font-weight: %2; "
-                "background: transparent; "
-                )
-                .arg(active ? "#000000" : "#555555")
-                .arg(active ? "500" : "400"));
-            lbl->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-            lay->addWidget(lbl, 1);
-        }
-
-        // Close button: visible based on width, hidden for inactive on hover
-        if (showCloseBtn) {
-            QPushButton *x = new QPushButton("✕", pill);
-            x->setFixedSize(16, 16);
-            x->setObjectName(active ? "ActiveCloseBtn" : "InactiveCloseBtn");
-            
-            if (active) {
-                x->setStyleSheet(
-                    "QPushButton { "
-                    "background: transparent; "
-                    "border: none; "
-                    "color: #999; "
-                    "font-size: 9px; "
-                    "font-weight: 700; "
-                    "padding: 0; "
-                    "border-radius: 8px; "
-                    "}"
-                    "QPushButton:hover { "
-                    "background: rgba(255,59,48,0.15); "
-                    "color: #FF3B30; "
-                    "}"
-                );
-            } else {
-                x->setStyleSheet(
-                    "QPushButton { "
-                    "background: transparent; "
-                    "border: none; "
-                    "color: #CCC; "
-                    "font-size: 9px; "
-                    "font-weight: 700; "
-                    "padding: 0; "
-                    "border-radius: 8px; "
-                    "opacity: 0; "
-                    "}"
-                    "QPushButton:hover { "
-                    "opacity: 1; "
-                    "background: rgba(0,0,0,0.08); "
-                    "color: #666; "
-                    "}"
-                );
-            }
-            
-            int ci = i;
-            connect(x, &QPushButton::clicked, this, [this, ci](){ closeTab(ci); });
-            lay->addWidget(x, 0, Qt::AlignRight | Qt::AlignVCenter);
-        }
-
-        pill->setCursor(Qt::PointingHandCursor);
-        pill->installEventFilter(this);
-        pill->setProperty("tabIndex", i);
-
-        m_tabStripLayout->addWidget(pill, 1);
-    }
-}
-
-// eventFilter for pill & card clicks
-bool BrowserWindow::eventFilter(QObject *obj, QEvent *event) {
-    if (event->type() == QEvent::MouseButtonPress) {
-        QWidget *w = qobject_cast<QWidget*>(obj);
-        if (w) {
-            QVariant v = w->property("tabIndex");
-            if (v.isValid()) {
-                int idx = v.toInt();
-                if (idx >= 0 && idx < m_tabs.count()) {
-                    if (m_overviewVisible) hideTabOverview();
-                    setCurrentTab(idx);
-                    return true;
-                }
-            }
-            // dismiss overlay on click outside panel
-            if (obj == m_overviewOverlay) {
-                QMouseEvent *me = static_cast<QMouseEvent*>(event);
-                if (!m_overviewPanel->geometry().contains(me->pos()))
-                    hideTabOverview();
-                return true;
-            }
-        }
-    }
-    return QMainWindow::eventFilter(obj, event);
-}
-
-// ── Tab management ────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Tab Management ────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
 void BrowserWindow::addNewTab(const QUrl &url) {
-    QWebEngineView* view = new QWebEngineView(this);
+    auto *view = new SafariWebView(this);
+    view->page()->setBackgroundColor(QColor(SafariTheme::instance().pageBackground));
     m_tabStack->addWidget(view);
 
     TabInfo info;
     info.view  = view;
-    info.title = "New Tab";
+    info.title = QStringLiteral("New Tab");
     info.url   = url.toString();
     m_tabs.append(info);
 
     int index = m_tabs.count() - 1;
 
-    connect(view, &QWebEngineView::titleChanged, this, [this, index](const QString &t){
-        if (index < m_tabs.count()) {
-            m_tabs[index].title = t;
-            rebuildInlineTabBar();
+    // FIX: Lambda captures QPointer to the view, finds tab by view pointer
+    connect(view, &QWebEngineView::titleChanged, this, [this, view](const QString &t) {
+        for (int i = 0; i < m_tabs.count(); ++i) {
+            if (m_tabs[i].view == view) {
+                m_tabs[i].title = t;
+                if (i == m_currentTabIndex) setWindowTitleFromTab();
+                break;
+            }
+        }
+        rebuildTabBar();
+    });
+
+    connect(view, &QWebEngineView::iconChanged, this, [this, view](const QIcon &icon) {
+        for (int i = 0; i < m_tabs.count(); ++i) {
+            if (m_tabs[i].view == view) {
+                m_tabs[i].icon = icon;
+                break;
+            }
+        }
+        rebuildTabBar();
+    });
+
+    connect(view, &QWebEngineView::urlChanged, this, [this, view](const QUrl &u) {
+        for (int i = 0; i < m_tabs.count(); ++i) {
+            if (m_tabs[i].view == view) {
+                m_tabs[i].url = u.toString();
+                if (i == m_currentTabIndex) updateUrlBar(u);
+                break;
+            }
         }
     });
 
-    connect(view, &QWebEngineView::iconChanged,  this, &BrowserWindow::onTabIconChanged);
-
-    connect(view, &QWebEngineView::urlChanged,  this, [this, index](const QUrl &u){
-        if (index < m_tabs.count()) {
-            m_tabs[index].url = u.toString();
-            if (index == m_currentTabIndex) updateUrlBar(u);
+    connect(view, &QWebEngineView::loadStarted, this, [this, view]() {
+        for (int i = 0; i < m_tabs.count(); ++i) {
+            if (m_tabs[i].view == view) {
+                m_tabs[i].loading = true;
+                break;
+            }
         }
+        onLoadStarted();
+    });
+    connect(view, &QWebEngineView::loadProgress, this, &BrowserWindow::onLoadProgress);
+    connect(view, &QWebEngineView::loadFinished, this, [this, view](bool ok) {
+        for (int i = 0; i < m_tabs.count(); ++i) {
+            if (m_tabs[i].view == view) {
+                m_tabs[i].loading = false;
+                break;
+            }
+        }
+        onLoadFinished(ok);
     });
     connect(view, &QWebEngineView::loadFinished, this, &BrowserWindow::updateNavigationState);
+
+    connect(view, &SafariWebView::newTabRequested, this, &BrowserWindow::addNewTab);
 
     view->setUrl(url);
     setCurrentTab(index);
@@ -729,60 +712,200 @@ void BrowserWindow::setCurrentTab(int index) {
     m_currentTabIndex = index;
     m_tabStack->setCurrentIndex(index);
 
-    updateUrlBar(m_tabs[index].view->url());
+    QWebEngineView *v = m_tabs[index].view;
+    updateUrlBar(v->url());
     updateNavigationState();
-    updateTabCountBadge();
-    rebuildInlineTabBar();
+    rebuildTabBar();
+    setWindowTitleFromTab();
+
+    m_loadingBar->setVisible(m_tabs[index].loading);
 }
 
 void BrowserWindow::closeTab(int index) {
     if (index < 0 || index >= m_tabs.count()) return;
-    if (m_tabs.count() == 1) { close(); return; }
+
+    if (m_tabs.count() == 1) {
+        // Open a fresh start page instead of closing the window
+        addNewTab(QUrl(QStringLiteral("qrc:/startpage.html")));
+    }
+
+    const QUrl closedUrl(m_tabs[index].url);
+    if (closedUrl.isValid() && !closedUrl.isEmpty()) {
+        m_closedTabs.append(closedUrl);
+        while (m_closedTabs.count() > 20)
+            m_closedTabs.removeFirst();
+    }
 
     QWebEngineView *v = m_tabs[index].view;
     m_tabStack->removeWidget(v);
     v->deleteLater();
     m_tabs.removeAt(index);
 
-    // Fix index
     int newIdx = qMin(m_currentTabIndex, m_tabs.count() - 1);
-    m_currentTabIndex = -1; // force update
+    m_currentTabIndex = -1;
     setCurrentTab(newIdx);
 
     if (m_overviewVisible) rebuildOverviewGrid();
 }
 
-void BrowserWindow::updateTabCountBadge() {
-    if (!m_tabCountLabel) return;
-    int n = m_tabs.count();
-    m_tabCountLabel->setText(n > 99 ? "99+" : QString::number(n));
-    // Scale badge width for >9
-    m_tabCountLabel->setFixedWidth(n > 9 ? 20 : 16);
-}
-
-// ── Slots ─────────────────────────────────────────────────────────────────────
 void BrowserWindow::addTabAction() {
-    // Verified absolute path
-    QString finalPath = "C:/Codes/browser/startpage.html";
-    if (QFile::exists(finalPath)) {
-        addNewTab(QUrl::fromLocalFile(finalPath));
-    } else {
-        addNewTab(QUrl("https://www.google.com")); // Fallback
+    addNewTab(QUrl(QStringLiteral("qrc:/startpage.html")));
+}
+
+void BrowserWindow::rebuildTabBar()
+{
+    // Clear the layout completely (widgets are deleted, addTabButton is kept)
+    while (QLayoutItem *item = m_tabBarLayout->takeAt(0)) {
+        QWidget *w = item->widget();
+        if (w && w != m_addTabButton)
+            w->deleteLater();
+        delete item;
     }
+    m_tabWidgets.clear();
+
+    // Rebuild: stretch -> tabs -> addTabButton -> spacing
+    m_tabBarLayout->addStretch();
+
+    for (int i = 0; i < m_tabs.count(); ++i) {
+        bool isActive = (i == m_currentTabIndex);
+        const TabInfo &tab = m_tabs[i];
+
+        auto *tabWidget = new QWidget(m_tabBar);
+        tabWidget->setFixedHeight(28);
+        tabWidget->setMinimumWidth(80);
+        tabWidget->setMaximumWidth(200);
+        tabWidget->setCursor(Qt::PointingHandCursor);
+        tabWidget->setStyleSheet(QString(
+            "QWidget { background-color: %1; border-radius: 6px; }"
+            "QWidget:hover { background-color: %2; }"
+        ).arg(isActive ? tabActive() : tabInactive(),
+             isActive ? tabActive() : tabHover()));
+
+        if (isActive) {
+            auto *shadow = new QGraphicsDropShadowEffect;
+            shadow->setBlurRadius(8);
+            shadow->setOffset(0, 1);
+            shadow->setColor(QColor(0, 0, 0, 30));
+            tabWidget->setGraphicsEffect(shadow);
+        }
+
+        QHBoxLayout *tabLayout = new QHBoxLayout(tabWidget);
+        tabLayout->setContentsMargins(8, 2, 4, 2);
+        tabLayout->setSpacing(4);
+
+        // Favicon
+        QLabel *iconLabel = new QLabel(tabWidget);
+        QPixmap pix = tab.icon.pixmap(14, 14);
+        if (!pix.isNull()) {
+            iconLabel->setPixmap(pix);
+        } else {
+            iconLabel->setText(QStringLiteral("\U0001F310"));
+            iconLabel->setStyleSheet(QString("font-size: 11px; background: transparent; color: %1;").arg(textSecondary()));
+        }
+        iconLabel->setFixedSize(14, 14);
+        iconLabel->setAlignment(Qt::AlignCenter);
+        tabLayout->addWidget(iconLabel);
+
+        // Title
+        QString shownText = tab.title.isEmpty() ? QStringLiteral("New Tab") : tab.title;
+        auto *titleLbl = new QLabel(truncate(shownText, 18), tabWidget);
+        titleLbl->setStyleSheet(QString(
+            "color: %1; font-size: 12px; font-weight: %2; background: transparent;"
+        ).arg(isActive ? textPrimary() : textSecondary(),
+             isActive ? "600" : "400"));
+        titleLbl->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        tabLayout->addWidget(titleLbl, 1);
+
+        // Close button
+        auto *closeBtn = new QPushButton(QStringLiteral("\u2715"), tabWidget);
+        closeBtn->setFixedSize(18, 18);
+        closeBtn->setStyleSheet(QString(
+            "QPushButton { background: transparent; border: none; color: %1; font-size: 9px; border-radius: 9px; }"
+            "QPushButton:hover { background: rgba(255,59,48,0.12); color: #ff3b30; }"
+        ).arg(textTertiary()));
+        connect(closeBtn, &QPushButton::clicked, this, [this, i]() { closeTab(i); });
+        tabLayout->addWidget(closeBtn);
+
+        tabWidget->installEventFilter(this);
+        tabWidget->setProperty("tabIndex", i);
+
+        m_tabBarLayout->addWidget(tabWidget);
+        m_tabWidgets.append(tabWidget);
+    }
+
+    m_tabBarLayout->addWidget(m_addTabButton);
+    m_tabBarLayout->addSpacing(4);
 }
 
-void BrowserWindow::shareAction() {
-    if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget()))
-        QApplication::clipboard()->setText(v->url().toString());
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Sidebar Toggle ────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+void BrowserWindow::toggleSidebar()
+{
+    m_sidebarVisible = !m_sidebarVisible;
+    m_sidebar->setVisible(m_sidebarVisible);
 }
 
+void BrowserWindow::rebuildSidebarTabList()
+{
+    // Placeholder for dynamic sidebar tab list updates
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Event Filter ──────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+bool BrowserWindow::eventFilter(QObject *obj, QEvent *event) {
+    if (event->type() == QEvent::MouseButtonPress) {
+        auto *w = qobject_cast<QWidget*>(obj);
+        if (w) {
+            QVariant v = w->property("tabIndex");
+            if (v.isValid()) {
+                int idx = v.toInt();
+                if (idx >= 0 && idx < m_tabs.count()) {
+                    if (m_overviewVisible) hideTabOverview();
+                    setCurrentTab(idx);
+                    return true;
+                }
+            }
+            if (obj == m_overviewOverlay) {
+                auto *me = static_cast<QMouseEvent*>(event);
+                if (!m_overviewPanel->geometry().contains(me->pos()))
+                    hideTabOverview();
+                return true;
+            }
+        }
+    }
+
+    // URL bar focus ring
+    if (obj == m_urlContainer || obj == m_urlBar) {
+        if (event->type() == QEvent::FocusIn) {
+            m_urlFocused = true;
+            updateUrlContainerStyle();
+        } else if (event->type() == QEvent::FocusOut) {
+            m_urlFocused = false;
+            updateUrlContainerStyle();
+        }
+        return false;
+    }
+
+    return QMainWindow::eventFilter(obj, event);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Slots ─────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
 void BrowserWindow::navigateToUrl() {
     QString input = m_urlBar->text().trimmed();
     if (input.isEmpty()) return;
-    if (!input.startsWith("http://") && !input.startsWith("https://")) {
-        if (input.contains(".") && !input.contains(" ")) input = "https://" + input;
-        else input = "https://www.google.com/search?q=" + input.replace(" ", "+");
+
+    if (!input.startsWith(QStringLiteral("http://")) && !input.startsWith(QStringLiteral("https://"))) {
+        if (input.contains(QStringLiteral(".")) && !input.contains(QStringLiteral(" "))) {
+            input = QStringLiteral("https://") + input;
+        } else {
+            input = QStringLiteral("https://www.google.com/search?q=") + QString::fromUtf8(input.toUtf8().toPercentEncoding());
+        }
     }
+
     if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget()))
         v->setUrl(QUrl(input));
     m_urlBar->clearFocus();
@@ -790,14 +913,7 @@ void BrowserWindow::navigateToUrl() {
 
 void BrowserWindow::updateUrlBar(const QUrl &url) {
     if (m_currentTabIndex < 0 || m_currentTabIndex >= m_tabs.count()) return;
-    QString display = url.toString();
-    if (display.startsWith("file://")) display = "Start Page";
-    else {
-        if (display.startsWith("https://")) display.remove(0, 8);
-        if (display.startsWith("www."))     display.remove(0, 4);
-        if (display.endsWith("/"))          display.chop(1);
-    }
-    m_urlBar->setText(display);
+    m_urlBar->setText(shortUrl(url.toString()));
 }
 
 void BrowserWindow::updateNavigationState() {
@@ -805,17 +921,285 @@ void BrowserWindow::updateNavigationState() {
     if (!v) return;
     m_backButton->setEnabled(v->history()->canGoBack());
     m_forwardButton->setEnabled(v->history()->canGoForward());
+
+    // Update reload/stop icon
+    bool loading = (m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count())
+                   && m_tabs[m_currentTabIndex].loading;
+    if (loading) {
+        m_reloadButton->setIcon(createSvgIcon(svgStop, 18, textPrimary()));
+        m_reloadButton->setToolTip(QStringLiteral("Stop"));
+    } else {
+        m_reloadButton->setIcon(createSvgIcon(svgReload, 18, textPrimary()));
+        m_reloadButton->setToolTip(QStringLiteral("Reload"));
+    }
 }
 
-void BrowserWindow::onTabIconChanged(const QIcon &icon) {
-    QWebEngineView* senderView = qobject_cast<QWebEngineView*>(sender());
-    if (!senderView) return;
-
-    for (int i = 0; i < m_tabs.count(); ++i) {
-        if (m_tabs[i].view == senderView) {
-            m_tabs[i].icon = icon;
-            break;
-        }
+void BrowserWindow::onLoadStarted() {
+    if (m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count()
+        && m_tabs[m_currentTabIndex].loading) {
+        m_loadingBar->setVisible(true);
+        updateLoadingBar(0);
     }
-    rebuildInlineTabBar();
+    updateNavigationState();
+}
+
+void BrowserWindow::onLoadProgress(int progress) {
+    if (m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count()
+        && m_tabs[m_currentTabIndex].loading) {
+        updateLoadingBar(progress);
+    }
+}
+
+void BrowserWindow::onLoadFinished(bool) {
+    m_loadingBar->setVisible(false);
+    updateNavigationState();
+}
+
+void BrowserWindow::updateLoadingBar(int progress) {
+    Q_UNUSED(progress);
+    // Loading bar is a thin line; we could animate its width, but for simplicity just show/hide
+}
+
+void BrowserWindow::shareAction() {
+    if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) {
+        QApplication::clipboard()->setText(v->url().toString());
+        m_shareButton->setToolTip(QStringLiteral("URL Copied!"));
+        QTimer::singleShot(1500, this, [this]() {
+            m_shareButton->setToolTip(QStringLiteral("Share"));
+        });
+    }
+}
+
+void BrowserWindow::setWindowTitleFromTab() {
+    if (m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count()) {
+        QString title = m_tabs[m_currentTabIndex].title;
+        if (title.isEmpty()) title = QStringLiteral("New Tab");
+        setWindowTitle(title + QStringLiteral(" — Safari"));
+    } else {
+        setWindowTitle(QStringLiteral("Safari"));
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Keyboard Shortcuts ────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+void BrowserWindow::setupKeyboardShortcuts()
+{
+    auto addShortcut = [this](const QString &key, std::function<void()> func) {
+        auto *s = new QShortcut(QKeySequence(key), this);
+        connect(s, &QShortcut::activated, this, std::move(func));
+    };
+
+    addShortcut(QStringLiteral("Ctrl+T"), [this]() { addTabAction(); });
+    addShortcut(QStringLiteral("Ctrl+W"), [this]() { closeTab(m_currentTabIndex); });
+    addShortcut(QStringLiteral("Ctrl+Shift+T"), [this]() {
+        if (m_closedTabs.isEmpty()) return;
+        addNewTab(m_closedTabs.takeLast());
+    });
+    addShortcut(QStringLiteral("Ctrl+L"), [this]() {
+        m_urlBar->setFocus();
+        m_urlBar->selectAll();
+    });
+    addShortcut(QStringLiteral("F6"), [this]() {
+        m_urlBar->setFocus();
+        m_urlBar->selectAll();
+    });
+    addShortcut(QStringLiteral("Ctrl+R"), [this]() {
+        if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) v->reload();
+    });
+    addShortcut(QStringLiteral("F5"), [this]() {
+        if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) v->reload();
+    });
+    addShortcut(QStringLiteral("Ctrl+Shift+R"), [this]() {
+        if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) v->reload();
+    });
+    addShortcut(QStringLiteral("Escape"), [this]() {
+        if (m_overviewVisible) hideTabOverview();
+        else if (m_sidebarVisible) toggleSidebar();
+    });
+    addShortcut(QStringLiteral("Ctrl+Shift+L"), [this]() { toggleSidebar(); });
+    addShortcut(QStringLiteral("Alt+Left"), [this]() {
+        if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) v->back();
+    });
+    addShortcut(QStringLiteral("Alt+Right"), [this]() {
+        if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) v->forward();
+    });
+    addShortcut(QStringLiteral("Ctrl+Tab"), [this]() {
+        if (m_tabs.count() > 1) {
+            int next = (m_currentTabIndex + 1) % m_tabs.count();
+            setCurrentTab(next);
+        }
+    });
+    addShortcut(QStringLiteral("Ctrl+Shift+Tab"), [this]() {
+        if (m_tabs.count() > 1) {
+            int prev = (m_currentTabIndex - 1 + m_tabs.count()) % m_tabs.count();
+            setCurrentTab(prev);
+        }
+    });
+    addShortcut(QStringLiteral("Ctrl+1"), [this]() { if (m_tabs.count() > 0) setCurrentTab(0); });
+    addShortcut(QStringLiteral("Ctrl+2"), [this]() { if (m_tabs.count() > 1) setCurrentTab(1); });
+    addShortcut(QStringLiteral("Ctrl+3"), [this]() { if (m_tabs.count() > 2) setCurrentTab(2); });
+    addShortcut(QStringLiteral("Ctrl+4"), [this]() { if (m_tabs.count() > 3) setCurrentTab(3); });
+    addShortcut(QStringLiteral("Ctrl+5"), [this]() { if (m_tabs.count() > 4) setCurrentTab(4); });
+    addShortcut(QStringLiteral("Ctrl+6"), [this]() { if (m_tabs.count() > 5) setCurrentTab(5); });
+    addShortcut(QStringLiteral("Ctrl+7"), [this]() { if (m_tabs.count() > 6) setCurrentTab(6); });
+    addShortcut(QStringLiteral("Ctrl+8"), [this]() { if (m_tabs.count() > 7) setCurrentTab(7); });
+    addShortcut(QStringLiteral("Ctrl+9"), [this]() { if (!m_tabs.isEmpty()) setCurrentTab(m_tabs.count() - 1); });
+    addShortcut(QStringLiteral("F11"), [this]() {
+        if (isFullScreen()) showNormal();
+        else showFullScreen();
+    });
+    addShortcut(QStringLiteral("Ctrl+Plus"), [this]() {
+        if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget()))
+            v->setZoomFactor(v->zoomFactor() + 0.1);
+    });
+    addShortcut(QStringLiteral("Ctrl+="), [this]() {
+        if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget()))
+            v->setZoomFactor(v->zoomFactor() + 0.1);
+    });
+    addShortcut(QStringLiteral("Ctrl+Minus"), [this]() {
+        if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget()))
+            v->setZoomFactor(qMax(0.25, v->zoomFactor() - 0.1));
+    });
+    addShortcut(QStringLiteral("Ctrl+0"), [this]() {
+        if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget()))
+            v->setZoomFactor(1.0);
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Theme ─────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+void BrowserWindow::updateUrlContainerStyle()
+{
+    m_urlContainer->setStyleSheet(QString(
+        "#UrlContainer { background-color: %1; border: %2 solid %3; border-radius: 8px; }"
+    ).arg(bgUrlBar(), m_urlFocused ? "1.5px" : "1px",
+          m_urlFocused ? accent() : border()));
+}
+
+void BrowserWindow::applyTheme()
+{
+    // Central widget + toolbar
+    m_central->setStyleSheet(QString(
+        "#CentralWidget { background-color: %1; border-radius: 10px; border: 0.5px solid %2; }"
+    ).arg(bgWindow(), border()));
+    m_toolbar->setStyleSheet(QString(
+        "#Toolbar { background-color: %1; border-bottom: 0.5px solid %2; "
+        "border-top-left-radius: 10px; border-top-right-radius: 10px; }"
+    ).arg(bgToolbar(), border()));
+
+    // Navigation buttons
+    const QString navBtnStyle = QString(
+        "QToolButton { border: none; background: transparent; border-radius: 6px; padding: 6px; }"
+        "QToolButton:hover { background-color: %1; }"
+        "QToolButton:disabled { opacity: 0.3; }"
+    ).arg(hover());
+
+    m_sidebarButton->setIcon(createSvgIcon(svgSidebar, 18, textPrimary()));
+    m_backButton->setIcon(createSvgIcon(svgBack, 18, textPrimary()));
+    m_forwardButton->setIcon(createSvgIcon(svgForward, 18, textPrimary()));
+    m_reloadButton->setIcon(createSvgIcon(svgReload, 18, textPrimary()));
+    m_shareButton->setIcon(createSvgIcon(svgShare, 18, textPrimary()));
+    m_downloadsButton->setIcon(createSvgIcon(svgDownloads, 18, textPrimary()));
+    m_tabOverviewButton->setIcon(createSvgIcon(svgTabOverview, 18, textPrimary()));
+
+    for (QToolButton *b : { m_sidebarButton, m_backButton, m_forwardButton, m_reloadButton,
+                            m_shareButton, m_downloadsButton, m_tabOverviewButton }) {
+        b->setStyleSheet(navBtnStyle);
+    }
+    updateNavigationState();
+
+    // URL bar
+    m_urlBar->setStyleSheet(QString(
+        "QLineEdit { "
+        "  background: transparent; color: %1; border: none; "
+        "  font-size: 14px; font-weight: 400; padding: 0 6px; "
+        "}"
+    ).arg(textPrimary()));
+    m_shieldInside->setIcon(createSvgIcon(svgShield, 14, accent()));
+    m_shieldInside->setStyleSheet(QStringLiteral("border: none; background: transparent;"));
+    updateUrlContainerStyle();
+
+    // Loading bar
+    m_loadingBar->setStyleSheet(QStringLiteral("background-color: %1; border: none;").arg(accent()));
+
+    // Sidebar
+    m_sidebar->setStyleSheet(QString(
+        "#Sidebar { background-color: %1; border-right: 0.5px solid %2; }"
+    ).arg(bgSidebar(), border()));
+    m_sidebarSearch->setStyleSheet(QString(
+        "QLineEdit { background-color: %1; border: none; border-radius: 6px; "
+        "padding: 6px 10px; font-size: 12px; color: %2; }"
+        "QLineEdit:focus { background-color: %3; }"
+    ).arg(searchBg(), textPrimary(), hover()));
+
+    for (QLabel *lbl : m_sidebarHeaders) {
+        lbl->setStyleSheet(QString(
+            "font-size: 11px; font-weight: 600; color: %1; padding: 4px 4px 2px 4px; "
+            "text-transform: uppercase; letter-spacing: 0.3px;"
+        ).arg(textSecondary()));
+    }
+    for (int i = 0; i < m_sidebarItems.count(); ++i) {
+        const bool isActive = m_sidebarItems[i]->property("sidebarActive").toBool();
+        m_sidebarItems[i]->setStyleSheet(QString(
+            "QFrame { background-color: %1; border-radius: 6px; }"
+            "QFrame:hover { background-color: %2; }"
+        ).arg(isActive ? selectedBg() : QStringLiteral("transparent"), hover()));
+        m_sidebarItemIcons[i]->setStyleSheet(QString(
+            "font-size: 13px; color: %1; background: transparent;").arg(isActive ? accent() : textPrimary()));
+        m_sidebarItemTexts[i]->setStyleSheet(QString(
+            "font-size: 13px; color: %1; font-weight: %2; background: transparent;"
+        ).arg(isActive ? accent() : textPrimary(), isActive ? "600" : "400"));
+    }
+
+    // Tab bar
+    m_tabBar->setStyleSheet(QString(
+        "#TabBar { background-color: %1; border-bottom: 0.5px solid %2; }"
+    ).arg(bgTabBar(), border()));
+    m_addTabButton->setIcon(createSvgIcon(svgPlus, 14, textSecondary()));
+    m_addTabButton->setStyleSheet(QString(
+        "QToolButton { border: none; background: transparent; border-radius: 6px; padding: 0; }"
+        "QToolButton:hover { background-color: %1; }"
+    ).arg(tabHover()));
+
+    // Tab overview
+    m_overviewOverlay->setStyleSheet(QString(
+        "#OverviewOverlay { background-color: %1; }"
+    ).arg(SafariTheme::instance().scrim));
+    m_overviewPanel->setStyleSheet(QString(
+        "#OverviewPanel { background-color: %1; border-radius: 14px; }"
+    ).arg(bgWindow()));
+    m_overviewTitle->setStyleSheet(QString("font-size: 16px; font-weight: 700; color: %1;").arg(textPrimary()));
+    m_overviewDoneButton->setStyleSheet(QString(
+        "QPushButton { background: transparent; border: none; color: %1; font-size: 14px; font-weight: 600; }"
+        "QPushButton:hover { color: %2; }"
+    ).arg(accent(), textPrimary()));
+    m_overviewNewTabButton->setStyleSheet(QString(
+        "QPushButton { background-color: %1; color: #ffffff; border-radius: 8px; "
+        "font-size: 13px; font-weight: 600; padding: 8px 0; border: none; }"
+        "QPushButton:hover { background-color: %2; }"
+    ).arg(accent(), accentHover()));
+
+    // Refresh dynamically-created widgets
+    rebuildTabBar();
+    if (m_overviewVisible) rebuildOverviewGrid();
+
+    updateWebViewBackgrounds();
+}
+
+void BrowserWindow::updateWebViewBackgrounds()
+{
+    const QColor bg(SafariTheme::instance().pageBackground);
+    for (const TabInfo &tab : m_tabs) {
+        if (tab.view)
+            tab.view->page()->setBackgroundColor(bg);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Context Menu ──────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+void BrowserWindow::contextMenuEvent(QContextMenuEvent *event) {
+    Q_UNUSED(event);
 }
