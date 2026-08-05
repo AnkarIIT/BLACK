@@ -128,27 +128,27 @@ void SafariTheme::setScheme(Scheme scheme)
 void SafariTheme::loadPalette()
 {
     if (m_scheme == Scheme::Dark) {
-        bgWindow      = QStringLiteral("#1e1e20");
-        bgToolbar     = QStringLiteral("#2c2c2e");
-        bgTabBar      = QStringLiteral("#2c2c2e");
-        bgUrlBar      = QStringLiteral("#3a3a3c");
-        bgSidebar     = QStringLiteral("#2c2c2e");
-        tabActive     = QStringLiteral("#48484a");
+        bgWindow      = QStringLiteral("#231513");
+        bgToolbar     = QStringLiteral("#2d1e1c");
+        bgTabBar      = QStringLiteral("#2d1e1c");
+        bgUrlBar      = QStringLiteral("#382926");
+        bgSidebar     = QStringLiteral("#281917");
+        tabActive     = QStringLiteral("#3d2b29");
         tabInactive   = QStringLiteral("transparent");
-        tabHover      = QStringLiteral("rgba(255,255,255,0.10)");
-        cardBg        = QStringLiteral("#2c2c2e");
+        tabHover      = QStringLiteral("rgba(255,255,255,0.06)");
+        cardBg        = QStringLiteral("#2c1e1c");
         textPrimary   = QStringLiteral("#f5f5f7");
-        textSecondary = QStringLiteral("#98989d");
-        textTertiary  = QStringLiteral("#6e6e73");
+        textSecondary = QStringLiteral("#b5a6a3");
+        textTertiary  = QStringLiteral("#8c7d7a");
         accent        = QStringLiteral("#0a84ff");
         accentHover   = QStringLiteral("#3395ff");
-        border        = QStringLiteral("rgba(255,255,255,0.12)");
-        borderLight   = QStringLiteral("rgba(255,255,255,0.06)");
-        hover         = QStringLiteral("rgba(255,255,255,0.08)");
-        searchBg      = QStringLiteral("rgba(255,255,255,0.06)");
-        selectedBg    = QStringLiteral("rgba(10,132,255,0.30)");
-        scrim         = QStringLiteral("rgba(0,0,0,0.6)");
-        pageBackground = QStringLiteral("#1e1e20");
+        border        = QStringLiteral("rgba(255,255,255,0.08)");
+        borderLight   = QStringLiteral("rgba(255,255,255,0.04)");
+        hover         = QStringLiteral("rgba(255,255,255,0.06)");
+        searchBg      = QStringLiteral("rgba(255,255,255,0.05)");
+        selectedBg    = QStringLiteral("rgba(10,132,255,0.25)");
+        scrim         = QStringLiteral("rgba(0,0,0,0.5)");
+        pageBackground = QStringLiteral("#231513");
     } else {
         bgWindow      = QStringLiteral("#f5f5f7");
         bgToolbar     = QStringLiteral("#e8e8ed");

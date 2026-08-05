@@ -3,97 +3,347 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Extensions</title>
+    <title>Extensions Preferences</title>
     <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <style>
         :root {
-            --bg-window: #f5f5f7;
-            --bg-card: #ffffff;
-            --accent: #0066cc;
-            --text-primary: #1d1d1f;
-            --text-secondary: #86868b;
-            --border: rgba(0,0,0,0.08);
-            --hairline: rgba(0,0,0,0.06);
-            --radius: 12px;
+            --mac-bg: #ececec;
+            --mac-border: #d2d2d2;
+            --mac-card: #ffffff;
+            --mac-text: #1d1d1f;
+            --mac-text-sec: #6e6e73;
+            --mac-accent: #0066cc;
+            --mac-control-border: #ccc;
+            --mac-selected-tab: rgba(0, 0, 0, 0.08);
+            --radius: 10px;
         }
 
         html.black-forced-dark {
             color-scheme: dark;
-            --bg-window: #1e1e20;
-            --bg-card: #2c2c2e;
-            --accent: #0a84ff;
-            --text-primary: #f5f5f7;
-            --text-secondary: #98989d;
-            --border: rgba(255,255,255,0.12);
-            --hairline: rgba(255,255,255,0.09);
+            --mac-bg: #2d1e1c;
+            --mac-border: #3d2b29;
+            --mac-card: #231513;
+            --mac-text: #f5f5f7;
+            --mac-text-sec: #b5a6a3;
+            --mac-accent: #0a84ff;
+            --mac-control-border: #4d3b39;
+            --mac-selected-tab: rgba(255, 255, 255, 0.1);
         }
-
-        html.black-forced-light { color-scheme: light; }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
-            background-color: var(--bg-window);
-            color: var(--text-primary);
-            min-height: 100vh;
-            -webkit-font-smoothing: antialiased;
-        }
-
-        .container {
-            max-width: 700px;
-            margin: 0 auto;
-            padding: 40px 32px 60px;
-        }
-
-        .page-title {
-            font-size: 22px;
-            font-weight: 700;
-            letter-spacing: -0.3px;
-            margin-bottom: 8px;
-        }
-
-        .page-sub {
-            font-size: 13px;
-            color: var(--text-secondary);
-            line-height: 1.5;
-            margin-bottom: 24px;
-        }
-
-        .empty-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 28px;
-            text-align: center;
-            color: var(--text-secondary);
-            font-size: 13px;
-            line-height: 1.5;
-        }
-
-        .ext-icon {
-            width: 56px;
-            height: 56px;
-            border-radius: 14px;
-            background: var(--accent);
-            margin: 0 auto 14px;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+            background-color: var(--mac-bg);
+            color: var(--mac-text);
             display: flex;
             align-items: center;
             justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+            user-select: none;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* macOS Window Container Replica */
+        .window {
+            width: 820px;
+            background: var(--mac-bg);
+            border: 1px solid var(--mac-border);
+            border-radius: 12px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Title Bar */
+        .titlebar {
+            height: 48px;
+            display: flex;
+            align-items: center;
+            position: relative;
+            border-bottom: 1px solid var(--mac-border);
+            padding: 0 12px;
+        }
+
+        .traffic-lights {
+            display: flex;
+            gap: 8px;
+        }
+
+        .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 6px;
+            border: 0.5px solid rgba(0, 0, 0, 0.15);
+        }
+        .dot.red { background-color: #ff5f56; }
+        .dot.yellow { background-color: #ffbd2e; }
+        .dot.green { background-color: #27c93f; }
+
+        .window-title {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--mac-text);
+        }
+
+        /* Preferences Toolbar */
+        .toolbar {
+            display: flex;
+            justify-content: center;
+            gap: 4px;
+            border-bottom: 1px solid var(--mac-border);
+            padding: 6px 12px;
+            background: var(--mac-bg);
+            overflow-x: auto;
+        }
+
+        .tool-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            background: transparent;
+            color: var(--mac-text-sec);
+            padding: 6px 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            min-width: 58px;
+            transition: all 0.1s;
+        }
+
+        .tool-btn:hover {
+            background: rgba(0, 0, 0, 0.04);
+        }
+        html.black-forced-dark .tool-btn:hover {
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .tool-btn.active {
+            background: var(--mac-selected-tab);
+            color: var(--mac-text);
+        }
+
+        .tool-icon {
+            font-size: 18px;
+            margin-bottom: 3px;
+        }
+
+        .tool-label {
+            font-size: 10px;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        /* Content Area */
+        .content {
+            padding: 24px 36px;
+            background: var(--mac-card);
+            min-height: 400px;
+            display: none;
+        }
+
+        .content.active {
+            display: block;
+        }
+
+        /* Extensions split pane replica */
+        .extensions-layout {
+            display: flex;
+            border: 1px solid var(--mac-border);
+            border-radius: 8px;
+            height: 340px;
+            background: var(--mac-bg);
+            overflow: hidden;
+        }
+
+        .ext-left {
+            width: 200px;
+            border-right: 1px solid var(--mac-border);
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .ext-list {
+            flex: 1;
+            font-size: 12px;
+            color: var(--mac-text-sec);
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .ext-bottom {
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .ext-right {
+            flex: 1;
+            background: var(--mac-card);
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        /* overlapping extension icons */
+        .ext-overlapping-icons {
+            position: relative;
+            width: 140px;
+            height: 60px;
+            margin-bottom: 24px;
+        }
+
+        .ov-icon {
+            position: absolute;
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            border: 2.5px solid var(--mac-card);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
             color: #fff;
+        }
+
+        .ext-title {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .ext-desc {
+            font-size: 12px;
+            color: var(--mac-text-sec);
+            line-height: 1.45;
+            max-width: 340px;
+            margin-bottom: 18px;
+        }
+
+        .mac-blue-btn {
+            background: var(--mac-accent);
+            color: #fff;
+            border: none;
+            border-radius: 16px;
+            padding: 6px 18px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .mac-blue-btn:hover {
+            opacity: 0.9;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1 class="page-title">Extensions</h1>
-        <p class="page-sub">Supercharge your Safari browsing with extensions that can find discounts, block ads and more.</p>
-        <div class="empty-card">
-            <div class="ext-icon">
-                <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 7l-3 3-4-1-2 2 4 1-1 4 2 2 1-4 3 3z"/></svg>
+    <div class="window">
+        <!-- Title Bar -->
+        <div class="titlebar">
+            <div class="traffic-lights">
+                <span class="dot red"></span>
+                <span class="dot yellow"></span>
+                <span class="dot green"></span>
             </div>
-            No extensions installed.<br>
-            Extension support is coming soon.
+            <div class="window-title">Extensions</div>
+        </div>
+
+        <!-- Preferences Tabs -->
+        <div class="toolbar" id="toolbar">
+            <button class="tool-btn" onclick="location.href='qrc:/settings.html'">
+                <span class="tool-icon">⚙</span>
+                <span class="tool-label">General</span>
+            </button>
+            <button class="tool-btn" onclick="location.href='qrc:/settings.html?tab=tabs'">
+                <span class="tool-icon">🗂</span>
+                <span class="tool-label">Tabs</span>
+            </button>
+            <button class="tool-btn" onclick="location.href='qrc:/settings.html?tab=autofill'">
+                <span class="tool-icon">📝</span>
+                <span class="tool-label">AutoFill</span>
+            </button>
+            <button class="tool-btn" onclick="location.href='qrc:/settings.html?tab=passwords'">
+                <span class="tool-icon">🔑</span>
+                <span class="tool-label">Passwords</span>
+            </button>
+            <button class="tool-btn" onclick="location.href='qrc:/settings.html?tab=search'">
+                <span class="tool-icon">🔍</span>
+                <span class="tool-label">Search</span>
+            </button>
+            <button class="tool-btn" onclick="location.href='qrc:/settings.html?tab=security'">
+                <span class="tool-icon">🔒</span>
+                <span class="tool-label">Security</span>
+            </button>
+            <button class="tool-btn" onclick="location.href='qrc:/settings.html?tab=privacy'">
+                <span class="tool-icon">✋</span>
+                <span class="tool-label">Privacy</span>
+            </button>
+            <button class="tool-btn" onclick="location.href='qrc:/settings.html?tab=websites'">
+                <span class="tool-icon">🌐</span>
+                <span class="tool-label">Websites</span>
+            </button>
+            <button class="tool-btn" onclick="location.href='qrc:/settings.html?tab=profiles'">
+                <span class="tool-icon">👤</span>
+                <span class="tool-label">Profiles</span>
+            </button>
+            <button class="tool-btn active">
+                <span class="tool-icon">🧩</span>
+                <span class="tool-label">Extensions</span>
+            </button>
+            <button class="tool-btn" onclick="location.href='qrc:/settings.html?tab=advanced'">
+                <span class="tool-icon">🛠</span>
+                <span class="tool-label">Advanced</span>
+            </button>
+            <button class="tool-btn" onclick="location.href='qrc:/settings.html?tab=developer'">
+                <span class="tool-icon">🔨</span>
+                <span class="tool-label">Developer</span>
+            </button>
+            <button class="tool-btn" onclick="location.href='qrc:/settings.html?tab=features'">
+                <span class="tool-icon">🚩</span>
+                <span class="tool-label">Feature Flags</span>
+            </button>
+        </div>
+
+        <!-- Content Area -->
+        <div id="extensions" class="content active">
+            <div class="extensions-layout">
+                <div class="ext-left">
+                    <div class="ext-list">
+                        No Extensions
+                    </div>
+                    <div class="ext-bottom">
+                        <input type="checkbox" id="shareAcrossDevices" checked>
+                        <label for="shareAcrossDevices" style="margin-left: 4px; cursor: pointer;">Share across devices</label>
+                    </div>
+                </div>
+                <div class="ext-right">
+                    <div class="ext-overlapping-icons">
+                        <span class="ov-icon" style="background-color: #ffcc00; transform: translate(0px, 0px) rotate(-15deg); z-index: 1;">&#9786;</span>
+                        <span class="ov-icon" style="background-color: #ff3b30; transform: translate(18px, -5px) rotate(10deg); z-index: 3;">&#128139;</span>
+                        <span class="ov-icon" style="background-color: #af52de; transform: translate(36px, 0px) rotate(-5deg); z-index: 2;">&#9200;</span>
+                        <span class="ov-icon" style="background-color: #34c759; transform: translate(54px, -5px) rotate(15deg); z-index: 4;">&#128179;</span>
+                        <span class="ov-icon" style="background-color: #007aff; transform: translate(72px, 0px) rotate(0deg); z-index: 5;">&#128269;</span>
+                    </div>
+                    <h3 class="ext-title">Extensions</h3>
+                    <p class="ext-desc">Supercharge your Safari browsing with extensions that can find discounts, block ads and more.</p>
+                    <button class="mac-blue-btn">Browse Extensions&hellip;</button>
+                </div>
+            </div>
         </div>
     </div>
 

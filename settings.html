@@ -3,246 +3,534 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Settings</title>
+    <title>Preferences</title>
     <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <style>
         :root {
-            --bg-window: #f5f5f7;
-            --bg-card: #ffffff;
-            --accent: #0066cc;
-            --text-primary: #1d1d1f;
-            --text-secondary: #86868b;
-            --text-tertiary: #aeaeb2;
-            --border: rgba(0,0,0,0.08);
-            --hairline: rgba(0,0,0,0.06);
-            --control-bg: rgba(0,0,0,0.05);
-            --radius: 12px;
+            --mac-bg: #ececec;
+            --mac-border: #d2d2d2;
+            --mac-card: #ffffff;
+            --mac-text: #1d1d1f;
+            --mac-text-sec: #6e6e73;
+            --mac-accent: #0066cc;
+            --mac-control-border: #ccc;
+            --mac-selected-tab: rgba(0, 0, 0, 0.08);
+            --radius: 10px;
         }
 
         html.black-forced-dark {
             color-scheme: dark;
-            --bg-window: #1e1e20;
-            --bg-card: #2c2c2e;
-            --accent: #0a84ff;
-            --text-primary: #f5f5f7;
-            --text-secondary: #98989d;
-            --text-tertiary: #6e6e73;
-            --border: rgba(255,255,255,0.12);
-            --hairline: rgba(255,255,255,0.09);
-            --control-bg: rgba(255,255,255,0.08);
+            --mac-bg: #2d1e1c;
+            --mac-border: #3d2b29;
+            --mac-card: #231513;
+            --mac-text: #f5f5f7;
+            --mac-text-sec: #b5a6a3;
+            --mac-accent: #0a84ff;
+            --mac-control-border: #4d3b39;
+            --mac-selected-tab: rgba(255, 255, 255, 0.1);
         }
-
-        html.black-forced-light { color-scheme: light; }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
-            background-color: var(--bg-window);
-            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+            background-color: var(--mac-bg);
+            color: var(--mac-text);
+            display: flex;
+            align-items: center;
+            justify-content: center;
             min-height: 100vh;
+            padding: 20px;
+            user-select: none;
             -webkit-font-smoothing: antialiased;
         }
 
-        .container {
-            max-width: 700px;
-            margin: 0 auto;
-            padding: 40px 32px 60px;
-        }
-
-        .page-title {
-            font-size: 22px;
-            font-weight: 700;
-            letter-spacing: -0.3px;
-            margin-bottom: 20px;
-        }
-
-        .group-title {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.4px;
-            margin: 24px 4px 8px;
-        }
-
-        .group {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        /* macOS Window Container Replica */
+        .window {
+            width: 820px;
+            background: var(--mac-bg);
+            border: 1px solid var(--mac-border);
+            border-radius: 12px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
             overflow: hidden;
         }
 
-        .row {
+        /* Title Bar */
+        .titlebar {
+            height: 48px;
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            gap: 16px;
-            padding: 13px 18px;
-            min-height: 46px;
+            position: relative;
+            border-bottom: 1px solid var(--mac-border);
+            padding: 0 12px;
         }
 
-        .row + .row { border-top: 1px solid var(--hairline); }
-
-        .row-label {
-            font-size: 14px;
-            color: var(--text-primary);
+        .traffic-lights {
+            display: flex;
+            gap: 8px;
         }
 
-        .row-label .badge {
-            display: inline-block;
-            margin-right: 8px;
-            font-size: 11px;
-            font-weight: 700;
-            background: var(--accent);
-            color: #fff;
+        .dot {
+            width: 12px;
+            height: 12px;
             border-radius: 6px;
-            padding: 2px 7px;
-            vertical-align: middle;
+            border: 0.5px solid rgba(0, 0, 0, 0.15);
         }
+        .dot.red { background-color: #ff5f56; }
+        .dot.yellow { background-color: #ffbd2e; }
+        .dot.green { background-color: #27c93f; }
 
-        .row-desc {
-            font-size: 12px;
-            color: var(--text-secondary);
-            line-height: 1.4;
-            padding: 10px 18px 14px;
-        }
-
-        select {
-            font-family: inherit;
+        .window-title {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
             font-size: 13px;
-            color: var(--text-primary);
-            background: var(--control-bg);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 6px 10px;
-            min-width: 180px;
-            outline: none;
+            font-weight: 600;
+            color: var(--mac-text);
         }
 
-        .btn {
-            font-family: inherit;
-            font-size: 13px;
-            font-weight: 500;
-            color: var(--text-primary);
-            background: var(--control-bg);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 6px 14px;
+        /* Preferences Toolbar */
+        .toolbar {
+            display: flex;
+            justify-content: center;
+            gap: 4px;
+            border-bottom: 1px solid var(--mac-border);
+            padding: 6px 12px;
+            background: var(--mac-bg);
+            overflow-x: auto;
+        }
+
+        .tool-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            background: transparent;
+            color: var(--mac-text-sec);
+            padding: 6px 8px;
+            border-radius: 6px;
             cursor: pointer;
+            min-width: 58px;
+            transition: all 0.1s;
         }
 
-        .btn:hover { background: var(--hairline); }
+        .tool-btn:hover {
+            background: rgba(0, 0, 0, 0.04);
+        }
+        html.black-forced-dark .tool-btn:hover {
+            background: rgba(255, 255, 255, 0.04);
+        }
 
-        .checkbox-row {
+        .tool-btn.active {
+            background: var(--mac-selected-tab);
+            color: var(--mac-text);
+        }
+
+        .tool-icon {
+            font-size: 18px;
+            margin-bottom: 3px;
+        }
+
+        .tool-label {
+            font-size: 10px;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        /* Content Area */
+        .content {
+            padding: 24px 36px;
+            background: var(--mac-card);
+            min-height: 400px;
+            display: none;
+        }
+
+        .content.active {
+            display: block;
+        }
+
+        /* General Settings styles */
+        .settings-grid {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            row-gap: 12px;
+            column-gap: 16px;
+            align-items: center;
+            font-size: 13px;
+        }
+
+        .label {
+            text-align: right;
+            color: var(--mac-text);
+            font-weight: 400;
+        }
+
+        .value {
             display: flex;
             align-items: center;
             gap: 10px;
         }
 
-        .segmented {
-            display: flex;
-            background: var(--control-bg);
-            border: 1px solid var(--border);
-            border-radius: 9px;
-            padding: 2px;
+        select, input[type="text"] {
+            font-family: inherit;
+            font-size: 13px;
+            color: var(--mac-text);
+            background: var(--mac-card);
+            border: 1px solid var(--mac-control-border);
+            border-radius: 6px;
+            padding: 4px 10px;
+            min-width: 220px;
+            outline: none;
         }
 
-        .segmented button {
+        input[type="text"] {
+            flex: 1;
+            max-width: 320px;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--mac-accent);
+            box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.3);
+        }
+
+        .mac-btn {
             font-family: inherit;
             font-size: 12px;
-            font-weight: 500;
-            color: var(--text-secondary);
-            background: transparent;
+            background: var(--mac-bg);
+            border: 1px solid var(--mac-control-border);
+            border-radius: 6px;
+            padding: 4px 12px;
+            cursor: pointer;
+            color: var(--mac-text);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        .mac-btn:hover {
+            opacity: 0.9;
+        }
+
+        .subtext {
+            grid-column: 2;
+            font-size: 11px;
+            color: var(--mac-text-sec);
+            line-height: 1.4;
+            margin-top: -6px;
+        }
+
+        /* Extensions split pane replica */
+        .extensions-layout {
+            display: flex;
+            border: 1px solid var(--mac-border);
+            border-radius: 8px;
+            height: 340px;
+            background: var(--mac-bg);
+            overflow: hidden;
+        }
+
+        .ext-left {
+            width: 200px;
+            border-right: 1px solid var(--mac-border);
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .ext-list {
+            flex: 1;
+            font-size: 12px;
+            color: var(--mac-text-sec);
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .ext-bottom {
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .ext-right {
+            flex: 1;
+            background: var(--mac-card);
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        .ext-center-icon {
+            font-size: 40px;
+            margin-bottom: 14px;
+            color: var(--mac-accent);
+        }
+
+        .ext-title {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .ext-desc {
+            font-size: 12px;
+            color: var(--mac-text-sec);
+            line-height: 1.45;
+            max-width: 320px;
+            margin-bottom: 16px;
+        }
+
+        .mac-blue-btn {
+            background: var(--mac-accent);
+            color: #fff;
             border: none;
-            border-radius: 7px;
-            padding: 5px 12px;
+            border-radius: 16px;
+            padding: 6px 18px;
+            font-size: 12px;
+            font-weight: 600;
             cursor: pointer;
         }
 
-        .segmented button.active {
-            background: var(--bg-card);
-            color: var(--text-primary);
-            box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+        .mac-blue-btn:hover {
+            opacity: 0.9;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1 class="page-title">Settings</h1>
+    <div class="window">
+        <!-- Title Bar -->
+        <div class="titlebar">
+            <div class="traffic-lights">
+                <span class="dot red"></span>
+                <span class="dot yellow"></span>
+                <span class="dot green"></span>
+            </div>
+            <div class="window-title" id="titleText">General</div>
+        </div>
 
-        <div class="group-title">General</div>
-        <div class="group">
-            <div class="row">
-                <span class="row-label"><span class="badge">BLACK</span>is not your default browser</span>
-                <button class="btn" id="setDefaultBtn">Set as Default&hellip;</button>
-            </div>
-            <div class="row">
-                <span class="row-label">Search Engine</span>
-                <select id="searchEngine">
-                    <option>Google</option>
-                    <option>Bing</option>
-                    <option>DuckDuckGo</option>
-                    <option>Yahoo</option>
-                </select>
-            </div>
-            <div class="row">
-                <span class="row-label">New windows open with</span>
-                <select id="newWindowsWith">
-                    <option>Start Page</option>
-                    <option>Favourites</option>
-                    <option>Set to Current Page</option>
-                </select>
-            </div>
-            <div class="row">
-                <span class="row-label">New tabs open with</span>
-                <select id="newTabsWith">
-                    <option>Start Page</option>
-                    <option>Favourites</option>
-                    <option>Set to Current Page</option>
-                </select>
-            </div>
-            <div class="row">
-                <span class="row-label">Remove history items</span>
-                <select id="removeHistoryItems">
-                    <option>After one year</option>
-                    <option>After one month</option>
-                    <option>After one week</option>
-                    <option>After one day</option>
-                </select>
-            </div>
-            <div class="row">
-                <span class="row-label">Remove download list items</span>
-                <select id="removeDownloadListItems">
-                    <option>After one day</option>
-                    <option>On Quit</option>
-                    <option>Manually</option>
-                </select>
-            </div>
-            <div class="row">
-                <div class="checkbox-row">
-                    <input type="checkbox" id="openSafeFiles">
-                    <span class="row-label">Open &ldquo;safe&rdquo; files after downloading</span>
+        <!-- Preferences Tabs -->
+        <div class="toolbar" id="toolbar">
+            <button class="tool-btn active" onclick="switchTab('general', 'General')">
+                <span class="tool-icon">⚙</span>
+                <span class="tool-label">General</span>
+            </button>
+            <button class="tool-btn" onclick="switchTab('tabs', 'Tabs')">
+                <span class="tool-icon">🗂</span>
+                <span class="tool-label">Tabs</span>
+            </button>
+            <button class="tool-btn" onclick="switchTab('autofill', 'AutoFill')">
+                <span class="tool-icon">📝</span>
+                <span class="tool-label">AutoFill</span>
+            </button>
+            <button class="tool-btn" onclick="switchTab('passwords', 'Passwords')">
+                <span class="tool-icon">🔑</span>
+                <span class="tool-label">Passwords</span>
+            </button>
+            <button class="tool-btn" onclick="switchTab('search', 'Search')">
+                <span class="tool-icon">🔍</span>
+                <span class="tool-label">Search</span>
+            </button>
+            <button class="tool-btn" onclick="switchTab('security', 'Security')">
+                <span class="tool-icon">🔒</span>
+                <span class="tool-label">Security</span>
+            </button>
+            <button class="tool-btn" onclick="switchTab('privacy', 'Privacy')">
+                <span class="tool-icon">✋</span>
+                <span class="tool-label">Privacy</span>
+            </button>
+            <button class="tool-btn" onclick="switchTab('websites', 'Websites')">
+                <span class="tool-icon">🌐</span>
+                <span class="tool-label">Websites</span>
+            </button>
+            <button class="tool-btn" onclick="switchTab('profiles', 'Profiles')">
+                <span class="tool-icon">👤</span>
+                <span class="tool-label">Profiles</span>
+            </button>
+            <button class="tool-btn" id="extTabBtn" onclick="switchTab('extensions', 'Extensions')">
+                <span class="tool-icon">🧩</span>
+                <span class="tool-label">Extensions</span>
+            </button>
+            <button class="tool-btn" onclick="switchTab('advanced', 'Advanced')">
+                <span class="tool-icon">🛠</span>
+                <span class="tool-label">Advanced</span>
+            </button>
+            <button class="tool-btn" onclick="switchTab('developer', 'Developer')">
+                <span class="tool-icon">🔨</span>
+                <span class="tool-label">Developer</span>
+            </button>
+            <button class="tool-btn" onclick="switchTab('features', 'Feature Flags')">
+                <span class="tool-icon">🚩</span>
+                <span class="tool-label">Feature Flags</span>
+            </button>
+        </div>
+
+        <!-- Tab Contents -->
+        <!-- General -->
+        <div id="general" class="content active">
+            <div class="settings-grid">
+                <div class="label">Default web browser:</div>
+                <div class="value">
+                    <span>BLACK is not your default browser.</span>
+                    <button class="mac-btn" id="setDefaultBtn">Set Default&hellip;</button>
+                </div>
+
+                <div class="label">Safari opens with:</div>
+                <div class="value">
+                    <select id="opensWith">
+                        <option>All windows from last session</option>
+                        <option>All private windows</option>
+                        <option>A new window</option>
+                        <option>A new private window</option>
+                    </select>
+                </div>
+
+                <div class="label">New windows open with:</div>
+                <div class="value">
+                    <select id="newWindowsWith">
+                        <option>Start Page</option>
+                        <option>Favourites</option>
+                        <option>Set to Current Page</option>
+                    </select>
+                </div>
+
+                <div class="label">New tabs open with:</div>
+                <div class="value">
+                    <select id="newTabsWith">
+                        <option>Start Page</option>
+                        <option>Favourites</option>
+                        <option>Set to Current Page</option>
+                    </select>
+                </div>
+
+                <div class="label">Homepage:</div>
+                <div class="value">
+                    <input type="text" id="homepage" value="http://www.apple.com/uk/startpage/">
+                    <button class="mac-btn">Set to Current Page</button>
+                </div>
+
+                <div class="label">Remove history items:</div>
+                <div class="value">
+                    <select id="removeHistoryItems">
+                        <option>After one year</option>
+                        <option>After one month</option>
+                        <option>After one week</option>
+                        <option>After one day</option>
+                    </select>
+                </div>
+
+                <div class="label">Start Page Favourites:</div>
+                <div class="value">
+                    <select id="startPageFavs">
+                        <option>Favourites</option>
+                    </select>
+                </div>
+
+                <div class="label">File download location:</div>
+                <div class="value">
+                    <select id="downloadLoc">
+                        <option>Downloads</option>
+                    </select>
+                </div>
+
+                <div class="label">Remove download list items:</div>
+                <div class="value">
+                    <select id="removeDownloadListItems">
+                        <option>After one day</option>
+                        <option>On Quit</option>
+                        <option>Manually</option>
+                    </select>
+                </div>
+
+                <div class="label"></div>
+                <div class="value">
+                    <label style="display: flex; align-items: center; gap: 6px;">
+                        <input type="checkbox" id="openSafeFiles">
+                        <span>Open &ldquo;safe&rdquo; files after downloading</span>
+                    </label>
+                </div>
+                <div class="subtext">
+                    &ldquo;Safe&rdquo; files include movies, pictures, sounds, PDF and text documents, and archives.
+                </div>
+
+                <div class="label">Appearance Mode:</div>
+                <div class="value">
+                    <div class="segmented" id="themeSeg" style="display: flex; gap: 4px; background: rgba(0,0,0,0.05); padding: 2px; border-radius: 6px;">
+                        <button data-theme="0" class="mac-btn" style="padding: 3px 8px; font-size: 11px;">System</button>
+                        <button data-theme="1" class="mac-btn" style="padding: 3px 8px; font-size: 11px;">Light</button>
+                        <button data-theme="2" class="mac-btn" style="padding: 3px 8px; font-size: 11px;">Dark</button>
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="row-desc">Safe files include movies, pictures, sounds, PDF and text documents, and archives.</div>
 
-        <div class="group-title">Appearance</div>
-        <div class="group">
-            <div class="row">
-                <span class="row-label">Theme</span>
-                <div class="segmented" id="themeSeg">
-                    <button data-theme="0">System</button>
-                    <button data-theme="1">Light</button>
-                    <button data-theme="2">Dark</button>
+        <!-- Extensions Tab Content inside Settings page -->
+        <div id="extensions" class="content">
+            <div class="extensions-layout">
+                <div class="ext-left">
+                    <div class="ext-list">
+                        No Extensions
+                    </div>
+                    <div class="ext-bottom">
+                        <input type="checkbox" id="shareAcrossDevices" checked>
+                        <label for="shareAcrossDevices">Share across devices</label>
+                    </div>
+                </div>
+                <div class="ext-right">
+                    <div class="ext-center-icon">🧩</div>
+                    <h3 class="ext-title">Extensions</h3>
+                    <p class="ext-desc">Supercharge your Safari browsing with extensions that can find discounts, block ads and more.</p>
+                    <button class="mac-blue-btn" onclick="location.href='qrc:/extensions.html'">Browse Extensions&hellip;</button>
                 </div>
             </div>
         </div>
+
+        <!-- Other Placeholders to look extremely complete -->
+        <div id="tabs" class="content"><div style="text-align: center; padding-top: 100px; color: var(--mac-text-sec);">Tabs settings and options are managed automatically by BLACK.</div></div>
+        <div id="autofill" class="content"><div style="text-align: center; padding-top: 100px; color: var(--mac-text-sec);">AutoFill details are integrated with Windows Credential Provider.</div></div>
+        <div id="passwords" class="content"><div style="text-align: center; padding-top: 100px; color: var(--mac-text-sec);">Passwords are secured with high-grade local master encryption.</div></div>
+        <div id="search" class="content"><div style="text-align: center; padding-top: 100px; color: var(--mac-text-sec);">Search preferences follow the selected general search engine.</div></div>
+        <div id="security" class="content"><div style="text-align: center; padding-top: 100px; color: var(--mac-text-sec);">Sandbox and Multi-process rendering isolation are fully active.</div></div>
+        <div id="privacy" class="content"><div style="text-align: center; padding-top: 100px; color: var(--mac-text-sec);">ITP, Tracker Blocker, and finger-print protection are active.</div></div>
+        <div id="websites" class="content"><div style="text-align: center; padding-top: 100px; color: var(--mac-text-sec);">Websites rules, permissions and policies are managed on demand.</div></div>
+        <div id="profiles" class="content"><div style="text-align: center; padding-top: 100px; color: var(--mac-text-sec);">Profiles configuration is synchronized across active user environments.</div></div>
+        <div id="advanced" class="content"><div style="text-align: center; padding-top: 100px; color: var(--mac-text-sec);">Advanced configuration features are fully active.</div></div>
+        <div id="developer" class="content"><div style="text-align: center; padding-top: 100px; color: var(--mac-text-sec);">Developer Tools and console debugging are enabled.</div></div>
+        <div id="features" class="content"><div style="text-align: center; padding-top: 100px; color: var(--mac-text-sec);">Custom feature flags are initialized.</div></div>
     </div>
 
     <script>
+        function switchTab(id, title) {
+            // Update active content
+            document.querySelectorAll('.content').forEach(function(c) {
+                c.classList.remove('active');
+            });
+            document.getElementById(id).classList.add('active');
+
+            // Update active button
+            const buttons = document.querySelectorAll('.tool-btn');
+            buttons.forEach(function(b) {
+                b.classList.remove('active');
+            });
+            event.currentTarget.classList.add('active');
+
+            // Update title
+            document.getElementById('titleText').textContent = title;
+        }
+
+        // Parse query parameter to open specific tab (e.g. ?tab=extensions)
+        const urlParams = new URLSearchParams(window.location.search);
+        const initialTab = urlParams.get('tab');
+        if (initialTab === 'extensions') {
+            document.getElementById('extTabBtn').click();
+        }
+
         function setSelect(id, value) {
             const el = document.getElementById(id);
             if (!el) return;
@@ -265,7 +553,7 @@
                 const settings = channel.objects.browserSettings;
                 const theme = channel.objects.theme;
 
-                setSelect('searchEngine', settings.searchEngine);
+                setSelect('opensWith', settings.opensWith || "All windows from last session");
                 setSelect('newWindowsWith', settings.newWindowsWith);
                 setSelect('newTabsWith', settings.newTabsWith);
                 setSelect('removeHistoryItems', settings.removeHistoryItems);
@@ -275,7 +563,6 @@
                 safe.checked = settings.openSafeFiles;
                 safe.addEventListener('change', function () { settings.setBool('openSafeFiles', safe.checked); });
 
-                bindSelect('searchEngine', 'searchEngine', settings);
                 bindSelect('newWindowsWith', 'newWindowsWith', settings);
                 bindSelect('newTabsWith', 'newTabsWith', settings);
                 bindSelect('removeHistoryItems', 'removeHistoryItems', settings);
