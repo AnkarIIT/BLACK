@@ -2,6 +2,40 @@
 
 #include <QGuiApplication>
 #include <QStyleHints>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QStandardPaths>
+#include <QDir>
+
+namespace {
+
+QString settingsFile()
+{
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(dir);
+    return dir + QLatin1String("/settings.json");
+}
+
+SafariTheme::Preference preferenceFromString(const QString &value)
+{
+    if (value == QLatin1String("dark"))
+        return SafariTheme::Preference::Dark;
+    if (value == QLatin1String("light"))
+        return SafariTheme::Preference::Light;
+    return SafariTheme::Preference::System;
+}
+
+QString preferenceToString(SafariTheme::Preference preference)
+{
+    switch (preference) {
+    case SafariTheme::Preference::Dark:  return QStringLiteral("dark");
+    case SafariTheme::Preference::Light: return QStringLiteral("light");
+    default:                             return QStringLiteral("system");
+    }
+}
+
+} // namespace
 
 SafariTheme &SafariTheme::instance()
 {
@@ -12,19 +46,60 @@ SafariTheme &SafariTheme::instance()
 SafariTheme::SafariTheme(QObject *parent)
     : QObject(parent)
     , m_scheme(Scheme::Light)
+    , m_preference(Preference::System)
 {
-    if (QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark)
-        m_scheme = Scheme::Dark;
-    loadPalette();
+    QFile file(settingsFile());
+    if (file.open(QIODevice::ReadOnly)) {
+        const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+        if (doc.isObject())
+            m_preference = preferenceFromString(doc.object().value(QStringLiteral("theme")).toString());
+    }
+    refreshScheme();
+}
+
+void SafariTheme::refreshScheme()
+{
+    Scheme effective;
+    switch (m_preference) {
+    case Preference::Dark:
+        effective = Scheme::Dark;
+        break;
+    case Preference::Light:
+        effective = Scheme::Light;
+        break;
+    default:
+        effective = (QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark)
+                        ? Scheme::Dark : Scheme::Light;
+        break;
+    }
+    setScheme(effective);
+}
+
+void SafariTheme::setPreference(Preference preference)
+{
+    if (m_preference == preference)
+        return;
+    m_preference = preference;
+
+    QJsonObject obj;
+    obj.insert(QStringLiteral("theme"), preferenceToString(preference));
+    QFile file(settingsFile());
+    if (file.open(QIODevice::WriteOnly))
+        file.write(QJsonDocument(obj).toJson());
+
+    refreshScheme();
 }
 
 void SafariTheme::setScheme(Scheme scheme)
 {
-    if (m_scheme == scheme)
-        return;
+    const bool changed = (m_scheme != scheme);
     m_scheme = scheme;
-    loadPalette();
-    emit schemeChanged();
+    if (changed || !m_paletteInitialized) {
+        loadPalette();
+        m_paletteInitialized = true;
+    }
+    if (changed)
+        emit schemeChanged();
 }
 
 void SafariTheme::loadPalette()

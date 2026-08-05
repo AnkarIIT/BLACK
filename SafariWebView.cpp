@@ -8,10 +8,19 @@
 #include <QApplication>
 #include <QWebEngineContextMenuRequest>
 #include <QWebEngineHistory>
+#include <QWebEnginePage>
+#include <QWebEngineProfile>
 
 SafariWebView::SafariWebView(QWidget *parent)
     : QWebEngineView(parent)
 {
+}
+
+void SafariWebView::setWebProfile(QWebEngineProfile *profile)
+{
+    if (!profile)
+        return;
+    setPage(new QWebEnginePage(profile, this));
 }
 
 void SafariWebView::contextMenuEvent(QContextMenuEvent *event)

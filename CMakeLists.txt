@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets Svg)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets Svg WebChannel)
 
 qt_add_executable(BLACK
     main.cpp
@@ -16,6 +16,8 @@ qt_add_executable(BLACK
     SafariWebView.h
     SafariTheme.cpp
     SafariTheme.h
+    TrackerBlocker.cpp
+    TrackerBlocker.h
     resources.qrc
     resources.rc
 )
@@ -26,6 +28,7 @@ target_link_libraries(BLACK PRIVATE
     Qt6::Widgets
     Qt6::WebEngineWidgets
     Qt6::Svg
+    Qt6::WebChannel
 )
 
 if(MSVC)

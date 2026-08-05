@@ -12,7 +12,7 @@ $env:PATH = "$QtPath\bin;$env:PATH"
 
 # 1. Build project via CMake
 Write-Host "`n[1/3] Compiling Release executable..." -ForegroundColor Yellow
-cmake -S . -B build -G "Visual Studio 17 2022" -DCMAKE_PREFIX_PATH="$QtPath"
+cmake -S . -B build -DCMAKE_PREFIX_PATH="$QtPath"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "CMake configuration failed."
     exit 1
@@ -27,7 +27,7 @@ if ($LASTEXITCODE -ne 0) {
 # 2. Run windeployqt
 Write-Host "`n[2/3] Bundling Qt DLLs and WebEngine assets via windeployqt..." -ForegroundColor Yellow
 $winDeploy = "$QtPath\bin\windeployqt.exe"
-& $winDeploy --webengine --release .\build\Release\BLACK.exe
+& $winDeploy --release .\build\Release\BLACK.exe
 
 # 3. Check deployment output
 Write-Host "`n[3/3] Verifying release package directory..." -ForegroundColor Yellow

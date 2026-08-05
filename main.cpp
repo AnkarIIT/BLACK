@@ -4,9 +4,11 @@
 #include <QWebEngineProfile>
 #include <QWebEngineSettings>
 #include "BrowserWindow.h"
+#include "TrackerBlocker.h"
 
 int main(int argc, char *argv[])
 {
+    QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
     QApplication app(argc, argv);
     app.setApplicationName("BLACK");
     app.setOrganizationName("BLACK");
@@ -15,7 +17,7 @@ int main(int argc, char *argv[])
     QWebEngineProfile *profile = QWebEngineProfile::defaultProfile();
     QWebEngineSettings *settings = profile->settings();
     settings->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, true);
-    settings->setAttribute(QWebEngineSettings::PluginsEnabled, true);
+    settings->setAttribute(QWebEngineSettings::PluginsEnabled, false);
     settings->setAttribute(QWebEngineSettings::JavascriptEnabled, true);
     settings->setAttribute(QWebEngineSettings::JavascriptCanAccessClipboard, true);
     settings->setAttribute(QWebEngineSettings::LocalStorageEnabled, true);
@@ -23,6 +25,12 @@ int main(int argc, char *argv[])
     settings->setAttribute(QWebEngineSettings::Accelerated2dCanvasEnabled, true);
 
     profile->setHttpUserAgent(QStringLiteral("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15"));
+
+    TrackerBlocker::instance().loadData();
+    profile->setUrlRequestInterceptor(&TrackerBlocker::instance());
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, []() {
+        TrackerBlocker::instance().saveData();
+    });
 
     BrowserWindow window;
 

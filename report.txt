@@ -1,0 +1,38 @@
+All data collected. Here's the verified assessment.
+Performance — GOOD (measured)
+Ran BLACK with 3 real tabs (example.com, Wikipedia, Google):
+Metric	Measured
+Process model	1 main + 3 renderer processes (1/tab, site isolation)
+Renderer sandbox	active (--no-sandbox absent)
+Total memory	~523 MB for 3 tabs (main 271 + 96.9 + 96.2 + 58.6)
+Idle CPU	~297 ms / 15 s ≈ 2% of one core across 18 logical cores
+GPU process	separate process absent (GPU runs in main)
+Memory/CPU are on par with real browsers for this workload. Caveat: it's Chromium (V8 + Blink) under a Safari skin, not WebKit — you can't do an apples-to-apples race against Safari on Apple Silicon from this Windows machine, but as a Windows browser the numbers are healthy.
+Smoothness — OK, with 3 known hitches (code audit)
+- ✅ Fixed: tab bar no longer rebuilt on every title/icon change (was full teardown per load event → flicker).
+- ⚠️ Tab Overview does synchronous view->grab() on every tab when opened (BrowserWindow.cpp:549) — a visible freeze on many tabs.
+- ⚠️ QGraphicsDropShadowEffect on the active tab (BrowserWindow.cpp:913) — Qt drop shadows force per-frame software re-rendering; costly while a page is loading.
+- ⚠️ WA_TranslucentBackground frameless window (BrowserWindow.cpp:133) puts the whole window on the software composition path — the rounded corners cost you compositing performance vs native windows.
+- Tab bar still fully rebuilds on every tab switch — fine for a few tabs, degrades with many.
+Security — this is the weak spot (measured vs Safari)
+Protection	Safari
+Tracker blocking / ITP / fingerprinting protection	✅ built-in
+Content blocker (uBlock API)	✅
+Phishing / fraud protection (Safe Browsing)	✅
+Certificate error UI	✅
+Camera/mic/geo/notification prompts	✅
+Password manager + passkeys + autofill	✅
+Private/incognito mode	✅
+Per-site settings (cookies, JS, popups)	✅
+Renderer sandbox + process isolation	✅
+PluginsEnabled = true	❌ (Safari doesn't auto-enable)
+The only place it genuinely matches Safari's security model is the Chromium multi-process sandbox. Everything else security-related is absent — the "full security features" and "Privacy Protection" claims in the README/start page are currently fiction.
+Feature parity vs Safari — mostly not
+Matches: tabbed browsing, tab overview, find-in-page, downloads, session restore, history, light/dark theming, keyboard shortcuts, macOS-style chrome.
+Missing (that Safari users expect): pinned tabs, tab groups (decorative only), private windows, favorites/bookmarks bar, reader mode, PiP, password/passkey autofill, translation, share sheet (copies URL only), per-site settings, content blocking, iCloud/Keychain sync, safe-browsing.
+Bottom line
+- Performance: 👍 good — healthy memory, near-zero idle CPU, real multiprocess.
+- Smoothness: 👍 mostly, with 3 fixable hitches (overview grab, drop-shadow, translucent window).
+- Security: ❌ does not match Safari — it's the single biggest gap. Sandbox is real, but every user-facing protection (tracker blocking, safe browsing, cert/permission UI, password manager, private mode) is missing.
+- Feature parity: ❌ a Safari-styled Chromium browser — roughly 40-50% of a daily-driver feature set, and none of the Apple ecosystem parts.
+The two highest-value fixes I'd do next: (1) a URL request interceptor + EasyList-style blocklist for real tracker blocking, and (2) drop the fake "142 trackers" claim or wire it to actual counts. Want me to implement the content blocker?

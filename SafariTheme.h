@@ -10,10 +10,18 @@ class SafariTheme : public QObject
 
 public:
     enum class Scheme { Light, Dark };
+    enum class Preference { System, Light, Dark };
 
     static SafariTheme &instance();
 
+    Q_PROPERTY(int themeScheme READ themeScheme NOTIFY schemeChanged)
+
     Scheme scheme() const { return m_scheme; }
+    int themeScheme() const { return static_cast<int>(m_scheme); }
+    Preference preference() const { return m_preference; }
+
+    void setPreference(Preference preference);
+    void refreshScheme();
     void setScheme(Scheme scheme);
 
     QString bgWindow;
@@ -46,6 +54,8 @@ private:
     void loadPalette();
 
     Scheme m_scheme;
+    Preference m_preference;
+    bool m_paletteInitialized = false;
 };
 
 #endif

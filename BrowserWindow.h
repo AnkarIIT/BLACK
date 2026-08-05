@@ -5,6 +5,8 @@
 #include <QWebEngineView>
 #include <QWebEngineHistory>
 #include <QWebEnginePage>
+#include <QWebEnginePermission>
+#include <QWebEngineCertificateError>
 #include <QLineEdit>
 #include <QToolButton>
 #include <QPushButton>
@@ -17,8 +19,14 @@
 #include <QScrollArea>
 #include <QFrame>
 #include <QPropertyAnimation>
-#include <QGraphicsDropShadowEffect>
+#include <QMap>
 #include <QPointer>
+
+class QProgressBar;
+class SafariWebView;
+class QWebEngineNewWindowRequest;
+class QWebEngineProfile;
+class QWebChannel;
 
 struct TabInfo {
     QWebEngineView* view = nullptr;
@@ -29,12 +37,20 @@ struct TabInfo {
     bool loading = false;
 };
 
+struct DownloadItemInfo {
+    QString fileName;
+    QString filePath;
+    qint64 receivedBytes = 0;
+    qint64 totalBytes = -1;
+    int state = 0; // 0 = in progress, 1 = completed, 2 = failed/cancelled
+};
+
 class BrowserWindow : public QMainWindow
 {
     Q_OBJECT
 
 public:
-    explicit BrowserWindow(QWidget *parent = nullptr);
+    explicit BrowserWindow(bool incognito = false, QWidget *parent = nullptr);
     ~BrowserWindow() override;
 
 protected:
@@ -45,6 +61,7 @@ protected:
     void resizeEvent(QResizeEvent *event) override;
     void changeEvent(QEvent *event) override;
     bool eventFilter(QObject *obj, QEvent *event) override;
+    bool nativeEvent(const QByteArray &eventType, void *message, qintptr *result) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
 
 private slots:
@@ -68,6 +85,8 @@ private slots:
     void toggleTabOverview();
     void showTabOverview();
     void hideTabOverview();
+    void showSettingsMenu();
+    void updateWebViewTheme();
 
 private:
     void setupUi();
@@ -83,11 +102,18 @@ private:
     QToolButton* createTrafficLight(const QString &color, const QString &hoverColor);
 
     void addNewTab(const QUrl &url);
+    SafariWebView* addTabView(const QUrl &url, QWebEngineNewWindowRequest *request);
     void rebuildTabBar();
+    void refreshTabLabel(int index);
     void rebuildOverviewGrid();
     void rebuildSidebarTabList();
     void updateLoadingBar(int progress);
     void setWindowTitleFromTab();
+    void openPrivateWindow();
+
+    void handleCertificateError(QWebEngineCertificateError certificateError);
+    void handlePermissionRequest(QWebEnginePermission permission);
+    static QString permissionDisplayName(QWebEnginePermission::PermissionType type);
 
     QWidget* buildOverviewCard(int index);
 
@@ -113,8 +139,9 @@ private:
     QToolButton *m_closeButton;
     QToolButton *m_minimizeButton;
     QToolButton *m_maximizeButton;
+    QToolButton *m_settingsButton;
 
-    QLabel      *m_loadingBar;
+    QProgressBar *m_loadingBar;
 
     QWidget     *m_overviewOverlay;
     QWidget     *m_overviewPanel;
@@ -162,8 +189,16 @@ private:
     void saveBookmark(const QString &title, const QString &url);
 
     QList<QWidget*> m_tabWidgets;
+    QList<QLabel*> m_tabItemIcons;
+    QList<QLabel*> m_tabItemTexts;
     QList<QUrl>     m_closedTabs;
     QList<DownloadItemInfo> m_downloadsList;
+    QList<QString>  m_sidebarItemSvg;
+
+    bool            m_incognito;
+    QWebEngineProfile *m_profile;
+    QWebChannel     *m_webChannel;
+    QMap<QString, bool> m_permissionChoices;
 };
 
 #endif

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>New Tab</title>
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <style>
         :root {
             --bg-window: #f5f5f7;
@@ -41,6 +42,29 @@
             .shield-icon {
                 background: rgba(10, 132, 255, 0.15);
             }
+        }
+
+        /* Forced theme (set by the browser when it differs from the OS) */
+        html.black-forced-dark {
+            color-scheme: dark;
+            --bg-window: #1e1e20;
+            --bg-card: #2c2c2e;
+            --bg-input: #3a3a3c;
+            --accent: #0a84ff;
+            --text-primary: #f5f5f7;
+            --text-secondary: #98989d;
+            --text-tertiary: #6e6e73;
+            --border: rgba(255,255,255,0.12);
+            --shadow: 0 1px 3px rgba(0,0,0,0.4);
+            --shadow-hover: 0 4px 12px rgba(0,0,0,0.5);
+        }
+
+        html.black-forced-dark .shield-icon {
+            background: rgba(10, 132, 255, 0.15);
+        }
+
+        html.black-forced-light {
+            color-scheme: light;
         }
 
         * {
@@ -388,13 +412,13 @@
                 <span class="section-chevron">&#9654;</span>
                 <span class="section-title">Privacy Report</span>
             </div>
-            <div class="report-card">
-                <div class="shield-icon">&#128737;</div>
-                <div class="report-text">
-                    <div class="report-title">Privacy Protection</div>
-                    <div class="report-desc">BLACK has prevented 142 trackers from profiling you in the last 7 days.</div>
+                <div class="report-card">
+                    <div class="shield-icon">&#128737;</div>
+                    <div class="report-text">
+                        <div class="report-title">Privacy Protection</div>
+                        <div class="report-desc" id="privacyDesc">BLACK has blocked 0 tracker requests in the last 7 days.</div>
+                    </div>
                 </div>
-            </div>
         </div>
 
         <div class="section">
@@ -456,6 +480,32 @@
                 }
             }
         });
+
+        // Live privacy report from the native blocker
+        if (typeof QWebChannel !== 'undefined') {
+            new QWebChannel(qt.webChannelTransport, function (channel) {
+                const privacy = channel.objects.privacy;
+                const update = function () {
+                    const el = document.getElementById('privacyDesc');
+                    if (el) {
+                        el.textContent = 'BLACK has blocked ' + privacy.trackersBlockedThisWeek +
+                                         ' tracker requests in the last 7 days.';
+                    }
+                };
+                privacy.privacyChanged.connect(update);
+                update();
+
+                const theme = channel.objects.theme;
+                const applyTheme = function () {
+                    const el = document.documentElement;
+                    const dark = (theme.themeScheme === 1);
+                    el.classList.toggle('black-forced-dark', dark);
+                    el.classList.toggle('black-forced-light', !dark);
+                };
+                theme.themeSchemeChanged.connect(applyTheme);
+                applyTheme();
+            });
+        }
     </script>
 </body>
 </html>
