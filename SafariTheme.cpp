@@ -2,6 +2,8 @@
 
 #include <QGuiApplication>
 #include <QStyleHints>
+#include <QPalette>
+#include <QtGlobal>
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -68,8 +70,13 @@ void SafariTheme::refreshScheme()
         effective = Scheme::Light;
         break;
     default:
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
         effective = (QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark)
                         ? Scheme::Dark : Scheme::Light;
+#else
+        effective = (QGuiApplication::palette().color(QPalette::Window).value() < 128)
+                        ? Scheme::Dark : Scheme::Light;
+#endif
         break;
     }
     setScheme(effective);
@@ -112,8 +119,10 @@ void SafariTheme::setScheme(Scheme scheme)
         loadPalette();
         m_paletteInitialized = true;
     }
-    if (changed)
+    if (changed) {
         emit schemeChanged();
+        emit themeSchemeChanged();
+    }
 }
 
 void SafariTheme::loadPalette()

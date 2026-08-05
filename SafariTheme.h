@@ -14,8 +14,8 @@ public:
 
     static SafariTheme &instance();
 
-    Q_PROPERTY(int themeScheme READ themeScheme NOTIFY schemeChanged)
-    Q_PROPERTY(int themePreference READ themePreference NOTIFY schemeChanged)
+    Q_PROPERTY(int themeScheme READ themeScheme NOTIFY themeSchemeChanged)
+    Q_PROPERTY(int themePreference READ themePreference NOTIFY themeSchemeChanged)
 
     Scheme scheme() const { return m_scheme; }
     int themeScheme() const { return static_cast<int>(m_scheme); }
@@ -51,6 +51,7 @@ public:
 
 signals:
     void schemeChanged();
+    void themeSchemeChanged();
 
 private:
     explicit SafariTheme(QObject *parent = nullptr);
