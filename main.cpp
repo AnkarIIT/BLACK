@@ -1,6 +1,7 @@
 #include <QApplication>
 #include <QGuiApplication>
 #include <QScreen>
+#include <QStandardPaths>
 #include <QWebEngineProfile>
 #include <QWebEngineSettings>
 #include "BrowserWindow.h"
@@ -13,8 +14,14 @@ int main(int argc, char *argv[])
     app.setApplicationName("BLACK");
     app.setOrganizationName("BLACK");
     app.setApplicationDisplayName("BLACK");
+    app.setWindowIcon(QIcon(":/app.png"));
 
-    QWebEngineProfile *profile = QWebEngineProfile::defaultProfile();
+    QWebEngineProfile *profile = BrowserWindow::webProfile();
+    const QString storageDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/QtWebEngine");
+    profile->setPersistentStoragePath(storageDir);
+    profile->setCachePath(storageDir + QStringLiteral("/Cache"));
+    profile->setPersistentCookiesPolicy(QWebEngineProfile::ForcePersistentCookies);
+
     QWebEngineSettings *settings = profile->settings();
     settings->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, true);
     settings->setAttribute(QWebEngineSettings::PluginsEnabled, false);
@@ -24,7 +31,7 @@ int main(int argc, char *argv[])
     settings->setAttribute(QWebEngineSettings::WebGLEnabled, true);
     settings->setAttribute(QWebEngineSettings::Accelerated2dCanvasEnabled, true);
 
-    profile->setHttpUserAgent(QStringLiteral("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15"));
+    profile->setHttpUserAgent(QStringLiteral("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.167 Safari/537.36 BLACK/1.0"));
 
     TrackerBlocker::instance().loadData();
     profile->setUrlRequestInterceptor(&TrackerBlocker::instance());

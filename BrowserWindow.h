@@ -53,6 +53,8 @@ public:
     explicit BrowserWindow(bool incognito = false, QWidget *parent = nullptr);
     ~BrowserWindow() override;
 
+    static QWebEngineProfile *webProfile();
+
 protected:
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
@@ -117,6 +119,13 @@ private:
 
     QWidget* buildOverviewCard(int index);
 
+    void navigateCurrentTo(const QUrl &url);
+    void openSidebarAction(const QString &action);
+    void setSidebarActive(const QString &action);
+    void styleSidebarItems();
+    QLabel* sidebarItemTextForAction(const QString &action);
+    void filterOverviewGrid(const QString &query);
+
     QStackedWidget *m_tabStack;
     QLineEdit      *m_urlBar;
     QFrame         *m_urlContainer;
@@ -149,6 +158,7 @@ private:
     QWidget     *m_overviewGrid;
     QGridLayout *m_overviewGridLayout;
     QLabel      *m_overviewTitle;
+    QLineEdit   *m_overviewSearch;
     QPushButton *m_overviewDoneButton;
     QPushButton *m_overviewNewTabButton;
     bool         m_overviewVisible;
@@ -157,6 +167,7 @@ private:
     QVBoxLayout  *m_sidebarLayout;
     QLineEdit    *m_sidebarSearch;
     bool          m_sidebarVisible;
+    QString       m_activeSidebarAction;
     QList<QFrame*> m_sidebarItems;
     QList<QLabel*> m_sidebarItemIcons;
     QList<QLabel*> m_sidebarItemTexts;

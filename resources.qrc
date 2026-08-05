@@ -1,5 +1,10 @@
 <RCC>
     <qresource prefix="/">
         <file>startpage.html</file>
+        <file>settings.html</file>
+        <file>extensions.html</file>
+        <file>features.html</file>
+        <file>privacyreport.html</file>
+        <file>app.ico</file>
     </qresource>
 </RCC>

@@ -81,13 +81,27 @@ void SafariTheme::setPreference(Preference preference)
         return;
     m_preference = preference;
 
+    // Read-modify-write so the "general" settings block (BrowserSettings) is preserved.
     QJsonObject obj;
-    obj.insert(QStringLiteral("theme"), preferenceToString(preference));
     QFile file(settingsFile());
+    if (file.open(QIODevice::ReadOnly)) {
+        const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+        if (doc.isObject())
+            obj = doc.object();
+        file.close();
+    }
+    obj.insert(QStringLiteral("theme"), preferenceToString(preference));
     if (file.open(QIODevice::WriteOnly))
         file.write(QJsonDocument(obj).toJson());
 
     refreshScheme();
+}
+
+void SafariTheme::setThemePreference(int preference)
+{
+    if (preference < 0 || preference > 2)
+        return;
+    setPreference(static_cast<Preference>(preference));
 }
 
 void SafariTheme::setScheme(Scheme scheme)

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extensions</title>
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <style>
+        :root {
+            --bg-window: #f5f5f7;
+            --bg-card: #ffffff;
+            --accent: #0066cc;
+            --text-primary: #1d1d1f;
+            --text-secondary: #86868b;
+            --border: rgba(0,0,0,0.08);
+            --hairline: rgba(0,0,0,0.06);
+            --radius: 12px;
+        }
+
+        html.black-forced-dark {
+            color-scheme: dark;
+            --bg-window: #1e1e20;
+            --bg-card: #2c2c2e;
+            --accent: #0a84ff;
+            --text-primary: #f5f5f7;
+            --text-secondary: #98989d;
+            --border: rgba(255,255,255,0.12);
+            --hairline: rgba(255,255,255,0.09);
+        }
+
+        html.black-forced-light { color-scheme: light; }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+            background-color: var(--bg-window);
+            color: var(--text-primary);
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 40px 32px 60px;
+        }
+
+        .page-title {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+            margin-bottom: 8px;
+        }
+
+        .page-sub {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            margin-bottom: 24px;
+        }
+
+        .empty-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 28px;
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .ext-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 14px;
+            background: var(--accent);
+            margin: 0 auto 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="page-title">Extensions</h1>
+        <p class="page-sub">Supercharge your Safari browsing with extensions that can find discounts, block ads and more.</p>
+        <div class="empty-card">
+            <div class="ext-icon">
+                <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 7l-3 3-4-1-2 2 4 1-1 4 2 2 1-4 3 3z"/></svg>
+            </div>
+            No extensions installed.<br>
+            Extension support is coming soon.
+        </div>
+    </div>
+
+    <script>
+        if (typeof QWebChannel !== 'undefined') {
+            new QWebChannel(qt.webChannelTransport, function (channel) {
+                const theme = channel.objects.theme;
+                const applyTheme = function () {
+                    const el = document.documentElement;
+                    const dark = (theme.themeScheme === 1);
+                    el.classList.toggle('black-forced-dark', dark);
+                    el.classList.toggle('black-forced-light', !dark);
+                };
+                theme.themeSchemeChanged.connect(applyTheme);
+                applyTheme();
+            });
+        }
+    </script>
+</body>
+</html>

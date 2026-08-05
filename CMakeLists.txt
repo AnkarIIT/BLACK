@@ -16,10 +16,21 @@ qt_add_executable(BLACK
     SafariWebView.h
     SafariTheme.cpp
     SafariTheme.h
+    BrowserSettings.cpp
+    BrowserSettings.h
     TrackerBlocker.cpp
     TrackerBlocker.h
-    resources.qrc
     resources.rc
+)
+
+qt_add_resources(BLACK "resources" PREFIX "/" BASE "${CMAKE_CURRENT_SOURCE_DIR}"
+    FILES
+        startpage.html
+        settings.html
+        extensions.html
+        features.html
+        privacyreport.html
+        app.png
 )
 
 target_link_libraries(BLACK PRIVATE

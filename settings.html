@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings</title>
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <style>
+        :root {
+            --bg-window: #f5f5f7;
+            --bg-card: #ffffff;
+            --accent: #0066cc;
+            --text-primary: #1d1d1f;
+            --text-secondary: #86868b;
+            --text-tertiary: #aeaeb2;
+            --border: rgba(0,0,0,0.08);
+            --hairline: rgba(0,0,0,0.06);
+            --control-bg: rgba(0,0,0,0.05);
+            --radius: 12px;
+        }
+
+        html.black-forced-dark {
+            color-scheme: dark;
+            --bg-window: #1e1e20;
+            --bg-card: #2c2c2e;
+            --accent: #0a84ff;
+            --text-primary: #f5f5f7;
+            --text-secondary: #98989d;
+            --text-tertiary: #6e6e73;
+            --border: rgba(255,255,255,0.12);
+            --hairline: rgba(255,255,255,0.09);
+            --control-bg: rgba(255,255,255,0.08);
+        }
+
+        html.black-forced-light { color-scheme: light; }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+            background-color: var(--bg-window);
+            color: var(--text-primary);
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 40px 32px 60px;
+        }
+
+        .page-title {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+            margin-bottom: 20px;
+        }
+
+        .group-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin: 24px 4px 8px;
+        }
+
+        .group {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            overflow: hidden;
+        }
+
+        .row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 13px 18px;
+            min-height: 46px;
+        }
+
+        .row + .row { border-top: 1px solid var(--hairline); }
+
+        .row-label {
+            font-size: 14px;
+            color: var(--text-primary);
+        }
+
+        .row-label .badge {
+            display: inline-block;
+            margin-right: 8px;
+            font-size: 11px;
+            font-weight: 700;
+            background: var(--accent);
+            color: #fff;
+            border-radius: 6px;
+            padding: 2px 7px;
+            vertical-align: middle;
+        }
+
+        .row-desc {
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.4;
+            padding: 10px 18px 14px;
+        }
+
+        select {
+            font-family: inherit;
+            font-size: 13px;
+            color: var(--text-primary);
+            background: var(--control-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 6px 10px;
+            min-width: 180px;
+            outline: none;
+        }
+
+        .btn {
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-primary);
+            background: var(--control-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 6px 14px;
+            cursor: pointer;
+        }
+
+        .btn:hover { background: var(--hairline); }
+
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .segmented {
+            display: flex;
+            background: var(--control-bg);
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            padding: 2px;
+        }
+
+        .segmented button {
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            background: transparent;
+            border: none;
+            border-radius: 7px;
+            padding: 5px 12px;
+            cursor: pointer;
+        }
+
+        .segmented button.active {
+            background: var(--bg-card);
+            color: var(--text-primary);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="page-title">Settings</h1>
+
+        <div class="group-title">General</div>
+        <div class="group">
+            <div class="row">
+                <span class="row-label"><span class="badge">BLACK</span>is not your default browser</span>
+                <button class="btn" id="setDefaultBtn">Set as Default&hellip;</button>
+            </div>
+            <div class="row">
+                <span class="row-label">Search Engine</span>
+                <select id="searchEngine">
+                    <option>Google</option>
+                    <option>Bing</option>
+                    <option>DuckDuckGo</option>
+                    <option>Yahoo</option>
+                </select>
+            </div>
+            <div class="row">
+                <span class="row-label">New windows open with</span>
+                <select id="newWindowsWith">
+                    <option>Start Page</option>
+                    <option>Favourites</option>
+                    <option>Set to Current Page</option>
+                </select>
+            </div>
+            <div class="row">
+                <span class="row-label">New tabs open with</span>
+                <select id="newTabsWith">
+                    <option>Start Page</option>
+                    <option>Favourites</option>
+                    <option>Set to Current Page</option>
+                </select>
+            </div>
+            <div class="row">
+                <span class="row-label">Remove history items</span>
+                <select id="removeHistoryItems">
+                    <option>After one year</option>
+                    <option>After one month</option>
+                    <option>After one week</option>
+                    <option>After one day</option>
+                </select>
+            </div>
+            <div class="row">
+                <span class="row-label">Remove download list items</span>
+                <select id="removeDownloadListItems">
+                    <option>After one day</option>
+                    <option>On Quit</option>
+                    <option>Manually</option>
+                </select>
+            </div>
+            <div class="row">
+                <div class="checkbox-row">
+                    <input type="checkbox" id="openSafeFiles">
+                    <span class="row-label">Open &ldquo;safe&rdquo; files after downloading</span>
+                </div>
+            </div>
+        </div>
+        <div class="row-desc">Safe files include movies, pictures, sounds, PDF and text documents, and archives.</div>
+
+        <div class="group-title">Appearance</div>
+        <div class="group">
+            <div class="row">
+                <span class="row-label">Theme</span>
+                <div class="segmented" id="themeSeg">
+                    <button data-theme="0">System</button>
+                    <button data-theme="1">Light</button>
+                    <button data-theme="2">Dark</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function setSelect(id, value) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            let idx = -1;
+            for (let i = 0; i < el.options.length; i++) {
+                if (el.options[i].value === value) { idx = i; break; }
+            }
+            if (idx < 0) idx = 0;
+            el.selectedIndex = idx;
+        }
+
+        function bindSelect(id, key, settings) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.addEventListener('change', function () { settings.setValue(key, el.value); });
+        }
+
+        if (typeof QWebChannel !== 'undefined') {
+            new QWebChannel(qt.webChannelTransport, function (channel) {
+                const settings = channel.objects.browserSettings;
+                const theme = channel.objects.theme;
+
+                setSelect('searchEngine', settings.searchEngine);
+                setSelect('newWindowsWith', settings.newWindowsWith);
+                setSelect('newTabsWith', settings.newTabsWith);
+                setSelect('removeHistoryItems', settings.removeHistoryItems);
+                setSelect('removeDownloadListItems', settings.removeDownloadListItems);
+
+                const safe = document.getElementById('openSafeFiles');
+                safe.checked = settings.openSafeFiles;
+                safe.addEventListener('change', function () { settings.setBool('openSafeFiles', safe.checked); });
+
+                bindSelect('searchEngine', 'searchEngine', settings);
+                bindSelect('newWindowsWith', 'newWindowsWith', settings);
+                bindSelect('newTabsWith', 'newTabsWith', settings);
+                bindSelect('removeHistoryItems', 'removeHistoryItems', settings);
+                bindSelect('removeDownloadListItems', 'removeDownloadListItems', settings);
+
+                document.getElementById('setDefaultBtn').addEventListener('click', function () {
+                    settings.openDefaultBrowserSettings();
+                });
+
+                const updateThemeSeg = function () {
+                    const buttons = document.querySelectorAll('#themeSeg button');
+                    buttons.forEach(function (b) {
+                        b.classList.toggle('active', parseInt(b.dataset.theme, 10) === theme.themePreference);
+                    });
+                };
+                theme.themeSchemeChanged.connect(updateThemeSeg);
+                updateThemeSeg();
+
+                document.querySelectorAll('#themeSeg button').forEach(function (b) {
+                    b.addEventListener('click', function () {
+                        theme.setThemePreference(parseInt(b.dataset.theme, 10));
+                    });
+                });
+
+                const applyTheme = function () {
+                    const el = document.documentElement;
+                    const dark = (theme.themeScheme === 1);
+                    el.classList.toggle('black-forced-dark', dark);
+                    el.classList.toggle('black-forced-light', !dark);
+                };
+                theme.themeSchemeChanged.connect(applyTheme);
+                applyTheme();
+            });
+        }
+    </script>
+</body>
+</html>

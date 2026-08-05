@@ -9,367 +9,249 @@
         :root {
             --bg-window: #f5f5f7;
             --bg-card: #ffffff;
-            --bg-input: #ffffff;
             --accent: #0066cc;
             --text-primary: #1d1d1f;
             --text-secondary: #86868b;
             --text-tertiary: #aeaeb2;
             --border: rgba(0,0,0,0.08);
             --shadow: 0 1px 3px rgba(0,0,0,0.06);
-            --shadow-hover: 0 4px 12px rgba(0,0,0,0.1);
             --radius: 12px;
-            --radius-sm: 8px;
         }
 
-        @media (prefers-color-scheme: dark) {
-            :root {
-                --bg-window: #1e1e20;
-                --bg-card: #2c2c2e;
-                --bg-input: #3a3a3c;
-                --accent: #0a84ff;
-                --text-primary: #f5f5f7;
-                --text-secondary: #98989d;
-                --text-tertiary: #6e6e73;
-                --border: rgba(255,255,255,0.12);
-                --shadow: 0 1px 3px rgba(0,0,0,0.4);
-                --shadow-hover: 0 4px 12px rgba(0,0,0,0.5);
-            }
-
-            .search-input:focus {
-                box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.3);
-            }
-
-            .shield-icon {
-                background: rgba(10, 132, 255, 0.15);
-            }
-        }
-
-        /* Forced theme (set by the browser when it differs from the OS) */
         html.black-forced-dark {
             color-scheme: dark;
             --bg-window: #1e1e20;
             --bg-card: #2c2c2e;
-            --bg-input: #3a3a3c;
             --accent: #0a84ff;
             --text-primary: #f5f5f7;
             --text-secondary: #98989d;
             --text-tertiary: #6e6e73;
             --border: rgba(255,255,255,0.12);
             --shadow: 0 1px 3px rgba(0,0,0,0.4);
-            --shadow-hover: 0 4px 12px rgba(0,0,0,0.5);
-        }
-
-        html.black-forced-dark .shield-icon {
-            background: rgba(10, 132, 255, 0.15);
         }
 
         html.black-forced-light {
             color-scheme: light;
         }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
             background-color: var(--bg-window);
             color: var(--text-primary);
             min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 60px 40px 40px;
             -webkit-font-smoothing: antialiased;
         }
 
         .container {
-            max-width: 860px;
-            width: 100%;
-        }
-
-        .greeting {
-            text-align: center;
-            margin-bottom: 40px;
-        }
-
-        .greeting h1 {
-            font-size: 32px;
-            font-weight: 600;
-            color: var(--text-primary);
-            margin-bottom: 6px;
-            letter-spacing: -0.5px;
-        }
-
-        .greeting p {
-            font-size: 15px;
-            color: var(--text-secondary);
-        }
-
-        .search-container {
-            text-align: center;
-            margin-bottom: 44px;
-        }
-
-        .search-box {
-            max-width: 560px;
+            max-width: 920px;
             margin: 0 auto;
-            position: relative;
+            padding: 48px 40px 60px;
         }
 
-        .search-icon {
-            position: absolute;
-            left: 14px;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 16px;
-            height: 16px;
-            color: var(--text-tertiary);
-        }
-
-        .search-input {
-            width: 100%;
-            padding: 12px 44px 12px 40px;
-            font-size: 15px;
-            font-family: inherit;
-            background-color: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            color: var(--text-primary);
-            outline: none;
-            transition: border-color 0.2s, box-shadow 0.2s;
-            box-shadow: var(--shadow);
-        }
-
-        .search-input::placeholder {
-            color: var(--text-tertiary);
-        }
-
-        .search-input:focus {
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.15);
-        }
-
-        .section {
-            margin-bottom: 36px;
-        }
-
+        /* Section headers (Safari-style: chevron + bold label) */
         .section-header {
             display: flex;
             align-items: center;
             gap: 6px;
-            margin-bottom: 16px;
-            padding: 0 4px;
+            margin: 0 4px 12px;
+        }
+
+        .section-chevron {
+            font-size: 12px;
+            line-height: 1;
+            color: var(--text-tertiary);
+            transition: transform 0.15s ease;
+        }
+
+        .section-header.open .section-chevron {
+            transform: rotate(90deg);
         }
 
         .section-title {
             font-size: 13px;
             font-weight: 600;
             color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
         }
 
-        .section-chevron {
-            font-size: 10px;
-            color: var(--text-tertiary);
-        }
+        .section { margin-bottom: 32px; }
 
+        /* Favourites grid */
         .favorites-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
-            gap: 16px;
+            grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+            gap: 8px;
         }
 
         .favorite-item {
             display: flex;
             flex-direction: column;
             align-items: center;
+            gap: 6px;
+            padding: 10px 6px 8px;
+            border-radius: 10px;
             text-decoration: none;
             color: inherit;
-            transition: transform 0.15s ease;
-            padding: 8px;
-            border-radius: var(--radius);
-            cursor: pointer;
+            transition: background 0.15s ease;
         }
 
-        .favorite-item:hover {
-            transform: translateY(-2px);
-        }
-
-        .favorite-item:active {
-            transform: scale(0.96);
-        }
+        .favorite-item:hover { background: var(--border); }
 
         .icon-box {
-            width: 56px;
-            height: 56px;
-            background-color: var(--bg-card);
-            border-radius: var(--radius);
+            width: 52px;
+            height: 52px;
+            border-radius: 13px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-bottom: 8px;
             font-weight: 700;
-            font-size: 22px;
+            font-size: 20px;
             color: var(--text-primary);
-            box-shadow: var(--shadow);
-            transition: box-shadow 0.2s;
-            border: 1px solid var(--border);
-        }
-
-        .favorite-item:hover .icon-box {
-            box-shadow: var(--shadow-hover);
         }
 
         .favorite-name {
             font-size: 11px;
             font-weight: 500;
-            text-align: center;
             color: var(--text-secondary);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            max-width: 80px;
+            max-width: 84px;
         }
 
+        /* Privacy Report card */
         .report-card {
-            background-color: var(--bg-card);
-            border-radius: var(--radius);
-            padding: 20px 24px;
+            background: var(--bg-card);
             border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .report-head {
             display: flex;
             align-items: center;
-            gap: 16px;
-            box-shadow: var(--shadow);
+            gap: 14px;
+            padding: 18px 20px;
         }
 
         .shield-icon {
-            width: 44px;
-            height: 44px;
-            display: grid;
-            place-items: center;
+            width: 40px;
+            height: 40px;
             border-radius: 10px;
-            background: rgba(0, 102, 204, 0.08);
-            color: var(--accent);
-            font-size: 22px;
+            background: var(--accent);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             flex-shrink: 0;
         }
 
-        .report-text {
-            flex: 1;
+        .report-number {
+            font-size: 26px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            min-width: 40px;
         }
 
         .report-title {
             font-size: 14px;
             font-weight: 600;
-            margin-bottom: 3px;
             color: var(--text-primary);
         }
 
-        .report-desc {
-            font-size: 13px;
-            color: var(--text-secondary);
-            line-height: 1.4;
+        .report-sub {
+            font-size: 12px;
+            color: var(--text-tertiary);
         }
 
+        .report-chevron { margin-left: auto; color: var(--text-tertiary); font-size: 18px; }
+
+        .report-body { border-top: 1px solid var(--border); }
+
+        .report-cols {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .report-col {
+            padding: 16px 20px;
+        }
+
+        .report-col + .report-col {
+            border-left: 1px solid var(--border);
+        }
+
+        .col-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            color: var(--text-tertiary);
+            margin-bottom: 6px;
+        }
+
+        .col-value {
+            font-size: 17px;
+            font-weight: 600;
+            color: var(--accent);
+            word-break: break-all;
+        }
+
+        .col-sub {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        /* Reading List card */
         .reading-card {
-            background-color: var(--bg-card);
-            border-radius: var(--radius);
-            padding: 20px 24px;
+            background: var(--bg-card);
             border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 18px 20px;
             display: flex;
             align-items: center;
-            gap: 16px;
-            box-shadow: var(--shadow);
+            gap: 14px;
         }
 
         .reading-icon {
-            width: 44px;
-            height: 44px;
-            display: grid;
-            place-items: center;
+            width: 40px;
+            height: 40px;
             border-radius: 10px;
-            background: rgba(142, 142, 147, 0.08);
-            color: var(--text-secondary);
-            font-size: 22px;
+            background: var(--text-tertiary);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             flex-shrink: 0;
-        }
-
-        .reading-text {
-            flex: 1;
         }
 
         .reading-title {
             font-size: 14px;
             font-weight: 600;
-            margin-bottom: 3px;
             color: var(--text-primary);
+            margin-bottom: 3px;
         }
 
         .reading-desc {
-            font-size: 13px;
+            font-size: 12px;
             color: var(--text-secondary);
             line-height: 1.4;
-        }
-
-        .icloud-section {
-            background-color: var(--bg-card);
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
-            box-shadow: var(--shadow);
-            overflow: hidden;
-        }
-
-        .icloud-header {
-            padding: 16px 24px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .icloud-header-icon {
-            font-size: 18px;
-            color: var(--accent);
-        }
-
-        .icloud-header-title {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-
-        .icloud-body {
-            padding: 16px 24px;
-            color: var(--text-secondary);
-            font-size: 13px;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="greeting">
-            <h1>Start Page</h1>
-            <p>Search or enter a website name</p>
-        </div>
-
-        <div class="search-container">
-            <div class="search-box">
-                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="11" cy="11" r="8"/>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                </svg>
-                <input type="text" class="search-input" placeholder="Search or enter website name" id="searchInput" autofocus>
-            </div>
-        </div>
-
         <div class="section">
-            <div class="section-header">
-                <span class="section-chevron">&#9654;</span>
-                <span class="section-title">Favorites</span>
+            <div class="section-header open">
+                <span class="section-chevron">&#9656;</span>
+                <span class="section-title">Favourites</span>
             </div>
             <div class="favorites-grid">
                 <a href="https://www.google.com" class="favorite-item">
@@ -408,92 +290,90 @@
         </div>
 
         <div class="section">
-            <div class="section-header">
-                <span class="section-chevron">&#9654;</span>
+            <div class="section-header open">
+                <span class="section-chevron">&#9656;</span>
                 <span class="section-title">Privacy Report</span>
             </div>
-                <div class="report-card">
-                    <div class="shield-icon">&#128737;</div>
-                    <div class="report-text">
-                        <div class="report-title">Privacy Protection</div>
-                        <div class="report-desc" id="privacyDesc">BLACK has blocked 0 tracker requests in the last 7 days.</div>
+            <div class="report-card">
+                <div class="report-head">
+                    <div class="shield-icon">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    </div>
+                    <div class="report-number" id="privacyCount">0</div>
+                    <div>
+                        <div class="report-title">Trackers prevented from profiling you</div>
+                        <div class="report-sub">Last 30 days</div>
+                    </div>
+                    <div class="report-chevron">&#8250;</div>
+                </div>
+                <div class="report-body">
+                    <div class="report-cols">
+                        <div class="report-col">
+                            <div class="col-label">Most contacted tracker</div>
+                            <div class="col-value" id="mostContacted">No trackers detected</div>
+                            <div class="col-sub" id="mostContactedSub">BLACK prevents trackers from profiling you</div>
+                        </div>
+                        <div class="report-col">
+                            <div class="col-label">Websites that contacted trackers</div>
+                            <div class="col-value" id="webPct">0%</div>
+                            <div class="col-sub" id="webSub">of the websites you visited</div>
+                        </div>
                     </div>
                 </div>
+            </div>
         </div>
 
-        <div class="section">
-            <div class="section-header">
-                <span class="section-chevron">&#9654;</span>
+        <div class="section" id="reading">
+            <div class="section-header open">
+                <span class="section-chevron">&#9656;</span>
                 <span class="section-title">Reading List</span>
             </div>
             <div class="reading-card">
-                <div class="reading-icon">&#128083;</div>
-                <div class="reading-text">
+                <div class="reading-icon">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18" cy="12" r="2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                </div>
+                <div>
                     <div class="reading-title">No Articles Saved</div>
                     <div class="reading-desc">Add articles to your Reading List to read later, even when you're offline.</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="section">
-            <div class="section-header">
-                <span class="section-chevron">&#9654;</span>
-                <span class="section-title">iCloud Tabs</span>
-            </div>
-            <div class="icloud-section">
-                <div class="icloud-header">
-                    <span class="icloud-header-icon">&#9883;</span>
-                    <span class="icloud-header-title">iCloud Tabs</span>
-                </div>
-                <div class="icloud-body">
-                    Sign in with your Apple ID to see tabs from your other devices.
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        const searchInput = document.getElementById('searchInput');
+        const plural = function (n, w) { return n === 1 ? n + ' website' : n + ' websites'; };
 
-        // Dynamic Greeting
-        const greetingHeader = document.querySelector('.greeting h1');
-        if (greetingHeader) {
-            const hour = new Date().getHours();
-            if (hour < 12) greetingHeader.textContent = 'Good morning';
-            else if (hour < 18) greetingHeader.textContent = 'Good afternoon';
-            else greetingHeader.textContent = 'Good evening';
+        function updatePrivacy(privacy) {
+            const count = privacy.trackersBlockedLast30Days;
+            const countEl = document.getElementById('privacyCount');
+            if (countEl) countEl.textContent = count;
+
+            const tracker = privacy.mostContactedTracker;
+            const sites = privacy.mostContactedTrackerSites;
+            const mostEl = document.getElementById('mostContacted');
+            const subEl = document.getElementById('mostContactedSub');
+            if (mostEl) mostEl.textContent = tracker;
+            if (subEl) {
+                if (tracker === 'No trackers detected')
+                    subEl.textContent = 'BLACK prevents trackers from profiling you';
+                else
+                    subEl.textContent = 'prevented from profiling you on ' + plural(sites, 'website');
+            }
+
+            const visited = privacy.websitesVisited;
+            const contacted = privacy.websitesContactedTrackers;
+            const pct = visited > 0 ? Math.round((contacted / visited) * 100) : 0;
+            const pctEl = document.getElementById('webPct');
+            if (pctEl) pctEl.textContent = pct + '%';
+            const webEl = document.getElementById('webSub');
+            if (webEl) webEl.textContent = 'of the ' + visited + ' website' + (visited === 1 ? '' : 's') + ' you visited';
         }
 
-        searchInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                const query = searchInput.value.trim();
-                if (query) {
-                    if (query.includes('.') && !query.includes(' ')) {
-                        if (query.startsWith('http://') || query.startsWith('https://')) {
-                            window.location.href = query;
-                        } else {
-                            window.location.href = 'https://' + query;
-                        }
-                    } else {
-                        window.location.href = 'https://www.google.com/search?q=' + encodeURIComponent(query);
-                    }
-                }
-            }
-        });
-
-        // Live privacy report from the native blocker
         if (typeof QWebChannel !== 'undefined') {
             new QWebChannel(qt.webChannelTransport, function (channel) {
                 const privacy = channel.objects.privacy;
-                const update = function () {
-                    const el = document.getElementById('privacyDesc');
-                    if (el) {
-                        el.textContent = 'BLACK has blocked ' + privacy.trackersBlockedThisWeek +
-                                         ' tracker requests in the last 7 days.';
-                    }
-                };
-                privacy.privacyChanged.connect(update);
-                update();
+                privacy.privacyChanged.connect(function () { updatePrivacy(privacy); });
+                updatePrivacy(privacy);
 
                 const theme = channel.objects.theme;
                 const applyTheme = function () {

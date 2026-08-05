@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Report</title>
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <style>
+        :root {
+            --bg-window: #f5f5f7;
+            --bg-card: #ffffff;
+            --accent: #0066cc;
+            --text-primary: #1d1d1f;
+            --text-secondary: #86868b;
+            --text-tertiary: #aeaeb2;
+            --border: rgba(0,0,0,0.08);
+            --hairline: rgba(0,0,0,0.06);
+            --radius: 12px;
+        }
+
+        html.black-forced-dark {
+            color-scheme: dark;
+            --bg-window: #1e1e20;
+            --bg-card: #2c2c2e;
+            --accent: #0a84ff;
+            --text-primary: #f5f5f7;
+            --text-secondary: #98989d;
+            --text-tertiary: #6e6e73;
+            --border: rgba(255,255,255,0.12);
+            --hairline: rgba(255,255,255,0.09);
+        }
+
+        html.black-forced-light { color-scheme: light; }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+            background-color: var(--bg-window);
+            color: var(--text-primary);
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 40px 32px 60px;
+        }
+
+        .page-title {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+            margin-bottom: 6px;
+        }
+
+        .page-sub {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            margin-bottom: 24px;
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 18px;
+        }
+
+        .card-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            color: var(--text-tertiary);
+            margin-bottom: 8px;
+        }
+
+        .card-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--accent);
+            word-break: break-all;
+            line-height: 1.2;
+        }
+
+        .card-sub {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+            line-height: 1.4;
+        }
+
+        .list-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin: 20px 4px 10px;
+        }
+
+        .tracker-list {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+        }
+
+        .tracker-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 13px 18px;
+        }
+
+        .tracker-row + .tracker-row { border-top: 1px solid var(--hairline); }
+
+        .tracker-host { flex: 1; font-size: 14px; font-weight: 600; word-break: break-all; }
+
+        .tracker-meta { text-align: right; }
+
+        .tracker-count { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+
+        .tracker-sites { font-size: 11px; color: var(--text-tertiary); }
+
+        .empty { color: var(--text-secondary); font-size: 13px; padding: 18px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="page-title">Privacy Report</h1>
+        <p class="page-sub" id="summary">In the last 30 days, BLACK has prevented trackers from profiling you.</p>
+
+        <div class="cards">
+            <div class="card">
+                <div class="card-label">Most contacted tracker</div>
+                <div class="card-value" id="mostContacted">No trackers detected</div>
+                <div class="card-sub" id="mostContactedSub">BLACK prevents trackers from profiling you</div>
+            </div>
+            <div class="card">
+                <div class="card-label">Websites that contacted trackers</div>
+                <div class="card-value" id="webPct">0%</div>
+                <div class="card-sub" id="webSub">of the websites you visited</div>
+            </div>
+        </div>
+
+        <div class="list-title">Trackers prevented</div>
+        <div class="tracker-list" id="trackerList">
+            <div class="empty">No trackers detected yet.</div>
+        </div>
+    </div>
+
+    <script>
+        const plural = function (n, w) { return n === 1 ? n + ' website' : n + ' websites'; };
+
+        function renderList(json) {
+            const list = document.getElementById('trackerList');
+            if (!list) return;
+            list.innerHTML = '';
+            const trackers = JSON.parse(json);
+            if (!trackers || trackers.length === 0) {
+                list.innerHTML = '<div class="empty">No trackers detected yet.</div>';
+                return;
+            }
+            trackers.forEach(function (t) {
+                const row = document.createElement('div');
+                row.className = 'tracker-row';
+                row.innerHTML = '<div class="tracker-host"></div><div class="tracker-meta"><div class="tracker-count"></div><div class="tracker-sites"></div></div>';
+                row.querySelector('.tracker-host').textContent = t.host;
+                row.querySelector('.tracker-count').textContent = t.count + (t.count === 1 ? ' request blocked' : ' requests blocked');
+                row.querySelector('.tracker-sites').textContent = 'on ' + plural(t.sites, 'website');
+                list.appendChild(row);
+            });
+        }
+
+        if (typeof QWebChannel !== 'undefined') {
+            new QWebChannel(qt.webChannelTransport, function (channel) {
+                const privacy = channel.objects.privacy;
+                const update = function () {
+                    const count = privacy.trackersBlockedLast30Days;
+                    document.getElementById('summary').textContent =
+                        'In the last 30 days, BLACK has prevented ' + count +
+                        ' tracker' + (count === 1 ? '' : 's') + ' from profiling you.';
+
+                    const tracker = privacy.mostContactedTracker;
+                    const sites = privacy.mostContactedTrackerSites;
+                    document.getElementById('mostContacted').textContent = tracker;
+                    const sub = document.getElementById('mostContactedSub');
+                    if (tracker === 'No trackers detected')
+                        sub.textContent = 'BLACK prevents trackers from profiling you';
+                    else
+                        sub.textContent = 'prevented from profiling you on ' + plural(sites, 'website');
+
+                    const visited = privacy.websitesVisited;
+                    const contacted = privacy.websitesContactedTrackers;
+                    const pct = visited > 0 ? Math.round((contacted / visited) * 100) : 0;
+                    document.getElementById('webPct').textContent = pct + '%';
+                    document.getElementById('webSub').textContent =
+                        'of the ' + visited + ' website' + (visited === 1 ? '' : 's') + ' you visited';
+
+                    renderList(privacy.trackerBreakdownJson());
+                };
+                privacy.privacyChanged.connect(update);
+                update();
+
+                const theme = channel.objects.theme;
+                const applyTheme = function () {
+                    const el = document.documentElement;
+                    const dark = (theme.themeScheme === 1);
+                    el.classList.toggle('black-forced-dark', dark);
+                    el.classList.toggle('black-forced-light', !dark);
+                };
+                theme.themeSchemeChanged.connect(applyTheme);
+                applyTheme();
+            });
+        }
+    </script>
+</body>
+</html>

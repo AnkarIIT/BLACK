@@ -15,12 +15,15 @@ public:
     static SafariTheme &instance();
 
     Q_PROPERTY(int themeScheme READ themeScheme NOTIFY schemeChanged)
+    Q_PROPERTY(int themePreference READ themePreference NOTIFY schemeChanged)
 
     Scheme scheme() const { return m_scheme; }
     int themeScheme() const { return static_cast<int>(m_scheme); }
+    int themePreference() const { return static_cast<int>(m_preference); }
     Preference preference() const { return m_preference; }
 
     void setPreference(Preference preference);
+    Q_INVOKABLE void setThemePreference(int preference);
     void refreshScheme();
     void setScheme(Scheme scheme);
 

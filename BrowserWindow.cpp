@@ -2,6 +2,7 @@
 #include "SafariWebView.h"
 #include "SafariTheme.h"
 #include "TrackerBlocker.h"
+#include "BrowserSettings.h"
 #include <QFrame>
 #include <QStyle>
 #include <QtSvg/QSvgRenderer>
@@ -97,6 +98,8 @@ static const QString svgSettings    = "<svg xmlns=\"http://www.w3.org/2000/svg\"
 static const QString svgStar        = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2\"/></svg>";
 static const QString svgUser        = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2\"/><circle cx=\"12\" cy=\"7\" r=\"4\"/></svg>";
 static const QString svgBriefcase   = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"7\" width=\"20\" height=\"14\" rx=\"2\"/><path d=\"M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16\"/></svg>";
+static const QString svgExtensions  = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 7l-3 3-4-1-2 2 4 1-1 4 2 2 1-4 3 3z\"/></svg>";
+static const QString svgFlag        = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z\"/><line x1=\"4\" y1=\"22\" x2=\"4\" y2=\"15\"/></svg>";
 
 // ── Page Theme (applied to web pages so they match the browser) ─────────────
 static const char *kPageThemeCss = "html.black-dark{color-scheme:dark;}html.black-dark{filter:invert(0.88) hue-rotate(180deg) contrast(0.92);}html.black-dark img,html.black-dark video,html.black-dark iframe,html.black-dark canvas,html.black-dark embed,html.black-dark object{filter:invert(1) hue-rotate(180deg) contrast(0.92);}html.black-light{color-scheme:light;}";
@@ -118,6 +121,12 @@ static QString truncate(const QString &s, int max = 20) {
 
 static QString shortUrl(const QString &url) {
     QString display = url;
+    if (display.startsWith(QStringLiteral("qrc:/startpage.html"))) return QStringLiteral("Start Page");
+    if (display.startsWith(QStringLiteral("qrc:/settings.html"))) return QStringLiteral("Settings");
+    if (display.startsWith(QStringLiteral("qrc:/privacyreport.html"))) return QStringLiteral("Privacy Report");
+    if (display.startsWith(QStringLiteral("qrc:/extensions.html"))) return QStringLiteral("Extensions");
+    if (display.startsWith(QStringLiteral("qrc:/features.html"))) return QStringLiteral("Features");
+    if (display.startsWith(QStringLiteral("qrc:/"))) return QStringLiteral("Start Page");
     if (display.startsWith(QStringLiteral("file://")))
         return QStringLiteral("Start Page");
     if (display.startsWith(QStringLiteral("https://")))
@@ -160,6 +169,7 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     , m_loadingBar(nullptr)
     , m_overviewOverlay(nullptr)
     , m_overviewTitle(nullptr)
+    , m_overviewSearch(nullptr)
     , m_overviewDoneButton(nullptr)
     , m_overviewNewTabButton(nullptr)
     , m_overviewVisible(false)
@@ -171,7 +181,7 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     , m_isDragging(false)
     , m_currentTabIndex(-1)
     , m_incognito(incognito)
-    , m_profile(incognito ? new QWebEngineProfile(this) : QWebEngineProfile::defaultProfile())
+    , m_profile(incognito ? new QWebEngineProfile(this) : webProfile())
     , m_webChannel(nullptr)
 {
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint |
@@ -185,6 +195,7 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     m_webChannel = new QWebChannel(this);
     m_webChannel->registerObject(QStringLiteral("privacy"), &TrackerBlocker::instance());
     m_webChannel->registerObject(QStringLiteral("theme"), &SafariTheme::instance());
+    m_webChannel->registerObject(QStringLiteral("browserSettings"), &BrowserSettings::instance());
 
     // Inject the class-based theme stylesheet into every page of this profile.
     QWebEngineScript styleScript;
@@ -202,7 +213,7 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
         s->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, true);
         s->setAttribute(QWebEngineSettings::WebGLEnabled, true);
         s->setAttribute(QWebEngineSettings::PluginsEnabled, false);
-        m_profile->setHttpUserAgent(QStringLiteral("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15"));
+        m_profile->setHttpUserAgent(QStringLiteral("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.167 Safari/537.36 BLACK/1.0"));
     }
 
     setupUi();
@@ -220,6 +231,9 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
         addNewTab(QUrl(QStringLiteral("qrc:/startpage.html")));
     }
 
+    if (QCoreApplication::arguments().contains(QStringLiteral("--sidebar")))
+        toggleSidebar();
+
     connect(m_urlBar, &QLineEdit::returnPressed, this, &BrowserWindow::navigateToUrl);
 
     connect(&SafariTheme::instance(), &SafariTheme::schemeChanged, this, [this]() {
@@ -230,6 +244,14 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
 BrowserWindow::~BrowserWindow() {
     if (!m_incognito)
         saveSession();
+}
+
+QWebEngineProfile *BrowserWindow::webProfile()
+{
+    static QWebEngineProfile *profile = []() {
+        return new QWebEngineProfile(QStringLiteral("BLACK"), nullptr);
+    }();
+    return profile;
 }
 
 // ── Window Control ──────────────────────────────────────────────────────────
@@ -320,6 +342,10 @@ void BrowserWindow::mouseDoubleClickEvent(QMouseEvent *event) {
 void BrowserWindow::resizeEvent(QResizeEvent *event) {
     QMainWindow::resizeEvent(event);
     if (m_overviewOverlay) m_overviewOverlay->setGeometry(rect());
+    if (m_sidebarVisible && m_sidebarLayout) {
+        m_sidebarLayout->invalidate();
+        m_sidebarLayout->activate();
+    }
 }
 
 void BrowserWindow::changeEvent(QEvent *event) {
@@ -549,32 +575,34 @@ void BrowserWindow::setupSidebar()
         }
     });
 
-    auto addSectionHeader = [this](const QString &title) {
+    auto addSectionHeader = [this](QVBoxLayout *lay, const QString &title) {
         QLabel *lbl = new QLabel(title, m_sidebar);
-        m_sidebarLayout->addWidget(lbl);
+        lay->addWidget(lbl);
         m_sidebarHeaders.append(lbl);
     };
 
-    auto addSidebarItem = [this](const QString &svg, const QString &text, bool isActive = false) -> QFrame* {
+    auto addSidebarItem = [this](QVBoxLayout *lay, const QString &svg, const QString &text, const QString &action, bool isActive = false) -> QFrame* {
         QFrame *item = new QFrame(m_sidebar);
         item->setFixedHeight(28);
         item->setCursor(Qt::PointingHandCursor);
         item->setProperty("sidebarActive", isActive);
+        item->setProperty("sidebarAction", action);
+        item->installEventFilter(this);
 
-        QHBoxLayout *lay = new QHBoxLayout(item);
-        lay->setContentsMargins(8, 2, 8, 2);
-        lay->setSpacing(6);
+        QHBoxLayout *itemLay = new QHBoxLayout(item);
+        itemLay->setContentsMargins(8, 2, 8, 2);
+        itemLay->setSpacing(6);
 
         QLabel *iconLbl = new QLabel(item);
         iconLbl->setFixedSize(18, 18);
         iconLbl->setAlignment(Qt::AlignCenter);
         iconLbl->setPixmap(createSvgIcon(svg, 18, isActive ? accent() : textPrimary()).pixmap(18, 18));
-        lay->addWidget(iconLbl);
+        itemLay->addWidget(iconLbl);
 
         QLabel *textLbl = new QLabel(text, item);
-        lay->addWidget(textLbl, 1);
+        itemLay->addWidget(textLbl, 1);
 
-        m_sidebarLayout->addWidget(item);
+        lay->addWidget(item);
         m_sidebarItems.append(item);
         m_sidebarItemIcons.append(iconLbl);
         m_sidebarItemTexts.append(textLbl);
@@ -582,32 +610,115 @@ void BrowserWindow::setupSidebar()
         return item;
     };
 
-    // Tab Groups
-    addSectionHeader(QStringLiteral("Tab Groups"));
-    addSidebarItem(svgTabOverview, QStringLiteral("All Tabs"), true);
-    addSidebarItem(svgUser, QStringLiteral("Personal"));
-    addSidebarItem(svgBriefcase, QStringLiteral("Work"));
+    // Top section stretches; bottom section stays pinned to the bottom.
+    auto *sidebarTop = new QWidget(m_sidebar);
+    auto *sidebarTopLayout = new QVBoxLayout(sidebarTop);
+    sidebarTopLayout->setContentsMargins(0, 0, 0, 0);
+    sidebarTopLayout->setSpacing(4);
 
-    m_sidebarLayout->addSpacing(8);
+    sidebarTopLayout->addWidget(m_sidebarSearch);
+    sidebarTopLayout->addSpacing(8);
 
-    // Bookmarks
-    addSectionHeader(QStringLiteral("Bookmarks"));
-    addSidebarItem(svgStar, QStringLiteral("Favorites"));
-    addSidebarItem(svgBookmarks, QStringLiteral("Bookmarks"));
-    addSidebarItem(svgReadingList, QStringLiteral("Reading List"));
+    // Favourites
+    addSectionHeader(sidebarTopLayout, QStringLiteral("Favourites"));
+    addSidebarItem(sidebarTopLayout, svgStar, QStringLiteral("Favourites"), QStringLiteral("start"), true);
 
-    m_sidebarLayout->addSpacing(8);
+    // Reading List
+    addSectionHeader(sidebarTopLayout, QStringLiteral("Reading List"));
+    addSidebarItem(sidebarTopLayout, svgReadingList, QStringLiteral("Reading List"), QStringLiteral("reading"));
+    addSidebarItem(sidebarTopLayout, svgShield, QStringLiteral("Privacy Report"), QStringLiteral("privacy"));
+
+    sidebarTopLayout->addSpacing(8);
 
     // Recently Closed
-    addSectionHeader(QStringLiteral("Recently Closed"));
-    addSidebarItem(svgHistory, QStringLiteral("No recent items"));
+    addSectionHeader(sidebarTopLayout, QStringLiteral("Recently Closed"));
+    addSidebarItem(sidebarTopLayout, svgHistory, QStringLiteral("No recent items"), QStringLiteral("recent"));
 
-    m_sidebarLayout->addSpacing(8);
+    sidebarTopLayout->addStretch();
 
-    // iCloud
-    addSidebarItem(svgiCloud, QStringLiteral("iCloud Tabs"));
+    auto *sidebarBottom = new QWidget(m_sidebar);
+    auto *sidebarBottomLayout = new QVBoxLayout(sidebarBottom);
+    sidebarBottomLayout->setContentsMargins(0, 0, 0, 0);
+    sidebarBottomLayout->setSpacing(4);
 
-    m_sidebarLayout->addStretch();
+    // Bottom section
+    addSidebarItem(sidebarBottomLayout, svgSettings, QStringLiteral("Settings"), QStringLiteral("settings"));
+    addSidebarItem(sidebarBottomLayout, svgExtensions, QStringLiteral("Extensions"), QStringLiteral("extensions"));
+    addSidebarItem(sidebarBottomLayout, svgFlag, QStringLiteral("Features"), QStringLiteral("features"));
+
+    m_sidebarLayout->addWidget(sidebarTop, 1);
+    m_sidebarLayout->addWidget(sidebarBottom, 0);
+
+    m_activeSidebarAction = QStringLiteral("start");
+}
+
+void BrowserWindow::openSidebarAction(const QString &action)
+{
+    if (action == QStringLiteral("recent")) {
+        if (!m_closedTabs.isEmpty())
+            addNewTab(m_closedTabs.takeLast());
+        setSidebarActive(action);
+        return;
+    }
+    if (action == QStringLiteral("reading")) {
+        navigateCurrentTo(QUrl(QStringLiteral("qrc:/startpage.html#reading")));
+    } else if (action == QStringLiteral("privacy")) {
+        navigateCurrentTo(QUrl(QStringLiteral("qrc:/privacyreport.html")));
+    } else if (action == QStringLiteral("settings")) {
+        navigateCurrentTo(QUrl(QStringLiteral("qrc:/settings.html")));
+    } else if (action == QStringLiteral("extensions")) {
+        navigateCurrentTo(QUrl(QStringLiteral("qrc:/extensions.html")));
+    } else if (action == QStringLiteral("features")) {
+        navigateCurrentTo(QUrl(QStringLiteral("qrc:/features.html")));
+    } else {
+        navigateCurrentTo(QUrl(QStringLiteral("qrc:/startpage.html")));
+    }
+    setSidebarActive(action);
+}
+
+void BrowserWindow::navigateCurrentTo(const QUrl &url)
+{
+    if (m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count())
+        m_tabs[m_currentTabIndex].view->setUrl(url);
+    else
+        addNewTab(url);
+}
+
+void BrowserWindow::setSidebarActive(const QString &action)
+{
+    m_activeSidebarAction = action;
+    for (int i = 0; i < m_sidebarItems.count(); ++i) {
+        bool isActive = (m_sidebarItems[i]->property("sidebarAction").toString() == action);
+        m_sidebarItems[i]->setProperty("sidebarActive", isActive);
+    }
+    styleSidebarItems();
+}
+
+QLabel* BrowserWindow::sidebarItemTextForAction(const QString &action)
+{
+    for (int i = 0; i < m_sidebarItems.count(); ++i) {
+        if (m_sidebarItems[i]->property("sidebarAction").toString() == action)
+            return m_sidebarItemTexts.value(i);
+    }
+    return nullptr;
+}
+
+void BrowserWindow::styleSidebarItems()
+{
+    for (int i = 0; i < m_sidebarItems.count(); ++i) {
+        const bool isActive = m_sidebarItems[i]->property("sidebarActive").toBool();
+        m_sidebarItems[i]->setStyleSheet(QString(
+            "QFrame { background-color: %1; border-radius: 6px; }"
+            "QFrame:hover { background-color: %2; }"
+        ).arg(isActive ? selectedBg() : QStringLiteral("transparent"), hover()));
+        if (i < m_sidebarItemSvg.count() && i < m_sidebarItemIcons.count()) {
+            m_sidebarItemIcons[i]->setPixmap(
+                createSvgIcon(m_sidebarItemSvg[i], 18, isActive ? accent() : textPrimary()).pixmap(18, 18));
+        }
+        m_sidebarItemTexts[i]->setStyleSheet(QString(
+            "font-size: 13px; color: %1; font-weight: %2; background: transparent;"
+        ).arg(isActive ? accent() : textPrimary(), isActive ? "600" : "400"));
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -638,6 +749,12 @@ void BrowserWindow::setupTabOverlay()
     connect(m_overviewDoneButton, &QPushButton::clicked, this, &BrowserWindow::hideTabOverview);
     hdr->addWidget(m_overviewDoneButton);
     panelLayout->addLayout(hdr);
+
+    // Search tabs field
+    m_overviewSearch = new QLineEdit(m_overviewPanel);
+    m_overviewSearch->setPlaceholderText(QStringLiteral("Search Tabs"));
+    panelLayout->addWidget(m_overviewSearch);
+    connect(m_overviewSearch, &QLineEdit::textChanged, this, &BrowserWindow::filterOverviewGrid);
 
     // Scroll area with grid
     m_overviewScroll = new QScrollArea(m_overviewPanel);
@@ -675,6 +792,8 @@ void BrowserWindow::showTabOverview()
     }
 
     m_overviewVisible = true;
+    if (m_overviewSearch)
+        m_overviewSearch->clear();
     rebuildOverviewGrid();
 
     int pw = qMin(width() - 80, 900);
@@ -789,6 +908,26 @@ void BrowserWindow::rebuildOverviewGrid()
         QWidget *card = buildOverviewCard(i);
         m_overviewGridLayout->addWidget(card, row, col);
         if (++col >= columns) { col = 0; row++; }
+    }
+    filterOverviewGrid(m_overviewSearch ? m_overviewSearch->text() : QString());
+}
+
+void BrowserWindow::filterOverviewGrid(const QString &query)
+{
+    const QString q = query.trimmed().toLower();
+    for (int i = 0; i < m_overviewGridLayout->count(); ++i) {
+        QWidget *card = m_overviewGridLayout->itemAt(i)->widget();
+        if (!card) continue;
+        bool visible = true;
+        if (!q.isEmpty()) {
+            const int idx = card->property("tabIndex").toInt();
+            if (idx >= 0 && idx < m_tabs.count()) {
+                const TabInfo &tab = m_tabs[idx];
+                const QString title = tab.title.isEmpty() ? QStringLiteral("New Tab") : tab.title;
+                visible = title.toLower().contains(q) || shortUrl(tab.url).toLower().contains(q);
+            }
+        }
+        card->setVisible(visible);
     }
 }
 
@@ -933,8 +1072,9 @@ void BrowserWindow::closeTab(int index) {
         m_closedTabs.append(closedUrl);
         while (m_closedTabs.count() > 20)
             m_closedTabs.removeFirst();
-        if (m_sidebarItemTexts.count() > 6 && m_sidebarItemTexts[6])
-            m_sidebarItemTexts[6]->setText(truncate(shortUrl(closedUrl.toString()), 22));
+        QLabel *recentLbl = sidebarItemTextForAction(QStringLiteral("recent"));
+        if (recentLbl)
+            recentLbl->setText(truncate(shortUrl(closedUrl.toString()), 22));
     }
 
     QWebEngineView *v = m_tabs[index].view;
@@ -1007,6 +1147,11 @@ void BrowserWindow::showSettingsMenu() {
     group->addAction(addThemeAction(QStringLiteral("Theme: Dark"), SafariTheme::Preference::Dark));
 
     menu.addSeparator();
+
+    QAction *openSettings = menu.addAction(QStringLiteral("Settings\u2026"));
+    connect(openSettings, &QAction::triggered, this, [this]() {
+        navigateCurrentTo(QUrl(QStringLiteral("qrc:/settings.html")));
+    });
 
     QAction *privateWindow = menu.addAction(QStringLiteral("New Private Window"));
     connect(privateWindow, &QAction::triggered, this, &BrowserWindow::openPrivateWindow);
@@ -1218,6 +1363,10 @@ void BrowserWindow::toggleSidebar()
 {
     m_sidebarVisible = !m_sidebarVisible;
     m_sidebar->setVisible(m_sidebarVisible);
+    if (m_sidebarVisible && m_sidebarLayout) {
+        m_sidebarLayout->invalidate();
+        m_sidebarLayout->activate();
+    }
 }
 
 void BrowserWindow::rebuildSidebarTabList()
@@ -1232,6 +1381,11 @@ bool BrowserWindow::eventFilter(QObject *obj, QEvent *event) {
     if (event->type() == QEvent::MouseButtonPress) {
         auto *w = qobject_cast<QWidget*>(obj);
         if (w) {
+            QString action = w->property("sidebarAction").toString();
+            if (!action.isEmpty()) {
+                openSidebarAction(action);
+                return true;
+            }
             QVariant v = w->property("tabIndex");
             if (v.isValid()) {
                 int idx = v.toInt();
@@ -1540,20 +1694,7 @@ void BrowserWindow::applyTheme()
             "text-transform: uppercase; letter-spacing: 0.3px;"
         ).arg(textSecondary()));
     }
-    for (int i = 0; i < m_sidebarItems.count(); ++i) {
-        const bool isActive = m_sidebarItems[i]->property("sidebarActive").toBool();
-        m_sidebarItems[i]->setStyleSheet(QString(
-            "QFrame { background-color: %1; border-radius: 6px; }"
-            "QFrame:hover { background-color: %2; }"
-        ).arg(isActive ? selectedBg() : QStringLiteral("transparent"), hover()));
-        if (i < m_sidebarItemSvg.count() && i < m_sidebarItemIcons.count()) {
-            m_sidebarItemIcons[i]->setPixmap(
-                createSvgIcon(m_sidebarItemSvg[i], 18, isActive ? accent() : textPrimary()).pixmap(18, 18));
-        }
-        m_sidebarItemTexts[i]->setStyleSheet(QString(
-            "font-size: 13px; color: %1; font-weight: %2; background: transparent;"
-        ).arg(isActive ? accent() : textPrimary(), isActive ? "600" : "400"));
-    }
+    styleSidebarItems();
 
     // Tab bar
     m_tabBar->setStyleSheet(QString(
@@ -1573,6 +1714,13 @@ void BrowserWindow::applyTheme()
         "#OverviewPanel { background-color: %1; border-radius: 14px; }"
     ).arg(bgWindow()));
     m_overviewTitle->setStyleSheet(QString("font-size: 16px; font-weight: 700; color: %1;").arg(textPrimary()));
+    if (m_overviewSearch) {
+        m_overviewSearch->setStyleSheet(QString(
+            "QLineEdit { background-color: %1; border: none; border-radius: 7px; "
+            "padding: 7px 12px; font-size: 13px; color: %2; }"
+            "QLineEdit:focus { background-color: %3; }"
+        ).arg(searchBg(), textPrimary(), hover()));
+    }
     m_overviewDoneButton->setStyleSheet(QString(
         "QPushButton { background: transparent; border: none; color: %1; font-size: 14px; font-weight: 600; }"
         "QPushButton:hover { color: %2; }"
