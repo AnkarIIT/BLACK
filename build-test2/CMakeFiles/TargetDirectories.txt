@@ -1,0 +1,6 @@
+C:/Codes/BLACK/build-test2/CMakeFiles/BLACK.dir
+C:/Codes/BLACK/build-test2/CMakeFiles/BLACK_qmlimportscan.dir
+C:/Codes/BLACK/build-test2/CMakeFiles/BLACK_autogen_timestamp_deps.dir
+C:/Codes/BLACK/build-test2/CMakeFiles/BLACK_autogen.dir
+C:/Codes/BLACK/build-test2/CMakeFiles/ALL_BUILD.dir
+C:/Codes/BLACK/build-test2/CMakeFiles/ZERO_CHECK.dir

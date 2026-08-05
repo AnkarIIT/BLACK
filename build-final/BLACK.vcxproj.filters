@@ -1,0 +1,102 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="C:\Codes\BLACK\build-final\BLACK_autogen\mocs_compilation_Debug.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Codes\BLACK\main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Codes\BLACK\BrowserWindow.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Codes\BLACK\SafariWebView.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Codes\BLACK\SafariTheme.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Codes\BLACK\BrowserSettings.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Codes\BLACK\TrackerBlocker.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Codes\BLACK\build-final\.qt\rcc\qrc_resources.cpp">
+      <Filter>Source Files\Generated</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Codes\BLACK\build-final\BLACK_autogen\mocs_compilation_Release.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Codes\BLACK\build-final\BLACK_autogen\mocs_compilation_MinSizeRel.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Codes\BLACK\build-final\BLACK_autogen\mocs_compilation_RelWithDebInfo.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="C:\Codes\BLACK\BrowserWindow.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Codes\BLACK\SafariWebView.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Codes\BLACK\SafariTheme.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Codes\BLACK\BrowserSettings.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Codes\BLACK\TrackerBlocker.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Codes\BLACK\build-final\.qt\rcc\resources.qrc">
+      <Filter>Source Files\Generated</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Codes\BLACK\login.html" />
+    <ClInclude Include="C:\Codes\BLACK\startpage_enhanced.html" />
+    <ClInclude Include="C:\Codes\BLACK\startpage.html" />
+    <ClInclude Include="C:\Codes\BLACK\settings.html" />
+    <ClInclude Include="C:\Codes\BLACK\extensions.html" />
+    <ClInclude Include="C:\Codes\BLACK\features.html" />
+    <ClInclude Include="C:\Codes\BLACK\privacyreport.html" />
+    <ClInclude Include="C:\Codes\BLACK\app.png">
+      <Filter>Resources</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Codes\BLACK\build-final\CMakeFiles\25dcd7d734596e77c4ef2a47de398b90\qrc_resources.cpp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Codes\BLACK\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="C:\Codes\BLACK\timestamp_Debug" />
+    <None Include="C:\Codes\BLACK\timestamp_Release" />
+    <None Include="C:\Codes\BLACK\timestamp_MinSizeRel" />
+    <None Include="C:\Codes\BLACK\timestamp_RelWithDebInfo" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="C:\Codes\BLACK\resources.rc">
+      <Filter>Source Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{D8EAA8E3-65C1-38D0-BBFF-B1271E13E1EC}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{94120BCB-DA82-3121-B43C-73886565A1E0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Resources">
+      <UniqueIdentifier>{9BC40774-DFC5-3466-BD2E-47FB5D5D828C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{587A19CC-6789-3C55-8EA9-6E8B3362EAFD}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Generated">
+      <UniqueIdentifier>{839E2E0D-32AF-3142-91E5-E3D7E65A0D16}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

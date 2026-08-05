@@ -1,0 +1,10 @@
+^C:\CODES\BLACK\BUILD-FINAL\CMAKEFILES\1BB44EA093C95ED02628FDA7C206DB3A\GENERATE.STAMP.RULE
+setlocal
+C:\Users\ankar\AppData\Local\Microsoft\WinGet\Packages\Kitware.CMake_Microsoft.Winget.Source_8wekyb3d8bbwe\cmake-4.4.1-windows-x86_64\bin\cmake.exe -SC:/Codes/BLACK -BC:/Codes/BLACK/build-final --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Codes/BLACK/build-final/BLACK.slnx
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

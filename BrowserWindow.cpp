@@ -254,6 +254,23 @@ QWebEngineProfile *BrowserWindow::webProfile()
     return profile;
 }
 
+// ── Public Page Loading Methods ─────────────────────────────────────────────
+void BrowserWindow::loadStartPage() {
+    if (!m_tabs.isEmpty() && m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count()) {
+        m_tabs[m_currentTabIndex].view->setUrl(QUrl(QStringLiteral("qrc:/startpage_enhanced.html")));
+    } else {
+        addNewTab(QUrl(QStringLiteral("qrc:/startpage_enhanced.html")));
+    }
+}
+
+void BrowserWindow::loadLoginPage() {
+    if (!m_tabs.isEmpty() && m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count()) {
+        m_tabs[m_currentTabIndex].view->setUrl(QUrl(QStringLiteral("qrc:/login.html")));
+    } else {
+        addNewTab(QUrl(QStringLiteral("qrc:/login.html")));
+    }
+}
+
 // ── Window Control ──────────────────────────────────────────────────────────
 void BrowserWindow::closeWindow()    { saveSession(); close(); }
 void BrowserWindow::minimizeWindow() { showMinimized(); }

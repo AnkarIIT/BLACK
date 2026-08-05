@@ -25,6 +25,8 @@ qt_add_executable(BLACK
 
 qt_add_resources(BLACK "resources" PREFIX "/" BASE "${CMAKE_CURRENT_SOURCE_DIR}"
     FILES
+        login.html
+        startpage_enhanced.html
         startpage.html
         settings.html
         extensions.html

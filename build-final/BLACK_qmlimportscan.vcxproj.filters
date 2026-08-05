@@ -1,0 +1,20 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Codes\BLACK\build-final\CMakeFiles\002d2c0de1dc94a3b52814d51803b679\BLACK_build.cmake.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Codes\BLACK\build-final\CMakeFiles\1bb44ea093c95ed02628fda7c206db3a\BLACK_qmlimportscan.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Codes\BLACK\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="C:\Codes\BLACK\build-final\CMakeFiles\BLACK_qmlimportscan" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{D8EAA8E3-65C1-38D0-BBFF-B1271E13E1EC}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

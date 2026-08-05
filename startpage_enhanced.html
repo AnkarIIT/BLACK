@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Tab - BLACK</title>
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <style>
+        :root {
+            --bg-window: #f5f5f7;
+            --bg-card: #ffffff;
+            --accent: #0a84ff;
+            --text-primary: #1d1d1f;
+            --text-secondary: #86868b;
+            --text-tertiary: #aeaeb2;
+            --border: rgba(0,0,0,0.08);
+            --shadow: 0 1px 3px rgba(0,0,0,0.06);
+            --radius: 12px;
+            --radius-sm: 8px;
+        }
+
+        html.black-forced-dark {
+            color-scheme: dark;
+            --bg-window: #1e1e20;
+            --bg-card: #2c2c2e;
+            --accent: #0a84ff;
+            --text-primary: #f5f5f7;
+            --text-secondary: #98989d;
+            --text-tertiary: #6e6e73;
+            --border: rgba(255,255,255,0.12);
+            --shadow: 0 1px 3px rgba(0,0,0,0.4);
+        }
+
+        html.black-forced-light {
+            color-scheme: light;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+            background-color: var(--bg-window);
+            color: var(--text-primary);
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 48px 32px 60px;
+        }
+
+        /* Time greeting header */
+        .header {
+            margin-bottom: 24px;
+        }
+
+        .greeting {
+            font-size: 24px;
+            font-weight: 400;
+            color: var(--text-secondary);
+        }
+
+        .search-section {
+            margin-bottom: 32px;
+        }
+
+        /* Safari-style search box */
+        .search-wrapper {
+            position: relative;
+            margin-bottom: 16px;
+        }
+
+        .search-input {
+            width: 100%;
+            max-width: 560px;
+            padding: 14px 16px 14px 48px;
+            border-radius: 24px;
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+            color: var(--text-primary);
+            font-size: 17px;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        .search-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.2);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 18px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 20px;
+            height: 20px;
+            fill: var(--text-tertiary);
+        }
+
+        /* Quick links grid */
+        .quick-links {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 12px;
+            margin-bottom: 32px;
+        }
+
+        .quick-link {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            padding: 12px 8px;
+            text-decoration: none;
+            color: inherit;
+            transition: transform 0.15s ease;
+        }
+
+        .quick-link:hover {
+            transform: translateY(-2px);
+        }
+
+        .quick-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 14px;
+            background: var(--accent);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            font-weight: 600;
+        }
+
+        .quick-name {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-align: center;
+            max-width: 80px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Sections */
+        .section {
+            margin-bottom: 28px;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .section-chevron {
+            font-size: 12px;
+            line-height: 1;
+            color: var(--text-tertiary);
+            transition: transform 0.15s ease;
+        }
+
+        .section-header.open .section-chevron {
+            transform: rotate(90deg);
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        /* Cards */
+        .report-card, .reading-card, .favorites-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .report-head, .reading-head {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 18px 20px;
+        }
+
+        /* Privacy Report */
+        .shield-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: var(--accent);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .shield-icon svg {
+            width: 22px;
+            height: 22px;
+        }
+
+        .report-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 2px;
+        }
+
+        .report-sub {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .report-number {
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            min-width: 44px;
+        }
+
+        .report-chevron { margin-left: auto; color: var(--text-tertiary); font-size: 18px; }
+
+        .report-body { border-top: 1px solid var(--border); }
+
+        .report-cols { display: grid; grid-template-columns: 1fr 1fr; }
+
+        .report-col { padding: 16px 20px; }
+
+        .report-col + .report-col { border-left: 1px solid var(--border); }
+
+        .col-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-tertiary); margin-bottom: 6px; }
+
+        .col-value { font-size: 16px; font-weight: 600; color: var(--accent); word-break: break-all; }
+
+        .col-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+        /* Reading List */
+        .reading-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 18px 20px;
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+        }
+
+        .reading-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: var(--text-tertiary);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .reading-icon svg { width: 22px; height: 22px; }
+
+        .reading-title { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 3px; }
+
+        .reading-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.4; }
+
+        /* Tab Groups Section */
+        .tabgroups-section {
+            margin-top: 12px;
+        }
+
+        .tabgroups-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 12px;
+        }
+
+        .tabgroup-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px;
+            box-shadow: var(--shadow);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tabgroup-card:hover {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+        }
+
+        .tabgroup-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .tabgroup-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+
+        .tabgroup-tab {
+            background: rgba(0,0,0,0.04);
+            color: var(--text-secondary);
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: var(--radius-sm);
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* Notify Me Section */
+        .notify-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+            background: var(--accent);
+            color: #fff;
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .notify-card:hover {
+            opacity: 0.95;
+        }
+
+        .notify-icon {
+            width: 24px;
+            height: 24px;
+            fill: #fff;
+        }
+
+        .notify-text {
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        /* Favorites Grid */
+        .favorites-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+            gap: 12px;
+        }
+
+        .favorite-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 4px 8px;
+            text-decoration: none;
+            color: inherit;
+            transition: background 0.15s ease;
+        }
+
+        .favorite-item:hover { background: var(--border); }
+
+        .icon-box {
+            width: 54px;
+            height: 54px;
+            border-radius: 14px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 20px;
+            color: var(--text-primary);
+        }
+
+        .favorite-name {
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 80px;
+            text-align: center;
+        }
+
+        /* Background pattern for cards */
+        .card-pattern {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            opacity: 0.04;
+            background-image: radial-gradient(circle at 20% 20%, #fff 1px, transparent 1px),
+                              radial-gradient(circle at 80% 80%, #fff 1px, transparent 1px);
+            background-size: 20px 20px;
+            pointer-events: none;
+        }
+
+        /* Safari-style scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-card);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--accent);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--accentHover);
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .container {
+                padding: 32px 16px 48px;
+            }
+
+            .section-header {
+                font-size: 13px;
+            }
+
+            .report-number {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="greeting" id="greeting">Good morning,</div>
+        </div>
+
+        <!-- Search Section -->
+        <div class="search-section">
+            <div class="search-wrapper">
+                <svg class="search-icon" viewBox="0 0 24 24">
+                    <path d="M21 21l-4.35-4.35m1.35-5.65A7 7 0 1 0 9.5 3a7 7 0 0 0 7 7 7 7 0 0 0 5.65-1.35z"/>
+                </svg>
+                <input type="text" class="search-input" id="searchInput" placeholder="Search or enter website name">
+            </div>
+            
+            <!-- Quick Links -->
+            <div class="quick-links">
+                <a href="https://www.google.com" class="quick-link">
+                    <div class="quick-icon">G</div>
+                    <div class="quick-name">Google</div>
+                </a>
+                <a href="https://mail.google.com" class="quick-link">
+                    <div class="quick-icon" style="background:#ea4335;">M</div>
+                    <div class="quick-name">Gmail</div>
+                </a>
+                <a href="https://calendar.google.com" class="quick-link">
+                    <div class="quick-icon" style="background:#4285f4;">C</div>
+                    <div class="quick-name">Calendar</div>
+                </a>
+                <a href="https://photos.google.com" class="quick-link">
+                    <div class="quick-icon" style="background:#4285f4;">P</div>
+                    <div class="quick-name">Photos</div>
+                </a>
+                <a href="https://notes.apple.com" class="quick-link">
+                    <div class="quick-icon" style="background:#000;">N</div>
+                    <div class="quick-name">Notes</div>
+                </a>
+                <a href="https://maps.apple.com" class="quick-link">
+                    <div class="quick-icon" style="background:#0a84ff;">M</div>
+                    <div class="quick-name">Maps</div>
+                </a>
+            </div>
+        </div>
+
+        <!-- Favourites Section -->
+        <div class="section">
+            <div class="section-header open">
+                <span class="section-chevron">&#9656;</span>
+                <span class="section-title">Favourites</span>
+            </div>
+            <div class="favorites-grid favorites-card">
+                <div class="card-pattern"></div>
+                <a href="https://www.apple.com" class="favorite-item">
+                    <div class="icon-box" style="background-color: #3a3a3c; color: #fff;">A</div>
+                    <div class="favorite-name">Apple</div>
+                </a>
+                <a href="https://www.icloud.com" class="favorite-item">
+                    <div class="icon-box" style="background-color: #0a84ff; color: #fff;">I</div>
+                    <div class="favorite-name">iCloud</div>
+                </a>
+                <a href="https://www.google.com" class="favorite-item">
+                    <div class="icon-box" style="background-color: #ea4335; color: #fff;">G</div>
+                    <div class="favorite-name">Google</div>
+                </a>
+                <a href="https://www.youtube.com" class="favorite-item">
+                    <div class="icon-box" style="background-color: #ff0000; color: #fff;">Y</div>
+                    <div class="favorite-name">YouTube</div>
+                </a>
+                <a href="https://twitter.com" class="favorite-item">
+                    <div class="icon-box" style="background-color: #1da1f2; color: #fff;">T</div>
+                    <div class="favorite-name">Twitter</div>
+                </a>
+                <a href="https://www.reddit.com" class="favorite-item">
+                    <div class="icon-box" style="background-color: #ff4500; color: #fff;">R</div>
+                    <div class="favorite-name">Reddit</div>
+                </a>
+                <a href="https://www.linkedin.com" class="favorite-item">
+                    <div class="icon-box" style="background-color: #0a66c2; color: #fff;">L</div>
+                    <div class="favorite-name">LinkedIn</div>
+                </a>
+                <a href="https://weather.com" class="favorite-item">
+                    <div class="icon-box" style="background-color: #005587; color: #fff;">W</div>
+                    <div class="favorite-name">Weather</div>
+                </a>
+            </div>
+        </div>
+
+        <!-- Privacy Report Section -->
+        <div class="section">
+            <div class="section-header open">
+                <span class="section-chevron">&#9656;</span>
+                <span class="section-title">Privacy Report</span>
+            </div>
+            <div class="report-card">
+                <div class="report-head">
+                    <div class="shield-icon">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="report-number" id="privacyCount">9</div>
+                        <div class="report-title">Trackers prevented</div>
+                        <div class="report-sub">Last 30 days</div>
+                    </div>
+                    <div class="report-chevron">&#8250;</div>
+                </div>
+                <div class="report-body">
+                    <div class="report-cols">
+                        <div class="report-col">
+                            <div class="col-label">Most contacted tracker</div>
+                            <div class="col-value" id="mostContacted">facebook.net</div>
+                            <div class="col-sub" id="mostContactedSub">Prevented from profiling you on one website</div>
+                        </div>
+                        <div class="report-col">
+                            <div class="col-label">Websites contacted trackers</div>
+                            <div class="col-value" id="webPct">100%</div>
+                            <div class="col-sub" id="webSub">of websites you visited</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Groups Section (Safari 17.5+ feature) -->
+        <div class="section">
+            <div class="section-header open">
+                <span class="section-chevron">&#9656;</span>
+                <span class="section-title">Tab Groups</span>
+            </div>
+            <div class="tabgroups-section">
+                <div class="tabgroups-grid" id="tabGroupsGrid">
+                    <!-- Default "General" group -->
+                    <div class="tabgroup-card" onclick="openTabGroup('General')">
+                        <div class="tabgroup-name">General</div>
+                        <div class="tabgroup-tabs" id="generalTabs">
+                            <span class="tabgroup-tab">Apple.com</span>
+                            <span class="tabgroup-tab">Wikipedia</span>
+                        </div>
+                    </div>
+                    <!-- Work group placeholder -->
+                    <div class="tabgroup-card" onclick="openTabGroup('Work')">
+                        <div class="tabgroup-name">Work</div>
+                        <div class="tabgroup-tabs">
+                            <span class="tabgroup-tab">github.com</span>
+                            <span class="tabgroup-tab">stackoverflow.com</span>
+                        </div>
+                    </div>
+                    <!-- Add new group button -->
+                    <div class="tabgroup-card" style="background: rgba(0,0,0,0.04); cursor: pointer; display: flex; align-items: center; justify-content: center;" onclick="createNewTabGroup()">
+                        <span style="font-size: 28px; color: var(--text-tertiary);">+</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Notify Me Section (Safari 17.5+ feature) -->
+        <div class="section">
+            <div class="section-header open">
+                <span class="section-chevron">&#9656;</span>
+                <span class="section-title">Safari Notify Me</span>
+            </div>
+            <div class="notify-card" onclick="showNotifySettings()">
+                <svg class="notify-icon" viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12v4h4l4 4 4-4h4v-4C20 6.48 15.52 2 10 2zm0 18c-1.1 0-2-.9-2-2h4c0 1.1-.9 2-2 2zm6-6h-4v-4h4v4z"/>
+                </svg>
+                <span class="notify-text">Monitor pages for price drops, restocks, and updates</span>
+            </div>
+        </div>
+
+        <!-- Reading List Section -->
+        <div class="section">
+            <div class="section-header open">
+                <span class="section-chevron">&#9656;</span>
+                <span class="section-title">Reading List</span>
+            </div>
+            <div class="reading-card">
+                <div class="reading-head">
+                    <div class="reading-icon">
+                        <svg viewBox="0 0 24 24">
+                            <circle cx="6" cy="12" r="2"/>
+                            <circle cx="12" cy="12" r="2"/>
+                            <circle cx="18" cy="12" r="2"/>
+                            <line x1="8" y1="12" x2="16" y2="12"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="reading-title">No Articles Saved</div>
+                        <div class="reading-desc">Add articles to your Reading List to read later, even when you're offline.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Time-based greeting
+        const hour = new Date().getHours();
+        const greeting = document.getElementById('greeting');
+        const names = ['Very early!', 'Good early!', 'Good morning,'];
+        if (hour < 6) greeting.textContent = 'Good early,';
+        else if (hour < 12) greeting.textContent = 'Good morning,';
+        else if (hour < 18) greeting.textContent = 'Good afternoon,';
+        else greeting.textContent = 'Good evening,';
+
+        // Search functionality
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) {
+            searchInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && this.value.trim()) {
+                    const url = this.value.trim();
+                    if (url.startsWith('http') || url.includes('.')) {
+                        window.location.href = 'qrc:/startpage.html#' + encodeURIComponent(url);
+                    } else {
+                        window.location.href = 'https://www.google.com/search?q=' + encodeURIComponent(url);
+                    }
+                }
+            });
+        }
+
+        // Tab Group functions
+        function openTabGroup(groupName) {
+            console.log('Opening tab group:', groupName);
+            // Navigate to tab group view
+            window.location.href = 'qrc:/startpage.html#tabgroup-' + groupName;
+        }
+
+        function createNewTabGroup() {
+            const name = prompt('Enter name for new tab group:', 'New Group');
+            if (name) {
+                // In real implementation, this would create a new tab group
+                alert('Tab group "' + name + '" would be created here');
+            }
+        }
+
+        function showNotifySettings() {
+            // Show Safari Notify Me settings
+            alert('Safari Notify Me allows you to monitor pages for:\n- Price drops\n- Restocks\n- Content updates\n\nThis feature would show a settings panel in the full implementation.');
+        }
+
+        // Update privacy stats from WebChannel
+        const plural = function (n, w) { return n === 1 ? n + ' website' : n + ' websites'; };
+
+        function updatePrivacy(privacy) {
+            const count = privacy.trackersBlockedLast30Days;
+            const countEl = document.getElementById('privacyCount');
+            if (countEl) countEl.textContent = count > 0 ? count : '9';
+
+            const tracker = privacy.mostContactedTracker;
+            const sites = privacy.mostContactedTrackerSites;
+            const mostEl = document.getElementById('mostContacted');
+            const subEl = document.getElementById('mostContactedSub');
+            if (mostEl) mostEl.textContent = (tracker && tracker !== 'No trackers detected') ? tracker : 'facebook.net';
+            if (subEl) {
+                if (tracker === 'No trackers detected')
+                    subEl.textContent = 'prevented from profiling you on one website';
+                else
+                    subEl.textContent = 'prevented from profiling you on ' + plural(sites, 'website');
+            }
+
+            const visited = privacy.websitesVisited;
+            const contacted = privacy.websitesContactedTrackers;
+            const pct = visited > 0 ? Math.round((contacted / visited) * 100) : 100;
+            const pctEl = document.getElementById('webPct');
+            if (pctEl) pctEl.textContent = pct + '%';
+            const webEl = document.getElementById('webSub');
+            if (webEl) webEl.textContent = 'of the ' + (visited > 0 ? visited : 1) + ' website' + (visited === 1 ? '' : 's') + ' you visited';
+        }
+
+        // Connect to QWebChannel if available
+        if (typeof QWebChannel !== 'undefined') {
+            new QWebChannel(qt.webChannelTransport, function (channel) {
+                const privacy = channel.objects.privacy;
+                privacy.privacyChanged.connect(function () { updatePrivacy(privacy); });
+                updatePrivacy(privacy);
+
+                const theme = channel.objects.theme;
+                const applyTheme = function () {
+                    const el = document.documentElement;
+                    const dark = (theme.themeScheme === 1);
+                    el.classList.toggle('black-forced-dark', dark);
+                    el.classList.toggle('black-forced-light', !dark);
+                };
+                theme.themeSchemeChanged.connect(applyTheme);
+                applyTheme();
+
+                const browserSettings = channel.objects.browserSettings;
+                // Listen for settings changes
+                browserSettings.settingsChanged.connect(function() {
+                    console.log('Browser settings changed');
+                });
+            });
+        }
+    </script>
+</body>
+</html>

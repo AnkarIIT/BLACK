@@ -1,0 +1,11 @@
+-rootPath
+C:/Codes/BLACK
+-cmake-output
+-output-file
+C:/Codes/BLACK/build-test2/.qt/qml_imports/BLACK_conf.cmake
+-importPath
+C:/Codes/BLACK/build-test2
+-importPath
+C:/Codes/BLACK/Qt/6.8.0/msvc2022_64/qml
+-qrcFiles
+C:/Codes/BLACK/build-test2/.qt/rcc/resources.qrc

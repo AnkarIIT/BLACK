@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome - BLACK Browser</title>
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <style>
+        :root {
+            --bg-window: #f5f5f7;
+            --bg-card: #ffffff;
+            --accent: #0a84ff;
+            --text-primary: #1d1d1f;
+            --text-secondary: #86868b;
+            --text-tertiary: #aeaeb2;
+            --border: rgba(0,0,0,0.10);
+            --shadow: 0 2px 10px rgba(0,0,0,0.15);
+            --radius: 10px;
+        }
+
+        html.black-forced-dark {
+            color-scheme: dark;
+            --bg-window: #1e1e1e;
+            --bg-card: #2c2c2e;
+            --accent: #0a84ff;
+            --text-primary: #f5f5f7;
+            --text-secondary: #b5b5b5;
+            --text-tertiary: #8a8a8a;
+            --border: rgba(255,255,255,0.12);
+            --shadow: 0 2px 10px rgba(0,0,0,0.40);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+            background: linear-gradient(135deg, #0a84ff 0%, #3395ff 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-primary);
+        }
+
+        .welcome-card {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 32px 28px;
+            max-width: 460px;
+            width: 90%;
+            text-align: center;
+        }
+
+        .logo {
+            width: 56px;
+            height: 56px;
+            margin: 0 auto 20px;
+            background: var(--accent);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 800;
+            font-size: 28px;
+        }
+
+        .logo svg {
+            width: 60%;
+            height: 60%;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+
+        .subtitle {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+            line-height: 1.5;
+        }
+
+        .social-login {
+            margin-bottom: 16px;
+        }
+
+        .social-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 14px 20px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            text-decoration: none;
+            color: var(--text-primary);
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.15s;
+            margin-bottom: 8px;
+            width: 100%;
+        }
+
+        .social-btn.apple:hover {
+            border-color: #000;
+            background: rgba(0,0,0,0.05);
+        }
+
+        .social-btn.google:hover {
+            border-color: #ea4335;
+            background: rgba(234, 67, 53, 0.05);
+        }
+
+        .social-btn .icon {
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .social-btn.apple .icon {
+            color: #000;
+        }
+
+        .social-btn.google .icon {
+            color: #ea4335;
+        }
+
+        .divider {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            color: var(--text-tertiary);
+            font-size: 12px;
+            margin: 20px 0;
+        }
+
+        .divider::before,
+        .divider::after {
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+            content: '';
+        }
+
+        .guest-btn {
+            display: block;
+            padding: 12px 20px;
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 8px;
+            transition: opacity 0.15s;
+        }
+
+        .guest-btn:hover {
+            opacity: 0.8;
+        }
+
+        .features {
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+        }
+
+        .feature {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .feature:last-child {
+            margin-bottom: 0;
+        }
+
+        .feature-icon {
+            width: 16px;
+            height: 16px;
+            color: var(--accent);
+        }
+
+        .privacy-note {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px dashed var(--border);
+            font-size: 11px;
+            color: var(--text-tertiary);
+            line-height: 1.4;
+        }
+
+        @media (max-width: 420px) {
+            .welcome-card {
+                padding: 24px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="welcome-card">
+        <!-- Logo -->
+        <div class="logo">
+            <span>B</span>
+        </div>
+        
+        <!-- Welcome text -->
+        <h1>Welcome to BLACK</h1>
+        <p class="subtitle">
+            A fast, privacy-focused browser. Choose how you'd like to continue.
+        </p>
+        
+        <!-- Login options -->
+        <div class="social-login">
+            <!-- Apple Account -->
+            <a href="javascript:void(0)" class="social-btn apple" id="apple-login">
+                <div class="icon" style="width: 20px; height: 20px;">
+                    <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M16.365 1.43c-.1 0-.21 0-.31.03a15.9 15.9 0 0 0-2.56.54 18.13 18.13 0 0 0-2.33.73 20.2 20.2 0 0 0-3.1 1.21 21.8 21.8 0 0 0-2.33 1.49 22.27 22.27 0 0 0-1.9-.89 19.17 19.17 0 0 0-.31-.11c-.2 0-.4.01-.6.04a24.93 24.93 0 0 0-3.68 1.43 24.93 24.93 0 0 0-2.7 1T1.5 5.14a24.93 24.93 0 0 0-1.46 2.57 24.93 24.93 0 0 0-.49 2.52c-.06.33-.1.66-.1 1 0 .34.04.67.1 1 .15.39.42.75.7 1.07a24.93 24.93 0 0 0 1.34 1.33 24.93 24.93 0 0 0 1.95 1 24.93 24.93 0 0 0 2.7.73 24.93 24.93 0 0 0 3.68-.47 24.93 24.93 0 0 0 2.7-.81 23.88 23.88 0 0 0 3.12-1.31 21.91 21.91 0 0 0 2.7-2.33 19.53 19.53 0 0 0 2.17-2.88 18.05 18.05 0 0 0 1.94-3.43 16.24 16.24 0 0 0 1.28-4.19 14.21 14.21 0 0 0 .66-2.22.33-.06.66-.13 1-.1z"/>
+                    </svg>
+                </div>
+                Continue with Apple
+            </a>
+            
+            <!-- Google Account -->
+            <a href="javascript:void(0)" class="social-btn google" id="google-login">
+                <div class="icon">
+                    <svg viewBox="0 0 48 48" style="width: 20px; height: 20px;">
+                        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.01-6.01C32.37 2.8 28.35 0 24 0c-4.36 0-8.32 2.37-10.54 6.01l6.01 6.01C17.29 10.72 20.46 9.5 24 9.5z"/>
+                        <path fill="#4285F4" d="M46.98 24.5c-.28-1.31-3.74-7.28-4.12-7.88C39.38 15.28 36.56 14.42 34 14.42c-4.36 0-8.32 2.37-10.54 6.01l6.01 6.01C27.29 18.03 30.87 16.56 33.42 16.13c1.33-.22 2.73-.34 4.18-.34 3.54 0 6.71 1.22 9.21 3.6l6.01-6.01z"/>
+                        <path fill="#FBBC04" d="M10.54 14.42l6.01 6.01C17.29 18.03 20.46 16.56 23.46 15.78c1.27-.3 2.69-.42 4.18-.42 1.68 0 3.3.38 4.67 1.04l6.01-6.01C31.36 8.72 27.5 6.22 24 6.22c-4.36 0-8.32 2.37-10.54 6.01z"/>
+                        <path fill="#34A853" d="M24 42c5.41 0 9.94-2.53 12.29-6.59l-6.01-4.43C26.34 36.08 22.98 37.56 18.42 37.91c-.28.15-.57.31-.86.42 2.39 3.23 3.91 4.8 6.18 4.8.58 0 1.15-.06 1.72-.08 0 .28-.12.51-.32.66-.16.1-1.01.57-1.49 5.58C17.43 47.55 21.06 42 24 42z"/>
+                    </svg>
+                </div>
+                Continue with Google
+            </a>
+        </div>
+        
+        <!-- Or divider -->
+        <div class="divider">or</div>
+        
+        <!-- Guest mode -->
+        <a href="javascript:continueGuest()" class="guest-btn">Continue as Guest</a>
+        
+        <!-- Features list -->
+        <div class="features">
+            <div class="feature">
+                <span class="feature-icon">🔒</span>
+                Private browsing with tracker blocking
+            </div>
+            <div class="feature">
+                <span class="feature-icon">⚡</span>
+                Fast JavaScript and page rendering
+            </div>
+            <div class="feature">
+                <span class="feature-icon">📱</span>
+                Safari-style interface
+            </div>
+        </div>
+        
+        <!-- Privacy note -->
+        <div class="privacy-note">
+            By continuing, you agree to our <a href="qrc:/privacyreport.html" style="color: var(--accent);">Privacy Policy</a>.<br>
+            We respect your privacy - no data is collected without consent.
+        </div>
+    </div>
+
+    <script>
+        // Handle login flows
+        document.getElementById('apple-login').addEventListener('click', function(e) {
+            e.preventDefault();
+            const appleAuthUrl = 'https://appleid.apple.com/auth/signin?client_id=com.blackbrowser.app';
+            window.open(appleAuthUrl, '_blank', 'noopener,noreferrer');
+            showLoginMessage('Apple ID login flow initiated');
+        });
+
+        document.getElementById('google-login').addEventListener('click', function(e) {
+            e.preventDefault();
+            const googleAuthUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' +
+                'client_id=black-browser.apps.googleusercontent.com&' +
+                'redirect_uri=black://auth/google/callback&' +
+                'response_type=code&scope=openid%20email%20profile&' +
+                'prompt=consent';
+            window.open(googleAuthUrl, '_blank', 'noopener,noreferrer');
+            showLoginMessage('Google login flow initiated');
+        });
+
+        function continueGuest() {
+            window.location.href = 'qrc:/startpage_enhanced.html';
+        }
+
+        function showLoginMessage(msg) {
+            const existing = document.querySelector('.login-msg');
+            if (existing) existing.remove();
+            
+            const msgEl = document.createElement('div');
+            msgEl.className = 'login-msg';
+            msgEl.textContent = msg;
+            msgEl.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: var(--accent); color: white; padding: 10px 16px; border-radius: 6px; font-size: 12px; z-index: 1000;';
+            document.body.appendChild(msgEl);
+            
+            setTimeout(function() { msgEl.remove(); }, 2000);
+        }
+
+        // Handle OAuth callback
+        function handleOAuthCallback() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const code = urlParams.get('code');
+            const error = urlParams.get('error');
+            
+            if (code) {
+                console.log('OAuth code received:', code);
+                setTimeout(function() {
+                    window.location.href = 'qrc:/startpage_enhanced.html';
+                }, 1000);
+            } else if (error) {
+                console.error('OAuth error:', error);
+                showLoginMessage('Login failed. Please try again.');
+            }
+        }
+
+        if (window.location.search.includes('code=') || window.location.search.includes('error=')) {
+            handleOAuthCallback();
+        }
+
+        // Preload start page for better UX
+        setTimeout(function() {
+            const prefetchLinks = ['qrc:/startpage_enhanced.html', 'qrc:/settings.html'];
+            prefetchLinks.forEach(function(link) {
+                const a = document.createElement('a');
+                a.href = link;
+                a.style.display = 'none';
+                document.body.appendChild(a);
+                a.href = link;
+                setTimeout(function() { a.remove(); }, 1000);
+            });
+        }, 500);
+    </script>
+</body>
+</html>

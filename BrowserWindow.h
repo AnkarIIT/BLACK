@@ -58,6 +58,10 @@ public:
 
     static QWebEngineProfile *webProfile();
 
+    // Public methods for login flow and tab management
+    void loadStartPage();
+    void loadLoginPage();
+
 protected:
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;

@@ -1,0 +1,20 @@
+^C:\CODES\BLACK\BUILD-TEST2\CMAKEFILES\9E61967AA7F019F034DA9F7A9B814E72\QRC_RESOURCES.CPP.RULE
+setlocal
+C:\Codes\BLACK\Qt\6.8.0\msvc2022_64\bin\rcc.exe --output C:/Codes/BLACK/build-test2/.qt/rcc/qrc_resources.cpp --name resources C:/Codes/BLACK/build-test2/.qt/rcc/resources.qrc --no-zstd
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\CODES\BLACK\CMAKELISTS.TXT
+setlocal
+C:\Users\ankar\AppData\Local\Microsoft\WinGet\Packages\Kitware.CMake_Microsoft.Winget.Source_8wekyb3d8bbwe\cmake-4.4.1-windows-x86_64\bin\cmake.exe -SC:/Codes/BLACK -BC:/Codes/BLACK/build-test2 --check-stamp-file C:/Codes/BLACK/build-test2/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
