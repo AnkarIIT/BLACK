@@ -5,7 +5,10 @@
 #include <QWebEngineView>
 #include <QWebEngineHistory>
 #include <QWebEnginePage>
+#include <QtGlobal>
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
 #include <QWebEnginePermission>
+#endif
 #include <QWebEngineCertificateError>
 #include <QLineEdit>
 #include <QToolButton>
@@ -114,8 +117,13 @@ private:
     void openPrivateWindow();
 
     void handleCertificateError(QWebEngineCertificateError certificateError);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
     void handlePermissionRequest(QWebEnginePermission permission);
     static QString permissionDisplayName(QWebEnginePermission::PermissionType type);
+#else
+    void handlePermissionRequestOld(QWebEnginePage *page, const QUrl &securityOrigin, QWebEnginePage::Feature feature);
+    static QString permissionDisplayNameOld(QWebEnginePage::Feature feature);
+#endif
 
     QWidget* buildOverviewCard(int index);
 

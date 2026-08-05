@@ -1031,9 +1031,15 @@ SafariWebView* BrowserWindow::addTabView(const QUrl &url, QWebEngineNewWindowReq
     });
 
     // Camera / microphone / location / notification permission prompts.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
     connect(view->page(), &QWebEnginePage::permissionRequested, this, [this](QWebEnginePermission permission) {
         handlePermissionRequest(std::move(permission));
     });
+#else
+    connect(view->page(), &QWebEnginePage::featurePermissionRequested, this, [this, page = view->page()](const QUrl &securityOrigin, QWebEnginePage::Feature feature) {
+        handlePermissionRequestOld(page, securityOrigin, feature);
+    });
+#endif
 
     if (request) {
         request->openIn(view->page());
@@ -1185,6 +1191,7 @@ void BrowserWindow::handleCertificateError(QWebEngineCertificateError certificat
         certificateError.rejectCertificate();
 }
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
 QString BrowserWindow::permissionDisplayName(QWebEnginePermission::PermissionType type) {
     switch (type) {
     case QWebEnginePermission::PermissionType::Notifications:      return QStringLiteral("notifications");
@@ -1249,6 +1256,64 @@ void BrowserWindow::handlePermissionRequest(QWebEnginePermission permission) {
     else
         permission.deny();
 }
+#else
+QString BrowserWindow::permissionDisplayNameOld(QWebEnginePage::Feature feature) {
+    switch (feature) {
+    case QWebEnginePage::Notifications:          return QStringLiteral("notifications");
+    case QWebEnginePage::Geolocation:            return QStringLiteral("your location");
+    case QWebEnginePage::MediaAudioCapture:      return QStringLiteral("your microphone");
+    case QWebEnginePage::MediaVideoCapture:      return QStringLiteral("your camera");
+    case QWebEnginePage::MediaAudioVideoCapture: return QStringLiteral("your camera and microphone");
+    case QWebEnginePage::MouseLock:              return QStringLiteral("pointer lock");
+    case QWebEnginePage::DesktopVideoCapture:     return QStringLiteral("your screen");
+    case QWebEnginePage::DesktopAudioVideoCapture: return QStringLiteral("your screen and audio");
+    default: return QStringLiteral("a restricted feature");
+    }
+}
+
+void BrowserWindow::handlePermissionRequestOld(QWebEnginePage *page, const QUrl &securityOrigin, QWebEnginePage::Feature feature) {
+    if (!page)
+        return;
+
+    const QString key = securityOrigin.toString() + QLatin1Char('|')
+                        + QString::number(static_cast<int>(feature));
+    const auto remembered = m_permissionChoices.constFind(key);
+    if (remembered != m_permissionChoices.constEnd()) {
+        page->setFeaturePermission(securityOrigin, feature,
+            remembered.value() ? QWebEnginePage::PermissionGrantedByUser : QWebEnginePage::PermissionDeniedByUser);
+        return;
+    }
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("Permission Request"));
+    QVBoxLayout *lay = new QVBoxLayout(&dialog);
+    lay->setSpacing(12);
+
+    QLabel *prompt = new QLabel(QStringLiteral("Allow <b>%1</b> to use %2?")
+                                    .arg(securityOrigin.host(),
+                                         permissionDisplayNameOld(feature)),
+                                &dialog);
+    prompt->setWordWrap(true);
+    lay->addWidget(prompt);
+
+    QCheckBox *remember = new QCheckBox(QStringLiteral("Remember my decision for this website"), &dialog);
+    lay->addWidget(remember);
+
+    QDialogButtonBox *buttons = new QDialogButtonBox(QDialogButtonBox::Cancel, &dialog);
+    QPushButton *allowButton = buttons->addButton(QStringLiteral("Allow"), QDialogButtonBox::AcceptRole);
+    lay->addWidget(buttons);
+
+    connect(allowButton, &QPushButton::clicked, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    const bool allowed = (dialog.exec() == QDialog::Accepted);
+    if (remember->isChecked())
+        m_permissionChoices.insert(key, allowed);
+
+    page->setFeaturePermission(securityOrigin, feature,
+        allowed ? QWebEnginePage::PermissionGrantedByUser : QWebEnginePage::PermissionDeniedByUser);
+}
+#endif
 
 void BrowserWindow::rebuildTabBar()
 {
