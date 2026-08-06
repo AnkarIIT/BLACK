@@ -23,6 +23,7 @@
 #include <QScrollArea>
 #include <QFrame>
 #include <QPropertyAnimation>
+#include <QParallelAnimationGroup>
 #include <QMap>
 #include <QPointer>
 
@@ -71,6 +72,7 @@ protected:
     void resizeEvent(QResizeEvent *event) override;
     void changeEvent(QEvent *event) override;
     bool eventFilter(QObject *obj, QEvent *event) override;
+    void animateUrlBar(int targetWidth);
     bool nativeEvent(const QByteArray &eventType, void *message, qintptr *result) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
 
@@ -143,6 +145,7 @@ private:
     QStackedWidget *m_tabStack;
     QLineEdit      *m_urlBar;
     QFrame         *m_urlContainer;
+    QParallelAnimationGroup *m_urlAnim;
     QToolButton    *m_shieldInside;
     QWidget        *m_central;
 

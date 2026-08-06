@@ -30,6 +30,8 @@
 #include <QMenu>
 #include <QAction>
 #include <QTimer>
+#include <QEasingCurve>
+#include <QParallelAnimationGroup>
 #include <QWebEngineProfile>
 #include <QWebEngineSettings>
 #include <QWebEngineDownloadRequest>
@@ -72,6 +74,7 @@ static QString textTertiary()  { return SafariTheme::instance().textTertiary; }
 static QString accent()        { return SafariTheme::instance().accent; }
 static QString accentHover()   { return SafariTheme::instance().accentHover; }
 static QString border()        { return SafariTheme::instance().border; }
+static QString borderLight()   { return SafariTheme::instance().borderLight; }
 static QString hover()         { return SafariTheme::instance().hover; }
 static QString searchBg()      { return SafariTheme::instance().searchBg; }
 static QString selectedBg()    { return SafariTheme::instance().selectedBg; }
@@ -152,6 +155,7 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     , m_tabStack(new QStackedWidget(this))
     , m_urlBar(new QLineEdit(this))
     , m_urlContainer(nullptr)
+    , m_urlAnim(nullptr)
     , m_shieldInside(nullptr)
     , m_central(nullptr)
     , m_backButton(new QToolButton(this))
@@ -235,6 +239,30 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
 
     if (QCoreApplication::arguments().contains(QStringLiteral("--sidebar")))
         toggleSidebar();
+
+    if (QCoreApplication::arguments().contains(QStringLiteral("--debug-focus"))) {
+        QTimer::singleShot(5000, this, [this]() {
+            m_urlBar->setFocus();
+            m_urlBar->selectAll();
+        });
+        QTimer::singleShot(7000, this, [this]() {
+            QFile f(QStringLiteral("C:/Users/ankar/AppData/Local/Temp/opencode/urlw.txt"));
+            if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                f.write(QByteArray("focus_in=").append(QByteArray::number(m_urlContainer->width())));
+                f.close();
+            }
+            grab().save(QStringLiteral("C:/Users/ankar/AppData/Local/Temp/opencode/window_focus_in.png"));
+        });
+        QTimer::singleShot(9000, this, [this]() { m_toolbar->setFocus(); });
+        QTimer::singleShot(11000, this, [this]() {
+            QFile f(QStringLiteral("C:/Users/ankar/AppData/Local/Temp/opencode/urlw.txt"));
+            if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                f.write(QByteArray("focus_out=").append(QByteArray::number(m_urlContainer->width())));
+                f.close();
+            }
+            grab().save(QStringLiteral("C:/Users/ankar/AppData/Local/Temp/opencode/window_focus_out.png"));
+        });
+    }
 
     connect(m_urlBar, &QLineEdit::returnPressed, this, &BrowserWindow::navigateToUrl);
 
@@ -464,9 +492,10 @@ void BrowserWindow::setupUi()
 
     m_urlContainer = new QFrame(m_toolbar);
     m_urlContainer->setObjectName(QStringLiteral("UrlContainer"));
-    m_urlContainer->setMinimumWidth(360);
-    m_urlContainer->setMaximumWidth(800);
-    m_urlContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_urlContainer->setMinimumWidth(320);
+    m_urlContainer->setMaximumWidth(520);
+    m_urlContainer->setFixedHeight(30);
+    m_urlContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
     QHBoxLayout *urlLayout = new QHBoxLayout(m_urlContainer);
     urlLayout->setContentsMargins(8, 0, 4, 0);
@@ -484,6 +513,7 @@ void BrowserWindow::setupUi()
     urlLayout->addWidget(m_reloadButton);
 
     toolbarLayout->addWidget(m_urlContainer, 2);
+    toolbarLayout->setAlignment(m_urlContainer, Qt::AlignVCenter);
     toolbarLayout->addStretch(1);
 
     // Right side buttons
@@ -1551,19 +1581,52 @@ bool BrowserWindow::eventFilter(QObject *obj, QEvent *event) {
         }
     }
 
-    // URL bar focus ring
+    // URL bar focus ring + elastic expansion
     if (obj == m_urlContainer || obj == m_urlBar) {
         if (event->type() == QEvent::FocusIn) {
             m_urlFocused = true;
+            animateUrlBar(820);
             updateUrlContainerStyle();
         } else if (event->type() == QEvent::FocusOut) {
             m_urlFocused = false;
+            animateUrlBar(520);
             updateUrlContainerStyle();
         }
         return false;
     }
 
     return QMainWindow::eventFilter(obj, event);
+}
+
+void BrowserWindow::animateUrlBar(int targetWidth)
+{
+    if (m_urlAnim) {
+        m_urlAnim->stop();
+        m_urlAnim->deleteLater();
+        m_urlAnim = nullptr;
+    }
+
+    auto *group = new QParallelAnimationGroup(this);
+    group->setDirection(QAbstractAnimation::Forward);
+
+    auto addAnim = [group, targetWidth](QWidget *w, const char *prop) {
+        auto *anim = new QPropertyAnimation(w, prop, group);
+        anim->setDuration(220);
+        anim->setStartValue(w->property(prop));
+        anim->setEndValue(targetWidth);
+        anim->setEasingCurve(QEasingCurve::OutCubic);
+        group->addAnimation(anim);
+    };
+    addAnim(m_urlContainer, "minimumWidth");
+    addAnim(m_urlContainer, "maximumWidth");
+
+    connect(group, &QParallelAnimationGroup::finished, this, [this, group]() {
+        if (m_urlAnim == group) m_urlAnim = nullptr;
+        group->deleteLater();
+    });
+
+    m_urlAnim = group;
+    group->start();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1772,8 +1835,8 @@ void BrowserWindow::updateUrlContainerStyle()
 {
     m_urlContainer->setStyleSheet(QString(
         "#UrlContainer { background-color: %1; border: %2 solid %3; border-radius: 8px; }"
-    ).arg(bgUrlBar(), m_urlFocused ? "1.5px" : "1px",
-          m_urlFocused ? accent() : border()));
+    ).arg(searchBg(), m_urlFocused ? "1.5px" : "1px",
+          m_urlFocused ? accent() : borderLight()));
 }
 
 void BrowserWindow::applyTheme()
