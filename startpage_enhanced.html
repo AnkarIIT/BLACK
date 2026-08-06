@@ -653,6 +653,21 @@
         else if (hour < 18) greeting.textContent = 'Good afternoon,';
         else greeting.textContent = 'Good evening,';
 
+        // Search engine (defaults to Google until the WebChannel connects)
+        let currentSearchEngine = 'Google';
+
+        function searchUrlFor(query) {
+            const q = encodeURIComponent(query);
+            switch (currentSearchEngine) {
+                case 'Bing': return 'https://www.bing.com/search?q=' + q;
+                case 'DuckDuckGo': return 'https://duckduckgo.com/?q=' + q;
+                case 'Brave': return 'https://search.brave.com/search?q=' + q;
+                case 'Yahoo': return 'https://search.yahoo.com/search?p=' + q;
+                case 'Ecosia': return 'https://www.ecosia.org/search?q=' + q;
+                default: return 'https://www.google.com/search?q=' + q;
+            }
+        }
+
         // Search functionality
         const searchInput = document.getElementById('searchInput');
         if (searchInput) {
@@ -660,9 +675,9 @@
                 if (e.key === 'Enter' && this.value.trim()) {
                     const url = this.value.trim();
                     if (url.startsWith('http') || url.includes('.')) {
-                        window.location.href = 'qrc:/startpage.html#' + encodeURIComponent(url);
+                        window.location.href = url;
                     } else {
-                        window.location.href = 'https://www.google.com/search?q=' + encodeURIComponent(url);
+                        window.location.href = searchUrlFor(url);
                     }
                 }
             });
@@ -672,7 +687,7 @@
         function openTabGroup(groupName) {
             console.log('Opening tab group:', groupName);
             // Navigate to tab group view
-            window.location.href = 'qrc:/startpage.html#tabgroup-' + groupName;
+            window.location.href = 'qrc:/startpage_enhanced.html#tabgroup-' + groupName;
         }
 
         function createNewTabGroup() {
@@ -735,9 +750,10 @@
                 applyTheme();
 
                 const browserSettings = channel.objects.browserSettings;
+                currentSearchEngine = browserSettings.searchEngine || 'Google';
                 // Listen for settings changes
                 browserSettings.settingsChanged.connect(function() {
-                    console.log('Browser settings changed');
+                    currentSearchEngine = browserSettings.searchEngine || 'Google';
                 });
             });
         }

@@ -3,6 +3,7 @@
 #include "SafariTheme.h"
 #include "TrackerBlocker.h"
 #include "BrowserSettings.h"
+#include "ShelfStore.h"
 #include <QFrame>
 #include <QStyle>
 #include <QGraphicsDropShadowEffect>
@@ -58,6 +59,26 @@
 #if defined(Q_OS_WIN)
 #include <qt_windows.h>
 #endif
+
+namespace {
+// Lets the frameless Settings window close itself from its web content
+// (the macOS-style red traffic light) via the QWebChannel bridge.
+class SettingsDialogBridge : public QObject
+{
+    Q_OBJECT
+public:
+    explicit SettingsDialogBridge(QDialog *dialog)
+        : QObject(dialog)
+    {
+    }
+
+    Q_INVOKABLE void closeDialog()
+    {
+        if (auto *dialog = qobject_cast<QDialog *>(parent()))
+            dialog->close();
+    }
+};
+}
 
 // ── Safari Color Palette (dynamic, follows system theme) ─────────────────────
 static QString bgWindow()      { return SafariTheme::instance().bgWindow; }
@@ -126,7 +147,9 @@ static QString truncate(const QString &s, int max = 20) {
 
 static QString shortUrl(const QString &url) {
     QString display = url;
-    if (display.startsWith(QStringLiteral("qrc:/startpage.html"))) return QStringLiteral("Start Page");
+    if (display.startsWith(QStringLiteral("qrc:/startpage_enhanced.html"))) return QStringLiteral("Start Page");
+    if (display.startsWith(QStringLiteral("qrc:/bookmarks.html"))) return QStringLiteral("Favourites");
+    if (display.startsWith(QStringLiteral("qrc:/history.html"))) return QStringLiteral("History");
     if (display.startsWith(QStringLiteral("qrc:/settings.html"))) return QStringLiteral("Settings");
     if (display.startsWith(QStringLiteral("qrc:/privacyreport.html"))) return QStringLiteral("Privacy Report");
     if (display.startsWith(QStringLiteral("qrc:/extensions.html"))) return QStringLiteral("Extensions");
@@ -151,6 +174,29 @@ static QString dataFile(const QString &fileName) {
     return dir + QLatin1Char('/') + fileName;
 }
 
+static QString searchUrlFor(const QString &query) {
+    const QString encoded = QString::fromUtf8(query.toUtf8().toPercentEncoding());
+    const QString engine = BrowserSettings::instance().searchEngine();
+    if (engine == QLatin1String("Bing"))
+        return QStringLiteral("https://www.bing.com/search?q=") + encoded;
+    if (engine == QLatin1String("DuckDuckGo"))
+        return QStringLiteral("https://duckduckgo.com/?q=") + encoded;
+    if (engine == QLatin1String("Brave"))
+        return QStringLiteral("https://search.brave.com/search?q=") + encoded;
+    if (engine == QLatin1String("Yahoo"))
+        return QStringLiteral("https://search.yahoo.com/search?p=") + encoded;
+    if (engine == QLatin1String("Ecosia"))
+        return QStringLiteral("https://www.ecosia.org/search?q=") + encoded;
+    return QStringLiteral("https://www.google.com/search?q=") + encoded;
+}
+
+static int retentionDaysFor(const QString &setting) {
+    if (setting == QLatin1String("After one month")) return 30;
+    if (setting == QLatin1String("After one week"))  return 7;
+    if (setting == QLatin1String("After one day"))   return 1;
+    return 365; // "After one year" / default
+}
+
 // =============================================================================
 BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     : QMainWindow(parent)
@@ -171,6 +217,7 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     , m_closeButton(nullptr)
     , m_minimizeButton(nullptr)
     , m_maximizeButton(nullptr)
+    , m_privateBadge(nullptr)
     , m_settingsButton(new QToolButton(this))
     , m_settingsDialog(nullptr)
     , m_settingsView(nullptr)
@@ -191,6 +238,8 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     , m_incognito(incognito)
     , m_profile(incognito ? new QWebEngineProfile(this) : webProfile())
     , m_webChannel(nullptr)
+    , m_bookmarks(nullptr)
+    , m_history(nullptr)
 {
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint |
                    Qt::WindowSystemMenuHint |
@@ -201,9 +250,14 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     setFont(QFont("SF Pro Display", 13));
 
     m_webChannel = new QWebChannel(this);
+    m_bookmarks = new ShelfStore(QStringLiteral("bookmarks.json"), this);
+    m_history = new ShelfStore(QStringLiteral("history.json"), this);
+    m_history->setRetentionDays(retentionDaysFor(BrowserSettings::instance().removeHistoryItems()));
     m_webChannel->registerObject(QStringLiteral("privacy"), &TrackerBlocker::instance());
     m_webChannel->registerObject(QStringLiteral("theme"), &SafariTheme::instance());
     m_webChannel->registerObject(QStringLiteral("browserSettings"), &BrowserSettings::instance());
+    m_webChannel->registerObject(QStringLiteral("bookmarks"), m_bookmarks);
+    m_webChannel->registerObject(QStringLiteral("history"), m_history);
 
     // Inject the class-based theme stylesheet into every page of this profile.
     QWebEngineScript styleScript;
@@ -236,37 +290,17 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     if (!m_incognito)
         restoreSession();
     if (m_tabs.isEmpty()) {
-        addNewTab(QUrl(QStringLiteral("qrc:/startpage.html")));
+        addNewTab(newTabUrl());
     }
 
     if (QCoreApplication::arguments().contains(QStringLiteral("--sidebar")))
         toggleSidebar();
 
-    if (QCoreApplication::arguments().contains(QStringLiteral("--debug-focus"))) {
-        QTimer::singleShot(5000, this, [this]() {
-            m_urlBar->setFocus();
-            m_urlBar->selectAll();
-        });
-        QTimer::singleShot(7000, this, [this]() {
-            QFile f(QStringLiteral("C:/Users/ankar/AppData/Local/Temp/opencode/urlw.txt"));
-            if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
-                f.write(QByteArray("focus_in=").append(QByteArray::number(m_urlContainer->width())));
-                f.close();
-            }
-            grab().save(QStringLiteral("C:/Users/ankar/AppData/Local/Temp/opencode/window_focus_in.png"));
-        });
-        QTimer::singleShot(9000, this, [this]() { m_toolbar->setFocus(); });
-        QTimer::singleShot(11000, this, [this]() {
-            QFile f(QStringLiteral("C:/Users/ankar/AppData/Local/Temp/opencode/urlw.txt"));
-            if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
-                f.write(QByteArray("focus_out=").append(QByteArray::number(m_urlContainer->width())));
-                f.close();
-            }
-            grab().save(QStringLiteral("C:/Users/ankar/AppData/Local/Temp/opencode/window_focus_out.png"));
-        });
-    }
-
     connect(m_urlBar, &QLineEdit::returnPressed, this, &BrowserWindow::navigateToUrl);
+
+    connect(&BrowserSettings::instance(), &BrowserSettings::settingsChanged, this, [this]() {
+        m_history->setRetentionDays(retentionDaysFor(BrowserSettings::instance().removeHistoryItems()));
+    });
 
     connect(&SafariTheme::instance(), &SafariTheme::schemeChanged, this, [this]() {
         applyTheme();
@@ -276,6 +310,8 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
 BrowserWindow::~BrowserWindow() {
     if (!m_incognito)
         saveSession();
+    if (BrowserSettings::instance().removeDownloadListItems() == QStringLiteral("On Quit"))
+        m_downloadsList.clear();
 }
 
 QWebEngineProfile *BrowserWindow::webProfile()
@@ -288,10 +324,14 @@ QWebEngineProfile *BrowserWindow::webProfile()
 
 // ── Public Page Loading Methods ─────────────────────────────────────────────
 void BrowserWindow::loadStartPage() {
+    QUrl target = QUrl(QStringLiteral("qrc:/startpage_enhanced.html"));
+    const QString preference = BrowserSettings::instance().newWindowsWith();
+    if (preference == QStringLiteral("Favourites"))
+        target = QUrl(QStringLiteral("qrc:/bookmarks.html"));
     if (!m_tabs.isEmpty() && m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count()) {
-        m_tabs[m_currentTabIndex].view->setUrl(QUrl(QStringLiteral("qrc:/startpage_enhanced.html")));
+        m_tabs[m_currentTabIndex].view->setUrl(target);
     } else {
-        addNewTab(QUrl(QStringLiteral("qrc:/startpage_enhanced.html")));
+        addNewTab(target);
     }
 }
 
@@ -466,6 +506,16 @@ void BrowserWindow::setupUi()
     trafficLayout->addWidget(m_maximizeButton);
     trafficLayout->addSpacing(8);
     toolbarLayout->addLayout(trafficLayout);
+
+    if (m_incognito) {
+        m_privateBadge = new QLabel(QStringLiteral("Private"), m_toolbar);
+        m_privateBadge->setStyleSheet(QString(
+            "QLabel { color: #ffffff; background-color: #5f3f8f; border-radius: 9px; "
+            "padding: 2px 10px; font-size: 11px; font-weight: 600; }"));
+        m_privateBadge->setToolTip(QStringLiteral("Private Browsing Window \u2014 pages you visit are not saved to history"));
+        toolbarLayout->addWidget(m_privateBadge);
+        toolbarLayout->addSpacing(4);
+    }
 
     m_sidebarButton->setToolTip(QStringLiteral("Toggle Sidebar"));
     connect(m_sidebarButton, &QToolButton::clicked, this, &BrowserWindow::toggleSidebar);
@@ -703,7 +753,8 @@ void BrowserWindow::setupSidebar()
 
     // Favourites
     addSectionHeader(sidebarTopLayout, QStringLiteral("Favourites"));
-    addSidebarItem(sidebarTopLayout, svgStar, QStringLiteral("Favourites"), QStringLiteral("start"), true);
+    addSidebarItem(sidebarTopLayout, svgStar, QStringLiteral("Favourites"), QStringLiteral("bookmarks"), true);
+    addSidebarItem(sidebarTopLayout, svgHistory, QStringLiteral("History"), QStringLiteral("history"));
 
     // Reading List
     addSectionHeader(sidebarTopLayout, QStringLiteral("Reading List"));
@@ -741,7 +792,7 @@ void BrowserWindow::setupSidebar()
     m_sidebarLayout->addWidget(sidebarTop, 1);
     m_sidebarLayout->addWidget(sidebarBottom, 0);
 
-    m_activeSidebarAction = QStringLiteral("start");
+    m_activeSidebarAction = QStringLiteral("bookmarks");
 }
 
 void BrowserWindow::openSidebarAction(const QString &action)
@@ -752,15 +803,25 @@ void BrowserWindow::openSidebarAction(const QString &action)
         setSidebarActive(action);
         return;
     }
+    if (action == QStringLiteral("bookmarks")) {
+        navigateCurrentTo(QUrl(QStringLiteral("qrc:/bookmarks.html")));
+        setSidebarActive(action);
+        return;
+    }
+    if (action == QStringLiteral("history")) {
+        navigateCurrentTo(QUrl(QStringLiteral("qrc:/history.html")));
+        setSidebarActive(action);
+        return;
+    }
     if (action.startsWith(QStringLiteral("group"))) {
-        navigateCurrentTo(QUrl(QStringLiteral("qrc:/startpage.html")));
+        navigateCurrentTo(QUrl(QStringLiteral("qrc:/startpage_enhanced.html")));
         setSidebarActive(action);
         return;
     }
     if (action == QStringLiteral("reading")) {
-        navigateCurrentTo(QUrl(QStringLiteral("qrc:/startpage.html#reading")));
+        navigateCurrentTo(QUrl(QStringLiteral("qrc:/startpage_enhanced.html#reading")));
     } else {
-        navigateCurrentTo(QUrl(QStringLiteral("qrc:/startpage.html")));
+        navigateCurrentTo(QUrl(QStringLiteral("qrc:/startpage_enhanced.html")));
     }
     setSidebarActive(action);
 }
@@ -1153,7 +1214,7 @@ SafariWebView* BrowserWindow::addTabView(const QUrl &url, QWebEngineNewWindowReq
     } else if (url.isValid() && !url.isEmpty()) {
         view->setUrl(url);
     } else {
-        view->setUrl(QUrl(QStringLiteral("qrc:/startpage.html")));
+        view->setUrl(newTabUrl());
     }
     setCurrentTab(index);
     return view;
@@ -1177,7 +1238,7 @@ void BrowserWindow::closeTab(int index) {
     if (index < 0 || index >= m_tabs.count()) return;
 
     if (m_tabs.count() == 1) {
-        addNewTab(QUrl(QStringLiteral("qrc:/startpage.html")));
+        addNewTab(newTabUrl());
     }
 
     const QUrl closedUrl(m_tabs[index].url);
@@ -1253,7 +1314,34 @@ void BrowserWindow::toggleMuteTab(int index) {
 }
 
 void BrowserWindow::addTabAction() {
-    addNewTab(QUrl(QStringLiteral("qrc:/startpage.html")));
+    addNewTab(newTabUrl());
+}
+
+QUrl BrowserWindow::newTabUrl() const {
+    const QString preference = BrowserSettings::instance().newTabsWith();
+    if (preference == QStringLiteral("Favourites"))
+        return QUrl(QStringLiteral("qrc:/bookmarks.html"));
+    if (preference == QStringLiteral("Set to Current Page")) {
+        if (m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count()) {
+            const QString current = m_tabs[m_currentTabIndex].url;
+            if (!current.isEmpty() && !current.startsWith(QStringLiteral("qrc:")))
+                return QUrl(current);
+        }
+    }
+    return QUrl(QStringLiteral("qrc:/startpage_enhanced.html"));
+}
+
+void BrowserWindow::addBookmarkForCurrentTab() {
+    if (m_currentTabIndex < 0 || m_currentTabIndex >= m_tabs.count())
+        return;
+    const TabInfo &tab = m_tabs[m_currentTabIndex];
+    if (tab.url.isEmpty() || tab.url.startsWith(QStringLiteral("qrc:")))
+        return;
+    saveBookmark(tab.title, tab.url);
+    m_urlBar->setToolTip(QStringLiteral("Added to Favourites \u2713"));
+    QTimer::singleShot(1500, this, [this]() {
+        m_urlBar->setToolTip(QStringLiteral("Search or enter website name"));
+    });
 }
 
 void BrowserWindow::openPrivateWindow() {
@@ -1325,20 +1413,26 @@ void BrowserWindow::openSettingsDialog()
     }
 
     if (!m_settingsDialog) {
-        m_settingsDialog = new QDialog(this, Qt::Dialog | Qt::WindowCloseButtonHint | Qt::WindowTitleHint);
+        m_settingsDialog = new QDialog(this, Qt::FramelessWindowHint | Qt::Window | Qt::WindowSystemMenuHint);
         m_settingsDialog->setWindowTitle(QStringLiteral("Settings"));
-        m_settingsDialog->setFixedSize(760, 560);
-        m_settingsDialog->setStyleSheet(QString(
-            "QDialog { background-color: %1; color: %2; }"
-        ).arg(bgWindow(), textPrimary()));
+        m_settingsDialog->setAttribute(Qt::WA_TranslucentBackground);
+        m_settingsDialog->setFixedSize(800, 600);
+        m_settingsDialog->setStyleSheet(QStringLiteral("QDialog { background: transparent; }"));
 
+        // Inset the web page so the HTML draws its own rounded Safari-style window.
         QVBoxLayout *layout = new QVBoxLayout(m_settingsDialog);
-        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setContentsMargins(16, 16, 16, 16);
 
         m_settingsView = new SafariWebView(m_settingsDialog);
+        m_settingsView->setWebProfile(m_profile);
+        m_settingsView->page()->setBackgroundColor(Qt::transparent);
+        m_settingsView->page()->settings()->setAttribute(QWebEngineSettings::ShowScrollBars, false);
         m_settingsView->page()->setWebChannel(m_webChannel);
         m_settingsView->setUrl(QUrl(QStringLiteral("qrc:/settings.html")));
         layout->addWidget(m_settingsView);
+
+        m_webChannel->registerObject(QStringLiteral("settingsDialog"),
+                                     new SettingsDialogBridge(m_settingsDialog));
     }
 
     m_settingsDialog->show();
@@ -1790,7 +1884,7 @@ void BrowserWindow::navigateToUrl() {
         if (input.contains(QStringLiteral(".")) && !input.contains(QStringLiteral(" "))) {
             input = QStringLiteral("https://") + input;
         } else {
-            input = QStringLiteral("https://www.google.com/search?q=") + QString::fromUtf8(input.toUtf8().toPercentEncoding());
+            input = searchUrlFor(input);
         }
     }
 
@@ -1878,9 +1972,10 @@ void BrowserWindow::setWindowTitleFromTab() {
     if (m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count()) {
         QString title = m_tabs[m_currentTabIndex].title;
         if (title.isEmpty()) title = QStringLiteral("New Tab");
-        setWindowTitle(title + QStringLiteral(" — BLACK"));
+        if (m_incognito) title += QStringLiteral(" \u2014 Private");
+        setWindowTitle(title + QStringLiteral(" \u2014 BLACK"));
     } else {
-        setWindowTitle(QStringLiteral("BLACK"));
+        setWindowTitle(m_incognito ? QStringLiteral("Private \u2014 BLACK") : QStringLiteral("BLACK"));
     }
 }
 
@@ -1895,6 +1990,7 @@ void BrowserWindow::setupKeyboardShortcuts()
     };
 
     addShortcut(QStringLiteral("Ctrl+T"), [this]() { addTabAction(); });
+    addShortcut(QStringLiteral("Ctrl+D"), [this]() { addBookmarkForCurrentTab(); });
     addShortcut(QStringLiteral("Ctrl+Shift+N"), [this]() { openPrivateWindow(); });
     addShortcut(QStringLiteral("Ctrl+W"), [this]() { closeTab(m_currentTabIndex); });
     addShortcut(QStringLiteral("Ctrl+Shift+T"), [this]() {
@@ -2154,6 +2250,12 @@ void BrowserWindow::contextMenuEvent(QContextMenuEvent *event) {
 
     menu.addSeparator();
 
+    QAction *bookmark = menu.addAction(QStringLiteral("Add to Favourites"));
+    bookmark->setShortcut(QKeySequence(QStringLiteral("Ctrl+D")));
+    connect(bookmark, &QAction::triggered, this, &BrowserWindow::addBookmarkForCurrentTab);
+
+    menu.addSeparator();
+
     QAction *reload = menu.addAction(QStringLiteral("Reload"));
     connect(reload, &QAction::triggered, this, [this]() {
         if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget()))
@@ -2279,6 +2381,8 @@ void BrowserWindow::setupDownloads() {
                 switch (state) {
                 case QWebEngineDownloadRequest::DownloadCompleted:
                     m_downloadsList[idx].state = 1;
+                    if (BrowserSettings::instance().openSafeFiles() && !m_downloadsList[idx].filePath.isEmpty())
+                        QDesktopServices::openUrl(QUrl::fromLocalFile(m_downloadsList[idx].filePath));
                     break;
                 case QWebEngineDownloadRequest::DownloadCancelled:
                 case QWebEngineDownloadRequest::DownloadInterrupted:
@@ -2379,44 +2483,12 @@ void BrowserWindow::restoreSession() {
 
 void BrowserWindow::saveHistoryItem(const QString &title, const QString &url) {
     if (m_incognito || url.isEmpty() || url.startsWith(QStringLiteral("qrc:"))) return;
-    QString historyPath = dataFile(QStringLiteral("history.json"));
-    QJsonArray historyArray;
-    QFile readFile(historyPath);
-    if (readFile.open(QIODevice::ReadOnly)) {
-        historyArray = QJsonDocument::fromJson(readFile.readAll()).array();
-        readFile.close();
-    }
-    QJsonObject item;
-    item[QStringLiteral("title")] = title.isEmpty() ? shortUrl(url) : title;
-    item[QStringLiteral("url")] = url;
-    item[QStringLiteral("timestamp")] = QDateTime::currentDateTime().toString(Qt::ISODate);
-    historyArray.prepend(item);
-
-    // Keep max 500 history entries
-    while (historyArray.count() > 500) historyArray.removeLast();
-
-    QFile writeFile(historyPath);
-    if (writeFile.open(QIODevice::WriteOnly)) {
-        writeFile.write(QJsonDocument(historyArray).toJson());
-    }
+    m_history->add(title, url);
 }
 
 void BrowserWindow::saveBookmark(const QString &title, const QString &url) {
     if (url.isEmpty() || url.startsWith(QStringLiteral("qrc:"))) return;
-    QString bookmarkPath = dataFile(QStringLiteral("bookmarks.json"));
-    QJsonArray bookmarkArray;
-    QFile readFile(bookmarkPath);
-    if (readFile.open(QIODevice::ReadOnly)) {
-        bookmarkArray = QJsonDocument::fromJson(readFile.readAll()).array();
-        readFile.close();
-    }
-    QJsonObject item;
-    item[QStringLiteral("title")] = title.isEmpty() ? shortUrl(url) : title;
-    item[QStringLiteral("url")] = url;
-    bookmarkArray.append(item);
-
-    QFile writeFile(bookmarkPath);
-    if (writeFile.open(QIODevice::WriteOnly)) {
-        writeFile.write(QJsonDocument(bookmarkArray).toJson());
-    }
+    m_bookmarks->add(title, url);
 }
+
+#include "BrowserWindow.moc"

@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>History</title>
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <style>
+        :root {
+            --bg: #f5f5f7;
+            --card: #ffffff;
+            --text: #1d1d1f;
+            --sec: #6e6e73;
+            --accent: #0066cc;
+            --border: rgba(0, 0, 0, 0.08);
+            --hover: rgba(0, 0, 0, 0.05);
+        }
+
+        html.black-forced-dark {
+            color-scheme: dark;
+            --bg: #1c1c1e;
+            --card: #2c2c2e;
+            --text: #f5f5f7;
+            --sec: #98989d;
+            --accent: #0a84ff;
+            --border: rgba(255, 255, 255, 0.1);
+            --hover: rgba(255, 255, 255, 0.06);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 32px;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .header { display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px; }
+        h1 { font-size: 22px; font-weight: 700; }
+        .sub { color: var(--sec); font-size: 13px; margin-bottom: 20px; }
+
+        #clearBtn {
+            border: 1px solid var(--border);
+            background: var(--card);
+            color: #ff3b30;
+            font-size: 13px;
+            font-weight: 600;
+            padding: 6px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+        #clearBtn:hover { background: var(--hover); }
+
+        .day {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--sec);
+            margin: 18px 0 8px 0;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 9px 14px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-bottom: 6px;
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+        .row:hover { background: var(--hover); }
+        .row .clock { font-size: 12px; color: var(--sec); flex: none; width: 46px; }
+        .row .meta { flex: 1; min-width: 0; }
+        .row .title { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .row .url { font-size: 12px; color: var(--sec); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .row .remove {
+            flex: none;
+            border: none;
+            background: transparent;
+            color: var(--sec);
+            font-size: 14px;
+            cursor: pointer;
+            padding: 4px 6px;
+            border-radius: 6px;
+            visibility: hidden;
+        }
+        .row:hover .remove { visibility: visible; }
+        .row .remove:hover { color: #ff3b30; background: var(--hover); }
+
+        .empty {
+            text-align: center;
+            color: var(--sec);
+            padding: 80px 20px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>History</h1>
+        <span class="sub" id="count"></span>
+    </div>
+    <button id="clearBtn">Clear History&hellip;</button>
+    <div id="list"></div>
+
+    <script>
+        let store = null;
+
+        function hostOf(url) {
+            try { return new URL(url).host; } catch (e) { return url; }
+        }
+
+        function escapeHtml(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function dateLabel(iso) {
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return 'Unknown';
+            const now = new Date();
+            const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const startDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+            const diff = Math.round((startToday - startDay) / 86400000);
+            if (diff === 0) return 'Today';
+            if (diff === 1) return 'Yesterday';
+            if (diff < 7) return 'Earlier this week';
+            return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+
+        function timeLabel(iso) {
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return '';
+            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function render() {
+            const list = document.getElementById('list');
+            const count = document.getElementById('count');
+            if (!store) return;
+            let items = [];
+            try { items = JSON.parse(store.json); } catch (e) {}
+            count.textContent = items.length + (items.length === 1 ? ' entry' : ' entries');
+            if (!items.length) {
+                list.innerHTML = '<div class="empty">No browsing history.</div>';
+                return;
+            }
+            let html = '';
+            let lastDay = '';
+            items.forEach(function (item) {
+                const day = dateLabel(item.timestamp);
+                if (day !== lastDay) {
+                    html += '<div class="day">' + escapeHtml(day) + '</div>';
+                    lastDay = day;
+                }
+                const url = escapeHtml(item.url);
+                const title = escapeHtml(item.title || hostOf(item.url));
+                const host = escapeHtml(hostOf(item.url));
+                const time = escapeHtml(timeLabel(item.timestamp));
+                html += '<div class="row" data-url="' + url + '">' +
+                    '<span class="clock">' + time + '</span>' +
+                    '<div class="meta"><div class="title">' + title + '</div>' +
+                    '<div class="url">' + host + '</div></div>' +
+                    '<button class="remove" title="Remove">✕</button></div>';
+            });
+            list.innerHTML = html;
+            list.querySelectorAll('.row').forEach(function (row) {
+                row.addEventListener('click', function (e) {
+                    if (e.target.classList.contains('remove')) {
+                        store.remove(row.dataset.url);
+                        return;
+                    }
+                    window.location.href = row.dataset.url;
+                });
+            });
+        }
+
+        if (typeof QWebChannel !== 'undefined') {
+            new QWebChannel(qt.webChannelTransport, function (channel) {
+                store = channel.objects.history;
+                store.changed.connect(render);
+                render();
+
+                document.getElementById('clearBtn').addEventListener('click', function () {
+                    if (confirm('Clear all browsing history?'))
+                        store.clearAll();
+                });
+
+                const theme = channel.objects.theme;
+                const applyTheme = function () {
+                    const el = document.documentElement;
+                    const dark = (theme.themeScheme === 1);
+                    el.classList.toggle('black-forced-dark', dark);
+                    el.classList.toggle('black-forced-light', !dark);
+                };
+                theme.themeSchemeChanged.connect(applyTheme);
+                applyTheme();
+            });
+        }
+    </script>
+</body>
+</html>

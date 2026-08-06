@@ -20,6 +20,8 @@ qt_add_executable(BLACK
     BrowserSettings.h
     TrackerBlocker.cpp
     TrackerBlocker.h
+    ShelfStore.cpp
+    ShelfStore.h
     resources.rc
 )
 
@@ -27,7 +29,8 @@ qt_add_resources(BLACK "resources" PREFIX "/" BASE "${CMAKE_CURRENT_SOURCE_DIR}"
     FILES
         login.html
         startpage_enhanced.html
-        startpage.html
+        bookmarks.html
+        history.html
         settings.html
         extensions.html
         features.html

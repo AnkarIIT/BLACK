@@ -13,6 +13,7 @@ class BrowserSettings : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QString searchEngine READ searchEngine NOTIFY settingsChanged)
+    Q_PROPERTY(QString opensWith READ opensWith NOTIFY settingsChanged)
     Q_PROPERTY(QString newWindowsWith READ newWindowsWith NOTIFY settingsChanged)
     Q_PROPERTY(QString newTabsWith READ newTabsWith NOTIFY settingsChanged)
     Q_PROPERTY(QString removeHistoryItems READ removeHistoryItems NOTIFY settingsChanged)
@@ -23,6 +24,7 @@ public:
     static BrowserSettings &instance();
 
     QString searchEngine() const { return m_searchEngine; }
+    QString opensWith() const { return m_opensWith; }
     QString newWindowsWith() const { return m_newWindowsWith; }
     QString newTabsWith() const { return m_newTabsWith; }
     QString removeHistoryItems() const { return m_removeHistoryItems; }
@@ -46,6 +48,7 @@ private:
     void save();
 
     QString m_searchEngine;
+    QString m_opensWith;
     QString m_newWindowsWith;
     QString m_newTabsWith;
     QString m_removeHistoryItems;

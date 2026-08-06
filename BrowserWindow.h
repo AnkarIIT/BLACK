@@ -32,6 +32,7 @@ class SafariWebView;
 class QWebEngineNewWindowRequest;
 class QWebEngineProfile;
 class QWebChannel;
+class ShelfStore;
 
 struct TabInfo {
     QWebEngineView* view = nullptr;
@@ -121,6 +122,8 @@ private:
 
     void addNewTab(const QUrl &url);
     SafariWebView* addTabView(const QUrl &url, QWebEngineNewWindowRequest *request);
+    QUrl newTabUrl() const;
+    void addBookmarkForCurrentTab();
     void rebuildTabBar();
     void refreshTabLabel(int index);
     void rebuildOverviewGrid();
@@ -171,8 +174,9 @@ private:
     QToolButton *m_minimizeButton;
     QToolButton *m_maximizeButton;
     QToolButton *m_settingsButton;
+    QLabel      *m_privateBadge;
     QDialog      *m_settingsDialog;
-    QWebEngineView *m_settingsView;
+    SafariWebView *m_settingsView;
 
     QProgressBar *m_loadingBar;
 
@@ -235,6 +239,8 @@ private:
     bool            m_incognito;
     QWebEngineProfile *m_profile;
     QWebChannel     *m_webChannel;
+    ShelfStore      *m_bookmarks;
+    ShelfStore      *m_history;
     QMap<QString, bool> m_permissionChoices;
 };
 

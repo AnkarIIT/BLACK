@@ -21,6 +21,7 @@ BrowserSettings &BrowserSettings::instance()
 BrowserSettings::BrowserSettings(QObject *parent)
     : QObject(parent)
     , m_searchEngine(QStringLiteral("Google"))
+    , m_opensWith(QStringLiteral("All windows from last session"))
     , m_newWindowsWith(QStringLiteral("Start Page"))
     , m_newTabsWith(QStringLiteral("Start Page"))
     , m_removeHistoryItems(QStringLiteral("After one year"))
@@ -60,6 +61,7 @@ void BrowserSettings::load()
     const QJsonObject obj = readSettingsObject();
     const QJsonObject general = obj.value(kGeneralKey).toObject();
     m_searchEngine            = general.value(QStringLiteral("searchEngine")).toString(m_searchEngine);
+    m_opensWith               = general.value(QStringLiteral("opensWith")).toString(m_opensWith);
     m_newWindowsWith          = general.value(QStringLiteral("newWindowsWith")).toString(m_newWindowsWith);
     m_newTabsWith             = general.value(QStringLiteral("newTabsWith")).toString(m_newTabsWith);
     m_removeHistoryItems      = general.value(QStringLiteral("removeHistoryItems")).toString(m_removeHistoryItems);
@@ -72,6 +74,7 @@ void BrowserSettings::save()
     QJsonObject obj = readSettingsObject();
     QJsonObject general;
     general.insert(QStringLiteral("searchEngine"), m_searchEngine);
+    general.insert(QStringLiteral("opensWith"), m_opensWith);
     general.insert(QStringLiteral("newWindowsWith"), m_newWindowsWith);
     general.insert(QStringLiteral("newTabsWith"), m_newTabsWith);
     general.insert(QStringLiteral("removeHistoryItems"), m_removeHistoryItems);
@@ -86,6 +89,9 @@ void BrowserSettings::setValue(const QString &key, const QString &value)
     bool changed = false;
     if (key == QLatin1String("searchEngine") && m_searchEngine != value) {
         m_searchEngine = value;
+        changed = true;
+    } else if (key == QLatin1String("opensWith") && m_opensWith != value) {
+        m_opensWith = value;
         changed = true;
     } else if (key == QLatin1String("newWindowsWith") && m_newWindowsWith != value) {
         m_newWindowsWith = value;

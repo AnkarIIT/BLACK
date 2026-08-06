@@ -32,55 +32,54 @@
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
+        html, body { height: 100%; }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
-            background-color: var(--mac-bg);
+            background: transparent;
             color: var(--mac-text);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            padding: 20px;
+            overflow: hidden;
             user-select: none;
             -webkit-font-smoothing: antialiased;
         }
 
-        /* macOS Window Container Replica */
+        /* Single rounded Safari window (the C++ dialog is frameless/translucent) */
         .window {
-            width: 820px;
+            height: 100vh;
             background: var(--mac-bg);
             border: 1px solid var(--mac-border);
             border-radius: 12px;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+            overflow: hidden;
             display: flex;
             flex-direction: column;
-            overflow: hidden;
+            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
         }
 
         /* Title Bar */
         .titlebar {
-            height: 48px;
+            flex: none;
+            height: 44px;
             display: flex;
             align-items: center;
             position: relative;
             border-bottom: 1px solid var(--mac-border);
-            padding: 0 12px;
+            padding: 0 14px;
+            background: var(--mac-bg);
         }
 
-        .traffic-lights {
-            display: flex;
-            gap: 8px;
-        }
+        .traffic-lights { display: flex; gap: 8px; }
 
         .dot {
             width: 12px;
             height: 12px;
             border-radius: 6px;
             border: 0.5px solid rgba(0, 0, 0, 0.15);
+            cursor: default;
         }
         .dot.red { background-color: #ff5f56; }
         .dot.yellow { background-color: #ffbd2e; }
         .dot.green { background-color: #27c93f; }
+        .dot.red:hover { background-color: #e0443e; }
 
         .window-title {
             position: absolute;
@@ -89,17 +88,19 @@
             font-size: 13px;
             font-weight: 600;
             color: var(--mac-text);
+            pointer-events: none;
         }
 
-        /* Preferences Toolbar */
+        /* Preferences Toolbar — one compact row, no horizontal scroll */
         .toolbar {
+            flex: none;
             display: flex;
-            justify-content: center;
-            gap: 4px;
+            justify-content: space-between;
+            gap: 2px;
             border-bottom: 1px solid var(--mac-border);
-            padding: 6px 12px;
+            padding: 7px 10px;
             background: var(--mac-bg);
-            overflow-x: auto;
+            overflow: hidden;
         }
 
         .tool-btn {
@@ -110,18 +111,20 @@
             border: none;
             background: transparent;
             color: var(--mac-text-sec);
-            padding: 6px 8px;
+            padding: 5px 4px;
             border-radius: 6px;
             cursor: pointer;
-            min-width: 58px;
-            transition: all 0.1s;
+            min-width: 0;
+            flex: 1;
+            max-width: 62px;
+            transition: background 0.1s;
         }
 
         .tool-btn:hover {
-            background: rgba(0, 0, 0, 0.04);
+            background: rgba(0, 0, 0, 0.05);
         }
         html.black-forced-dark .tool-btn:hover {
-            background: rgba(255, 255, 255, 0.04);
+            background: rgba(255, 255, 255, 0.05);
         }
 
         .tool-btn.active {
@@ -130,29 +133,33 @@
         }
 
         .tool-icon {
-            font-size: 18px;
+            font-size: 15px;
+            line-height: 1;
             margin-bottom: 3px;
         }
 
         .tool-label {
-            font-size: 10px;
+            font-size: 9px;
             font-weight: 500;
             white-space: nowrap;
         }
 
-        /* Content Area */
-        .content {
-            padding: 24px 36px;
+        /* Scrollable content area (scrollbar hidden, wheel/touch works) */
+        .pane-area {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
             background: var(--mac-card);
-            min-height: 400px;
+        }
+        .pane-area::-webkit-scrollbar { width: 0; height: 0; }
+
+        .content {
             display: none;
+            padding: 22px 32px;
         }
+        .content.active { display: block; }
 
-        .content.active {
-            display: block;
-        }
-
-        /* General Settings styles */
+        /* General settings grid */
         .settings-grid {
             display: grid;
             grid-template-columns: 200px 1fr;
@@ -160,6 +167,7 @@
             column-gap: 16px;
             align-items: center;
             font-size: 13px;
+            max-width: 640px;
         }
 
         .label {
@@ -208,9 +216,7 @@
             box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
 
-        .mac-btn:hover {
-            opacity: 0.9;
-        }
+        .mac-btn:hover { opacity: 0.9; }
 
         .subtext {
             grid-column: 2;
@@ -273,12 +279,7 @@
             color: var(--mac-accent);
         }
 
-        .ext-title {
-            font-size: 15px;
-            font-weight: 700;
-            margin-bottom: 8px;
-        }
-
+        .ext-title { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
         .ext-desc {
             font-size: 12px;
             color: var(--mac-text-sec);
@@ -298,8 +299,25 @@
             cursor: pointer;
         }
 
-        .mac-blue-btn:hover {
-            opacity: 0.9;
+        .mac-blue-btn:hover { opacity: 0.9; }
+
+        /* Polished status panel for tabs without configurable options */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            min-height: 260px;
+            padding: 40px;
+        }
+        .empty-icon { font-size: 34px; margin-bottom: 12px; opacity: 0.85; }
+        .empty-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+        .empty-desc {
+            font-size: 12px;
+            color: var(--mac-text-sec);
+            max-width: 360px;
+            line-height: 1.55;
         }
     </style>
 </head>
@@ -308,7 +326,7 @@
         <!-- Title Bar -->
         <div class="titlebar">
             <div class="traffic-lights">
-                <span class="dot red"></span>
+                <span class="dot red" id="closeBtn" title="Close settings"></span>
                 <span class="dot yellow"></span>
                 <span class="dot green"></span>
             </div>
@@ -372,156 +390,240 @@
         </div>
 
         <!-- Tab Contents -->
-        <!-- General -->
-        <div id="general" class="content active">
-            <div class="settings-grid">
-                <div class="label">Default web browser:</div>
-                <div class="value">
-                    <span>BLACK is not your default browser.</span>
-                    <button class="mac-btn" id="setDefaultBtn">Set Default&hellip;</button>
-                </div>
+        <div class="pane-area">
+            <div id="general" class="content active">
+                <div class="settings-grid">
+                    <div class="label">Default web browser:</div>
+                    <div class="value">
+                        <span>BLACK is not your default browser.</span>
+                        <button class="mac-btn" id="setDefaultBtn">Set Default&hellip;</button>
+                    </div>
 
-                <div class="label">Safari opens with:</div>
-                <div class="value">
-                    <select id="opensWith">
-                        <option>All windows from last session</option>
-                        <option>All private windows</option>
-                        <option>A new window</option>
-                        <option>A new private window</option>
-                    </select>
-                </div>
+                    <div class="label">Safari opens with:</div>
+                    <div class="value">
+                        <select id="opensWith">
+                            <option>All windows from last session</option>
+                            <option>All private windows</option>
+                            <option>A new window</option>
+                            <option>A new private window</option>
+                        </select>
+                    </div>
 
-                <div class="label">New windows open with:</div>
-                <div class="value">
-                    <select id="newWindowsWith">
-                        <option>Start Page</option>
-                        <option>Favourites</option>
-                        <option>Set to Current Page</option>
-                    </select>
-                </div>
+                    <div class="label">Remove history items:</div>
+                    <div class="value">
+                        <select id="removeHistoryItems">
+                            <option>After one year</option>
+                            <option>After one month</option>
+                            <option>After one week</option>
+                            <option>After one day</option>
+                        </select>
+                    </div>
 
-                <div class="label">New tabs open with:</div>
-                <div class="value">
-                    <select id="newTabsWith">
-                        <option>Start Page</option>
-                        <option>Favourites</option>
-                        <option>Set to Current Page</option>
-                    </select>
-                </div>
+                    <div class="label">Start Page Favourites:</div>
+                    <div class="value">
+                        <select id="startPageFavs">
+                            <option>Favourites</option>
+                        </select>
+                    </div>
 
-                <div class="label">Homepage:</div>
-                <div class="value">
-                    <input type="text" id="homepage" value="http://www.apple.com/uk/startpage/">
-                    <button class="mac-btn">Set to Current Page</button>
-                </div>
+                    <div class="label">File download location:</div>
+                    <div class="value">
+                        <select id="downloadLoc">
+                            <option>Downloads</option>
+                        </select>
+                    </div>
 
-                <div class="label">Remove history items:</div>
-                <div class="value">
-                    <select id="removeHistoryItems">
-                        <option>After one year</option>
-                        <option>After one month</option>
-                        <option>After one week</option>
-                        <option>After one day</option>
-                    </select>
-                </div>
+                    <div class="label">Remove download list items:</div>
+                    <div class="value">
+                        <select id="removeDownloadListItems">
+                            <option>After one day</option>
+                            <option>On Quit</option>
+                            <option>Manually</option>
+                        </select>
+                    </div>
 
-                <div class="label">Start Page Favourites:</div>
-                <div class="value">
-                    <select id="startPageFavs">
-                        <option>Favourites</option>
-                    </select>
-                </div>
+                    <div class="label"></div>
+                    <div class="value">
+                        <label style="display: flex; align-items: center; gap: 6px;">
+                            <input type="checkbox" id="openSafeFiles">
+                            <span>Open &ldquo;safe&rdquo; files after downloading</span>
+                        </label>
+                    </div>
+                    <div class="subtext">
+                        &ldquo;Safe&rdquo; files include movies, pictures, sounds, PDF and text documents, and archives.
+                    </div>
 
-                <div class="label">File download location:</div>
-                <div class="value">
-                    <select id="downloadLoc">
-                        <option>Downloads</option>
-                    </select>
-                </div>
-
-                <div class="label">Remove download list items:</div>
-                <div class="value">
-                    <select id="removeDownloadListItems">
-                        <option>After one day</option>
-                        <option>On Quit</option>
-                        <option>Manually</option>
-                    </select>
-                </div>
-
-                <div class="label"></div>
-                <div class="value">
-                    <label style="display: flex; align-items: center; gap: 6px;">
-                        <input type="checkbox" id="openSafeFiles">
-                        <span>Open &ldquo;safe&rdquo; files after downloading</span>
-                    </label>
-                </div>
-                <div class="subtext">
-                    &ldquo;Safe&rdquo; files include movies, pictures, sounds, PDF and text documents, and archives.
-                </div>
-
-                <div class="label">Appearance Mode:</div>
-                <div class="value">
-                    <div class="segmented" id="themeSeg" style="display: flex; gap: 4px; background: rgba(0,0,0,0.05); padding: 2px; border-radius: 6px;">
-                        <button data-theme="0" class="mac-btn" style="padding: 3px 8px; font-size: 11px;">System</button>
-                        <button data-theme="1" class="mac-btn" style="padding: 3px 8px; font-size: 11px;">Light</button>
-                        <button data-theme="2" class="mac-btn" style="padding: 3px 8px; font-size: 11px;">Dark</button>
+                    <div class="label">Appearance Mode:</div>
+                    <div class="value">
+                        <div class="segmented" id="themeSeg" style="display: flex; gap: 4px; background: rgba(0,0,0,0.05); padding: 2px; border-radius: 6px;">
+                            <button data-theme="0" class="mac-btn" style="padding: 3px 8px; font-size: 11px;">System</button>
+                            <button data-theme="1" class="mac-btn" style="padding: 3px 8px; font-size: 11px;">Light</button>
+                            <button data-theme="2" class="mac-btn" style="padding: 3px 8px; font-size: 11px;">Dark</button>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Extensions Tab Content inside Settings page -->
-        <div id="extensions" class="content">
-            <div class="extensions-layout">
-                <div class="ext-left">
-                    <div class="ext-list">
-                        No Extensions
+            <!-- Tabs -->
+            <div id="tabs" class="content">
+                <div class="settings-grid">
+                    <div class="label">New windows open with:</div>
+                    <div class="value">
+                        <select id="newWindowsWith">
+                            <option>Start Page</option>
+                            <option>Favourites</option>
+                            <option>Set to Current Page</option>
+                        </select>
                     </div>
-                    <div class="ext-bottom">
-                        <input type="checkbox" id="shareAcrossDevices" checked>
-                        <label for="shareAcrossDevices">Share across devices</label>
+
+                    <div class="label">New tabs open with:</div>
+                    <div class="value">
+                        <select id="newTabsWith">
+                            <option>Start Page</option>
+                            <option>Favourites</option>
+                            <option>Set to Current Page</option>
+                        </select>
+                    </div>
+                    <div class="subtext">
+                        Open tabs, recently closed tabs, tab overview and tab groups live in the main window.
                     </div>
                 </div>
-                <div class="ext-right">
-                    <div class="ext-center-icon">🧩</div>
-                    <h3 class="ext-title">Extensions</h3>
-                    <p class="ext-desc">Supercharge your Safari browsing with extensions that can find discounts, block ads and more.</p>
-                    <button class="mac-blue-btn" onclick="location.href='qrc:/extensions.html'">Browse Extensions&hellip;</button>
+            </div>
+
+            <!-- Search -->
+            <div id="search" class="content">
+                <div class="settings-grid">
+                    <div class="label">Search engine:</div>
+                    <div class="value">
+                        <select id="searchEngine">
+                            <option>Google</option>
+                            <option>Bing</option>
+                            <option>DuckDuckGo</option>
+                            <option>Brave</option>
+                            <option>Yahoo</option>
+                            <option>Ecosia</option>
+                        </select>
+                    </div>
+                    <div class="subtext">
+                        Used when you type a search term in the address bar or start page.
+                    </div>
+                </div>
+            </div>
+
+            <div id="autofill" class="content">
+                <div class="empty-state">
+                    <div class="empty-icon">📝</div>
+                    <div class="empty-title">AutoFill</div>
+                    <div class="empty-desc">Contact and form details are never saved. Use your system password manager for AutoFill.</div>
+                </div>
+            </div>
+
+            <div id="passwords" class="content">
+                <div class="empty-state">
+                    <div class="empty-icon">🔑</div>
+                    <div class="empty-title">Passwords</div>
+                    <div class="empty-desc">Passwords are protected by your Windows credentials. Enable a password manager to fill and save logins.</div>
+                </div>
+            </div>
+
+            <div id="security" class="content">
+                <div class="empty-state">
+                    <div class="empty-icon">🔒</div>
+                    <div class="empty-title">Security</div>
+                    <div class="empty-desc">Sandboxing, multi-process isolation and certificate checks are active. Warning dialogs appear when a site&rsquo;s identity cannot be verified.</div>
+                </div>
+            </div>
+
+            <div id="privacy" class="content">
+                <div class="empty-state">
+                    <div class="empty-icon">✋</div>
+                    <div class="empty-title">Privacy</div>
+                    <div class="empty-desc">Tracker Blocker and fingerprint protection are active. See the live Privacy Report in the main window.</div>
+                </div>
+            </div>
+
+            <div id="websites" class="content">
+                <div class="empty-state">
+                    <div class="empty-icon">🌐</div>
+                    <div class="empty-title">Websites</div>
+                    <div class="empty-desc">Camera, microphone, location and notification permissions are requested and remembered per site as you browse.</div>
+                </div>
+            </div>
+
+            <div id="profiles" class="content">
+                <div class="empty-state">
+                    <div class="empty-icon">👤</div>
+                    <div class="empty-title">Profiles</div>
+                    <div class="empty-desc">All browsing data lives in one BLACK profile. Use Private Windows for isolated sessions.</div>
+                </div>
+            </div>
+
+            <div id="extensions" class="content">
+                <div class="extensions-layout">
+                    <div class="ext-left">
+                        <div class="ext-list">
+                            No Extensions
+                        </div>
+                        <div class="ext-bottom">
+                            <input type="checkbox" id="shareAcrossDevices" checked>
+                            <label for="shareAcrossDevices">Share across devices</label>
+                        </div>
+                    </div>
+                    <div class="ext-right">
+                        <div class="ext-center-icon">🧩</div>
+                        <h3 class="ext-title">Extensions</h3>
+                        <p class="ext-desc">Supercharge your Safari browsing with extensions that can find discounts, block ads and more.</p>
+                        <button class="mac-blue-btn" onclick="location.href='qrc:/extensions.html'">Browse Extensions&hellip;</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="advanced" class="content">
+                <div class="empty-state">
+                    <div class="empty-icon">🛠</div>
+                    <div class="empty-title">Advanced</div>
+                    <div class="empty-desc">Networking, rendering and storage options are tuned for performance automatically by BLACK.</div>
+                </div>
+            </div>
+
+            <div id="developer" class="content">
+                <div class="empty-state">
+                    <div class="empty-icon">🔨</div>
+                    <div class="empty-title">Developer</div>
+                    <div class="empty-desc">Developer tools are not enabled in this build of BLACK.</div>
+                </div>
+            </div>
+
+            <div id="features" class="content">
+                <div class="empty-state">
+                    <div class="empty-icon">🚩</div>
+                    <div class="empty-title">Feature Flags</div>
+                    <div class="empty-desc">Experimental features are managed automatically by BLACK and rolled out when stable.</div>
                 </div>
             </div>
         </div>
-
-        <!-- Other Placeholders to look extremely complete -->
-        <div id="tabs" class="content"><div style="text-align: center; padding-top: 100px; color: var(--mac-text-sec);">Tabs settings and options are managed automatically by BLACK.</div></div>
-        <div id="autofill" class="content"><div style="text-align: center; padding-top: 100px; color: var(--mac-text-sec);">AutoFill details are integrated with Windows Credential Provider.</div></div>
-        <div id="passwords" class="content"><div style="text-align: center; padding-top: 100px; color: var(--mac-text-sec);">Passwords are secured with high-grade local master encryption.</div></div>
-        <div id="search" class="content"><div style="text-align: center; padding-top: 100px; color: var(--mac-text-sec);">Search preferences follow the selected general search engine.</div></div>
-        <div id="security" class="content"><div style="text-align: center; padding-top: 100px; color: var(--mac-text-sec);">Sandbox and Multi-process rendering isolation are fully active.</div></div>
-        <div id="privacy" class="content"><div style="text-align: center; padding-top: 100px; color: var(--mac-text-sec);">ITP, Tracker Blocker, and finger-print protection are active.</div></div>
-        <div id="websites" class="content"><div style="text-align: center; padding-top: 100px; color: var(--mac-text-sec);">Websites rules, permissions and policies are managed on demand.</div></div>
-        <div id="profiles" class="content"><div style="text-align: center; padding-top: 100px; color: var(--mac-text-sec);">Profiles configuration is synchronized across active user environments.</div></div>
-        <div id="advanced" class="content"><div style="text-align: center; padding-top: 100px; color: var(--mac-text-sec);">Advanced configuration features are fully active.</div></div>
-        <div id="developer" class="content"><div style="text-align: center; padding-top: 100px; color: var(--mac-text-sec);">Developer Tools and console debugging are enabled.</div></div>
-        <div id="features" class="content"><div style="text-align: center; padding-top: 100px; color: var(--mac-text-sec);">Custom feature flags are initialized.</div></div>
     </div>
 
     <script>
         function switchTab(id, title) {
-            // Update active content
             document.querySelectorAll('.content').forEach(function(c) {
                 c.classList.remove('active');
             });
             document.getElementById(id).classList.add('active');
 
-            // Update active button
             const buttons = document.querySelectorAll('.tool-btn');
             buttons.forEach(function(b) {
                 b.classList.remove('active');
             });
-            event.currentTarget.classList.add('active');
+            if (event && event.currentTarget) event.currentTarget.classList.add('active');
 
-            // Update title
             document.getElementById('titleText').textContent = title;
+            const pane = document.getElementById(id);
+            pane.scrollTop = 0;
+
+            // Force a synchronous reflow: QtWebEngine sometimes leaves stale pixels
+            // after toggling display:none -> display:block inside a webview.
+            void document.body.offsetHeight;
         }
 
         // Parse query parameter to open specific tab (e.g. ?tab=extensions)
@@ -554,6 +656,7 @@
                 const theme = channel.objects.theme;
 
                 setSelect('opensWith', settings.opensWith || "All windows from last session");
+                setSelect('searchEngine', settings.searchEngine);
                 setSelect('newWindowsWith', settings.newWindowsWith);
                 setSelect('newTabsWith', settings.newTabsWith);
                 setSelect('removeHistoryItems', settings.removeHistoryItems);
@@ -565,6 +668,8 @@
 
                 bindSelect('newWindowsWith', 'newWindowsWith', settings);
                 bindSelect('newTabsWith', 'newTabsWith', settings);
+                bindSelect('searchEngine', 'searchEngine', settings);
+                bindSelect('opensWith', 'opensWith', settings);
                 bindSelect('removeHistoryItems', 'removeHistoryItems', settings);
                 bindSelect('removeDownloadListItems', 'removeDownloadListItems', settings);
 
@@ -586,6 +691,14 @@
                         theme.setThemePreference(parseInt(b.dataset.theme, 10));
                     });
                 });
+
+                // Close the frameless settings window from the red traffic light.
+                const dialog = channel.objects.settingsDialog;
+                if (dialog) {
+                    document.getElementById('closeBtn').addEventListener('click', function () {
+                        dialog.closeDialog();
+                    });
+                }
 
                 const applyTheme = function () {
                     const el = document.documentElement;
