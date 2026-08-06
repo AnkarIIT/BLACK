@@ -220,6 +220,27 @@
 
         .mac-btn:hover { opacity: 0.9; }
 
+        .row-input {
+            background: var(--mac-bg);
+            border: 1px solid var(--mac-border);
+            border-radius: 5px;
+            color: var(--mac-text);
+            font-size: 12px;
+            padding: 3px 8px;
+            outline: none;
+            min-width: 0;
+        }
+        .row-input:focus { border-color: var(--mac-accent); box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.25); }
+        .row-edit {
+            background: transparent;
+            border: none;
+            color: var(--mac-text-sec);
+            cursor: pointer;
+            font-size: 12px;
+            padding: 2px 5px;
+        }
+        .row-edit:hover { color: var(--mac-accent); }
+
         .subtext {
             grid-column: 2;
             font-size: 11px;
@@ -682,6 +703,14 @@
                 <div class="subtext" style="margin-top: 10px;">
                     Passwords are saved locally on this device (obfuscated on disk, not encrypted) and never synced to the cloud. For real encryption, use a dedicated password manager.
                 </div>
+
+                <div class="pane-title" style="font-size: 13px; margin-top: 22px;">Never Save Passwords For</div>
+                <div class="list-card" id="nsList" style="margin-top: 8px;">
+                    <div class="list-empty">No sites in this list. BLACK will keep offering to save logins everywhere.</div>
+                </div>
+                <div class="subtext" style="margin-top: 8px;">
+                    BLACK will not autofill or save passwords on these sites. Add a site by clicking “Never for This Site” in the password toast that appears after you log in there.
+                </div>
             </div>
 
             <div id="security" class="content">
@@ -787,8 +816,15 @@
         // Parse query parameter to open specific tab (e.g. ?tab=extensions)
         const urlParams = new URLSearchParams(window.location.search);
         const initialTab = urlParams.get('tab');
-        if (initialTab === 'extensions') {
-            document.getElementById('extTabBtn').click();
+        if (initialTab) {
+            const buttons = document.querySelectorAll('.tool-btn');
+            for (const b of buttons) {
+                const oc = b.getAttribute('onclick') || '';
+                if (oc.indexOf("switchTab('" + initialTab + "'") !== -1) {
+                    b.click();
+                    break;
+                }
+            }
         }
 
         function setSelect(id, value) {
@@ -929,8 +965,9 @@
                         html += '<div class="list-row"><span class="list-site">' + esc(p.host) + '</span>'
                             + '<span class="list-user">' + esc(p.username) + '</span>'
                             + '<span class="list-pass" data-key="' + key + '">••••••••</span>'
-                            + '<span style="display: flex; gap: 6px;">'
+                            + '<span style="display: flex; gap: 4px; align-items: center;">'
                             + '<button class="mac-btn" data-toggle="' + key + '" style="padding: 2px 8px;">Show</button>'
+                            + '<button class="row-edit" data-edit="' + key + '" title="Edit login">✎</button>'
                             + '<button class="list-del" data-del="' + key + '" title="Delete">✕</button></span></div>';
                     });
                     el.innerHTML = html;
@@ -961,11 +998,64 @@
                             } else if (span) {
                                 span.textContent = '••••••••';
                             }
+                        } else if (t.dataset.edit) {
+                            const parts = t.dataset.edit.split('|');
+                            const host = decodeURIComponent(parts[0]);
+                            const user = decodeURIComponent(parts[1]);
+                            const row = t.closest('.list-row');
+                            if (!row) return;
+                            const list = parseList(passwords.json);
+                            let pwd = '';
+                            for (let i = 0; i < list.length; i++) {
+                                if (list[i].host === host && list[i].username === user) { pwd = list[i].password; break; }
+                            }
+                            row.innerHTML = '<span class="list-site">' + esc(host) + '</span>'
+                                + '<span class="list-user"><input class="row-input" id="editUser" value="' + esc(user) + '" style="width: 100%;"></span>'
+                                + '<span class="list-pass"><input class="row-input" id="editPwd" value="' + esc(pwd) + '" style="width: 100%;"></span>'
+                                + '<span style="display: flex; gap: 6px; align-items: center;">'
+                                + '<button class="mac-btn" id="editSave" style="padding: 2px 8px;">Save</button>'
+                                + '<button class="mac-btn" id="editCancel" style="padding: 2px 8px;">Cancel</button></span>';
+                            document.getElementById('editUser').focus();
+                            document.getElementById('editSave').onclick = function () {
+                                const nu = document.getElementById('editUser').value;
+                                const np = document.getElementById('editPwd').value;
+                                if (!np) return;
+                                passwords.remove(host, user);
+                                passwords.save(host, nu, np);
+                            };
+                            document.getElementById('editCancel').onclick = function () { renderPasswords(); };
                         }
                     });
                 }
                 const pwClearBtn = document.getElementById('pwClearBtn');
                 if (pwClearBtn) pwClearBtn.addEventListener('click', function () { passwords.clearAll(); });
+
+                const renderNeverSave = function () {
+                    const list = parseList(passwords.neverSaveJson);
+                    const el = document.getElementById('nsList');
+                    if (!el) return;
+                    if (!list.length) {
+                        el.innerHTML = '<div class="list-empty">No sites in this list. BLACK will keep offering to save logins everywhere.</div>';
+                        return;
+                    }
+                    el.innerHTML = list.map(function (h) {
+                        return '<div class="list-row"><span class="list-site">' + esc(h) + '</span>'
+                            + '<span class="list-user">Passwords never saved</span>'
+                            + '<span class="list-pass"></span>'
+                            + '<button class="list-del" data-nsdel="' + encodeURIComponent(h) + '" title="Remove from list">✕</button></div>';
+                    }).join('');
+                };
+                passwords.changed.connect(renderNeverSave);
+                renderNeverSave();
+                const nsListEl = document.getElementById('nsList');
+                if (nsListEl) {
+                    nsListEl.addEventListener('click', function (e) {
+                        const t = e.target;
+                        if (t.dataset.nsdel) {
+                            passwords.setNeverSave(decodeURIComponent(t.dataset.nsdel), false);
+                        }
+                    });
+                }
 
                 // ── Profiles tab ───────────────────────────────────────────
                 const account = channel.objects.account;

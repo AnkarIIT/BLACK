@@ -13,16 +13,20 @@ class PasswordStore : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QString json READ json NOTIFY changed)
+    Q_PROPERTY(QString neverSaveJson READ neverSaveJson NOTIFY changed)
 
 public:
     explicit PasswordStore(QObject *parent = nullptr);
 
     QString json() const;
+    QString neverSaveJson() const;
 
     Q_INVOKABLE void save(const QString &host, const QString &username, const QString &password);
     Q_INVOKABLE void remove(const QString &host, const QString &username);
     Q_INVOKABLE void clearAll();
     Q_INVOKABLE QVariantList entriesFor(const QString &host) const;
+    Q_INVOKABLE bool isNeverSave(const QString &host) const;
+    Q_INVOKABLE void setNeverSave(const QString &host, bool neverSave);
 
 signals:
     void changed();

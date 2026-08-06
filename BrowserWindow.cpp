@@ -207,19 +207,49 @@ static const QString kPasswordHandlerScript = QStringLiteral(
     "tries++;if(!window.QWebChannel||!window.qt||!qt.webChannelTransport){if(tries<80)setTimeout(boot,100);return;}"
     "new QWebChannel(qt.webChannelTransport,function(channel){"
     "var ps=channel.objects.passwords;if(!ps)return;"
+    "var isLoginForm=function(f){"
+    "if(!f||f.tagName!=='FORM')return false;"
+    "var pwds=f.querySelectorAll('input[type=\"password\"]');"
+    "if(pwds.length!==1)return false;"
+    "return !!f.querySelector('input[type=\"text\"],input[type=\"email\"],input[name*=\"user\" i],input[name*=\"login\" i],input[name*=\"mail\" i],input[id*=\"user\" i],input[id*=\"email\" i],input[autocomplete=\"username\"]');};"
+    "var NS=[];var loadNS=function(){ps.neverSaveJson(function(s){try{NS=JSON.parse(s||'[]');}catch(e){NS=[];}});};"
+    "loadNS();ps.changed.connect(loadNS);"
+    "var neverSaveHost=function(h){for(var i=0;i<NS.length;i++){if(NS[i]===h)return true;}return false;};"
+    "var findLoginForm=function(){var fs=document.forms;for(var i=0;i<fs.length;i++){if(isLoginForm(fs[i]))return fs[i];}return null;};"
     "var fill=function(){"
-    "var p=document.querySelector('input[type=\"password\"]');if(!p||p.value)return;"
+    "if(neverSaveHost(location.host))return;"
+    "var f=findLoginForm();if(!f)return;"
+    "var p=f.querySelector('input[type=\"password\"]');if(!p||p.value)return;"
     "ps.entriesFor(location.host,function(entries){"
     "if(!entries||!entries.length)return;var e=entries[0];"
-    "var u=document.querySelector('input[type=\"text\"],input[type=\"email\"],input[name*=\"user\" i],input[name*=\"login\" i],input[name*=\"mail\" i],input[id*=\"user\" i],input[id*=\"email\" i],input[autocomplete=\"username\"]');"
+    "var u=f.querySelector('input[type=\"text\"],input[type=\"email\"],input[name*=\"user\" i],input[name*=\"login\" i],input[name*=\"mail\" i],input[id*=\"user\" i],input[id*=\"email\" i],input[autocomplete=\"username\"]');"
+    "if(!u)u=document.querySelector('input[type=\"text\"],input[type=\"email\"],input[autocomplete=\"username\"]');"
     "if(u&&!u.value)u.value=e.username;"
-    "var p2=document.querySelector('input[type=\"password\"]');if(p2&&!p2.value)p2.value=e.password;});};"
+    "var p2=f.querySelector('input[type=\"password\"]');if(p2&&!p2.value)p2.value=e.password;});};"
     "fill();setTimeout(fill,700);setTimeout(fill,2000);"
+    "var toast=null;"
+    "var dismissToast=function(){if(toast&&toast.parentNode)toast.parentNode.removeChild(toast);toast=null;};"
+    "var showToast=function(){"
+    "dismissToast();"
+    "var el=document.createElement('div');toast=el;"
+    "el.style.cssText='position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:2147483647;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;max-width:72vw;background:rgba(30,30,32,0.97);color:#f5f5f7;font:13px -apple-system,Segoe UI,sans-serif;padding:10px 14px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.4);';"
+    "var msg=document.createElement('span');msg.textContent='Password saved for '+location.host+'.';el.appendChild(msg);"
+    "var st=function(label,bg){var b=document.createElement('button');b.textContent=label;b.style.cssText='border:none;border-radius:8px;padding:6px 12px;font:13px -apple-system,Segoe UI,sans-serif;cursor:pointer;color:#fff;background:'+bg+';';return b;};"
+    "var never=st('Never for This Site','#48484a');never.title='Do not autofill or save passwords on this site';"
+    "never.onclick=function(){dismissToast();try{ps.setNeverSave(location.host,true);}catch(e){}};"
+    "var ok=st('OK','#0a84ff');ok.onclick=dismissToast;"
+    "el.appendChild(never);el.appendChild(ok);"
+    "document.body.appendChild(el);"
+    "setTimeout(dismissToast,6000);"
+    "};"
     "document.addEventListener('submit',function(ev){"
     "var f=ev.target;if(!f||f.tagName!=='FORM')return;"
+    "if(!isLoginForm(f))return;"
+    "if(neverSaveHost(location.host))return;"
     "var p=f.querySelector('input[type=\"password\"]');if(!p||!p.value)return;"
     "var u=f.querySelector('input[type=\"text\"],input[type=\"email\"],input[name*=\"user\" i],input[name*=\"login\" i],input[name*=\"mail\" i]');"
-    "try{ps.save(location.host,u?u.value:'',p.value);}catch(err){}},true);"
+    "try{ps.save(location.host,u?u.value:'',p.value);showToast();}catch(err){}"
+    "},true);"
     "});}"
     "boot();})();");
 
@@ -1644,6 +1674,14 @@ void BrowserWindow::showSettingsMenu() {
 void BrowserWindow::openSettingsForTesting()
 {
     openSettingsDialog();
+    const QStringList args = QApplication::arguments();
+    for (int i = 0; i < args.size(); ++i) {
+        if (args.at(i).startsWith(QStringLiteral("--settings-tab="))) {
+            const QString tab = args.at(i).mid(QStringLiteral("--settings-tab=").size());
+            m_settingsView->setUrl(QUrl(QStringLiteral("qrc:/settings.html?tab=") + tab));
+            break;
+        }
+    }
 }
 
 void BrowserWindow::openSettingsDialog()

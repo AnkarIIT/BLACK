@@ -17,6 +17,21 @@ QString pwdFile()
     QDir().mkpath(dir);
     return dir + QLatin1Char('/') + QStringLiteral("passwords.json");
 }
+
+QString neverSaveFile()
+{
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(dir);
+    return dir + QLatin1Char('/') + QStringLiteral("never_save.json");
+}
+
+QString normHost(const QString &host)
+{
+    QString h = host.trimmed().toLower();
+    if (h.startsWith(QStringLiteral("www.")))
+        h.remove(0, 4);
+    return h;
+}
 }
 
 PasswordStore::PasswordStore(QObject *parent)
@@ -94,6 +109,68 @@ QVariantList PasswordStore::entriesFor(const QString &host) const
         }
     }
     return result;
+}
+
+QString PasswordStore::neverSaveJson() const
+{
+    QFile file(neverSaveFile());
+    if (file.open(QIODevice::ReadOnly)) {
+        const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+        if (doc.isArray())
+            return QString::fromUtf8(QJsonDocument(doc.array()).toJson(QJsonDocument::Compact));
+    }
+    return QStringLiteral("[]");
+}
+
+bool PasswordStore::isNeverSave(const QString &host) const
+{
+    const QString h = normHost(host);
+    if (h.isEmpty())
+        return false;
+    QFile file(neverSaveFile());
+    if (file.open(QIODevice::ReadOnly)) {
+        const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+        if (doc.isArray()) {
+            const QJsonArray array = doc.array();
+            for (const QJsonValue &v : array) {
+                if (v.toString() == h)
+                    return true;
+            }
+        }
+    }
+    return false;
+}
+
+void PasswordStore::setNeverSave(const QString &host, bool neverSave)
+{
+    const QString h = normHost(host);
+    if (h.isEmpty())
+        return;
+    QJsonArray array;
+    QFile file(neverSaveFile());
+    if (file.open(QIODevice::ReadOnly)) {
+        const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+        if (doc.isArray())
+            array = doc.array();
+    }
+    if (neverSave) {
+        for (const QJsonValue &v : array) {
+            if (v.toString() == h) {
+                emit changed();
+                return;
+            }
+        }
+        array.append(h);
+    } else {
+        for (int i = array.size() - 1; i >= 0; --i) {
+            if (array.at(i).toString() == h)
+                array.removeAt(i);
+        }
+    }
+    QFile out(neverSaveFile());
+    if (out.open(QIODevice::WriteOnly))
+        out.write(QJsonDocument(array).toJson());
+    emit changed();
 }
 
 QJsonArray PasswordStore::loadArray() const
