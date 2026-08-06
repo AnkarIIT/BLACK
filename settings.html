@@ -7,26 +7,26 @@
     <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <style>
         :root {
-            --mac-bg: #ececec;
-            --mac-border: #d2d2d2;
-            --mac-card: #ffffff;
+            --mac-bg: #e8e8ed;
+            --mac-border: rgba(0, 0, 0, 0.12);
+            --mac-card: #f5f5f7;
             --mac-text: #1d1d1f;
-            --mac-text-sec: #6e6e73;
+            --mac-text-sec: #86868b;
             --mac-accent: #0066cc;
-            --mac-control-border: #ccc;
+            --mac-control-border: #c7c7cc;
             --mac-selected-tab: rgba(0, 0, 0, 0.08);
             --radius: 10px;
         }
 
         html.black-forced-dark {
             color-scheme: dark;
-            --mac-bg: #2d1e1c;
-            --mac-border: #3d2b29;
-            --mac-card: #231513;
+            --mac-bg: #2d2d2d;
+            --mac-border: rgba(255, 255, 255, 0.12);
+            --mac-card: #1e1e20;
             --mac-text: #f5f5f7;
-            --mac-text-sec: #b5a6a3;
+            --mac-text-sec: #b5b5b5;
             --mac-accent: #0a84ff;
-            --mac-control-border: #4d3b39;
+            --mac-control-border: #4d4d4f;
             --mac-selected-tab: rgba(255, 255, 255, 0.1);
         }
 
@@ -321,6 +321,77 @@
             max-width: 360px;
             line-height: 1.55;
         }
+
+        /* List card used by Passwords / Profiles / Extensions panes */
+        .list-card {
+            border: 1px solid var(--mac-border);
+            border-radius: 8px;
+            overflow: hidden;
+            background: var(--mac-card);
+        }
+
+        .list-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 14px;
+            border-bottom: 1px solid var(--mac-border);
+            font-size: 13px;
+        }
+        .list-row:last-child { border-bottom: none; }
+
+        .row-head {
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--mac-text-sec);
+            background: var(--mac-bg);
+        }
+
+        .list-site {
+            font-weight: 600;
+            width: 34%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .list-user {
+            color: var(--mac-text-sec);
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .list-pass {
+            font-family: monospace;
+            color: var(--mac-text-sec);
+            max-width: 40%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .list-empty {
+            padding: 40px 20px;
+            text-align: center;
+            color: var(--mac-text-sec);
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        .list-del {
+            background: transparent;
+            border: none;
+            color: var(--mac-text-sec);
+            cursor: pointer;
+            font-size: 13px;
+            padding: 2px 6px;
+        }
+        .list-del:hover { color: var(--mac-accent); }
+
+        .pane-title {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
     </style>
 </head>
 <body>
@@ -404,11 +475,38 @@
                     <div class="label">Safari opens with:</div>
                     <div class="value">
                         <select id="opensWith">
+                            <option>New window</option>
+                            <option>New private window</option>
                             <option>All windows from last session</option>
-                            <option>All private windows</option>
-                            <option>A new window</option>
-                            <option>A new private window</option>
+                            <option>All non-private windows from last session</option>
                         </select>
+                    </div>
+
+                    <div class="label">New windows open with:</div>
+                    <div class="value">
+                        <select id="newWindowsWith">
+                            <option>Start Page</option>
+                            <option>Favourites</option>
+                            <option>Homepage</option>
+                            <option>Empty Page</option>
+                            <option>Same Page</option>
+                        </select>
+                    </div>
+
+                    <div class="label">New tabs open with:</div>
+                    <div class="value">
+                        <select id="newTabsWith">
+                            <option>Start Page</option>
+                            <option>Homepage</option>
+                            <option>Empty Page</option>
+                            <option>Same Page</option>
+                        </select>
+                    </div>
+
+                    <div class="label">Homepage:</div>
+                    <div class="value">
+                        <input type="text" id="homepageInput" placeholder="https://">
+                        <button class="mac-btn" id="setHomepageBtn">Set to Current Page</button>
                     </div>
 
                     <div class="label">Remove history items:</div>
@@ -432,6 +530,7 @@
                     <div class="value">
                         <select id="downloadLoc">
                             <option>Downloads</option>
+                            <option>Ask each time</option>
                         </select>
                     </div>
 
@@ -469,25 +568,54 @@
             <!-- Tabs -->
             <div id="tabs" class="content">
                 <div class="settings-grid">
-                    <div class="label">New windows open with:</div>
+                    <div class="label">Tab layout:</div>
                     <div class="value">
-                        <select id="newWindowsWith">
-                            <option>Start Page</option>
-                            <option>Favourites</option>
-                            <option>Set to Current Page</option>
+                        <select id="tabLayout">
+                            <option>Separate</option>
+                            <option>Compact</option>
                         </select>
                     </div>
 
-                    <div class="label">New tabs open with:</div>
+                    <div class="label">Show tab titles:</div>
                     <div class="value">
-                        <select id="newTabsWith">
-                            <option>Start Page</option>
-                            <option>Favourites</option>
-                            <option>Set to Current Page</option>
+                        <input type="checkbox" id="showTabTitles">
+                    </div>
+                    <div class="subtext">
+                        When off, tabs show only their favicon.
+                    </div>
+
+                    <div class="label">Open pages in tabs instead of windows:</div>
+                    <div class="value">
+                        <select id="openPagesInTabs">
+                            <option>Never</option>
+                            <option>Automatically</option>
+                            <option>Always</option>
                         </select>
                     </div>
                     <div class="subtext">
-                        Open tabs, recently closed tabs, tab overview and tab groups live in the main window.
+                        Controls how links that ask for a new window are handled.
+                    </div>
+
+                    <div class="label">Automatically close tabs:</div>
+                    <div class="value">
+                        <select id="autoCloseTabs">
+                            <option>Manually</option>
+                            <option>After one day</option>
+                            <option>After one week</option>
+                            <option>After two weeks</option>
+                            <option>After one month</option>
+                        </select>
+                    </div>
+                    <div class="subtext">
+                        Tabs that were not used for the chosen period are dropped when the session restores.
+                    </div>
+
+                    <div class="label">When a new tab opens, make it active:</div>
+                    <div class="value">
+                        <input type="checkbox" id="activateNewTabs">
+                    </div>
+                    <div class="subtext">
+                        If off, links opening in new tabs do not switch away from the current page.
                     </div>
                 </div>
             </div>
@@ -498,12 +626,35 @@
                     <div class="label">Search engine:</div>
                     <div class="value">
                         <select id="searchEngine">
-                            <option>Google</option>
-                            <option>Bing</option>
-                            <option>DuckDuckGo</option>
-                            <option>Brave</option>
-                            <option>Yahoo</option>
-                            <option>Ecosia</option>
+                            <optgroup label="General">
+                                <option>Google</option>
+                                <option>Bing</option>
+                                <option>Yahoo</option>
+                                <option>Baidu</option>
+                                <option>Yandex</option>
+                            </optgroup>
+                            <optgroup label="Privacy">
+                                <option>DuckDuckGo</option>
+                                <option>Brave</option>
+                                <option>Startpage</option>
+                                <option>SearXNG</option>
+                                <option>Swisscows</option>
+                            </optgroup>
+                            <optgroup label="Eco">
+                                <option>Ecosia</option>
+                                <option>Lilo</option>
+                            </optgroup>
+                            <optgroup label="Developer & Knowledge">
+                                <option>Wikipedia</option>
+                                <option>GitHub</option>
+                                <option>Stack Overflow</option>
+                                <option>YouTube</option>
+                                <option>WolframAlpha</option>
+                            </optgroup>
+                            <optgroup label="AI">
+                                <option>Perplexity</option>
+                                <option>Phind</option>
+                            </optgroup>
                         </select>
                     </div>
                     <div class="subtext">
@@ -521,10 +672,15 @@
             </div>
 
             <div id="passwords" class="content">
-                <div class="empty-state">
-                    <div class="empty-icon">🔑</div>
-                    <div class="empty-title">Passwords</div>
-                    <div class="empty-desc">Passwords are protected by your Windows credentials. Enable a password manager to fill and save logins.</div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                    <div class="pane-title">Saved Logins</div>
+                    <button class="mac-btn" id="pwClearBtn">Remove All</button>
+                </div>
+                <div class="list-card" id="pwList">
+                    <div class="list-empty">No saved passwords yet. Log in on any site and BLACK offers to remember the login.</div>
+                </div>
+                <div class="subtext" style="margin-top: 10px;">
+                    Passwords are saved locally on this device (obfuscated on disk, not encrypted) and never synced to the cloud. For real encryption, use a dedicated password manager.
                 </div>
             </div>
 
@@ -553,30 +709,30 @@
             </div>
 
             <div id="profiles" class="content">
-                <div class="empty-state">
-                    <div class="empty-icon">👤</div>
-                    <div class="empty-title">Profiles</div>
-                    <div class="empty-desc">All browsing data lives in one BLACK profile. Use Private Windows for isolated sessions.</div>
+                <div class="pane-title" style="margin-bottom: 12px;">Profiles</div>
+                <div class="list-card">
+                    <div class="list-row">
+                        <span class="list-site">Account</span>
+                        <span class="list-user" id="profileName">Guest</span>
+                        <span class="list-pass" id="profileMethod">Not signed in</span>
+                        <button class="mac-btn" id="signOutBtn" style="display: none;">Sign Out</button>
+                    </div>
+                </div>
+                <div class="subtext" style="margin-top: 10px;">
+                    BLACK has no cloud backend — every profile is stored on this device only. Apple/Google cloud sign-in requires a registered OAuth client ID and is not available. Use Private Windows for isolated sessions.
                 </div>
             </div>
 
             <div id="extensions" class="content">
-                <div class="extensions-layout">
-                    <div class="ext-left">
-                        <div class="ext-list">
-                            No Extensions
-                        </div>
-                        <div class="ext-bottom">
-                            <input type="checkbox" id="shareAcrossDevices" checked>
-                            <label for="shareAcrossDevices">Share across devices</label>
-                        </div>
-                    </div>
-                    <div class="ext-right">
-                        <div class="ext-center-icon">🧩</div>
-                        <h3 class="ext-title">Extensions</h3>
-                        <p class="ext-desc">Supercharge your Safari browsing with extensions that can find discounts, block ads and more.</p>
-                        <button class="mac-blue-btn" onclick="location.href='qrc:/extensions.html'">Browse Extensions&hellip;</button>
-                    </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                    <div class="pane-title">Installed Extensions</div>
+                    <button class="mac-btn" id="extReloadBtn">Reload from Disk</button>
+                </div>
+                <div class="list-card" id="extList">
+                    <div class="list-empty">No extensions installed. Drop a folder with a manifest.json into the BLACK extensions folder (&lt;AppData&gt;/BLACK/extensions/).</div>
+                </div>
+                <div class="subtext" style="margin-top: 10px;">
+                    BLACK supports a minimal extension format: content_scripts only. No chrome.* / browser.* API is available yet.
                 </div>
             </div>
 
@@ -656,13 +812,30 @@
             new QWebChannel(qt.webChannelTransport, function (channel) {
                 const settings = channel.objects.browserSettings;
                 const theme = channel.objects.theme;
+                const dialog = channel.objects.settingsDialog;
 
-                setSelect('opensWith', settings.opensWith || "All windows from last session");
+                setSelect('opensWith', settings.opensWith || "New window");
                 setSelect('searchEngine', settings.searchEngine);
                 setSelect('newWindowsWith', settings.newWindowsWith);
                 setSelect('newTabsWith', settings.newTabsWith);
                 setSelect('removeHistoryItems', settings.removeHistoryItems);
                 setSelect('removeDownloadListItems', settings.removeDownloadListItems);
+                setSelect('downloadLoc', settings.downloadLocation || "Downloads");
+
+                const homepageInput = document.getElementById('homepageInput');
+                homepageInput.value = settings.homepage || '';
+                homepageInput.addEventListener('change', function () {
+                    settings.setValue('homepage', homepageInput.value.trim());
+                });
+
+                document.getElementById('setHomepageBtn').addEventListener('click', function () {
+                    if (!dialog) return;
+                    const url = dialog.currentPageUrl();
+                    if (url) {
+                        homepageInput.value = url;
+                        settings.setValue('homepage', url);
+                    }
+                });
 
                 const safe = document.getElementById('openSafeFiles');
                 safe.checked = settings.openSafeFiles;
@@ -674,6 +847,22 @@
                 bindSelect('opensWith', 'opensWith', settings);
                 bindSelect('removeHistoryItems', 'removeHistoryItems', settings);
                 bindSelect('removeDownloadListItems', 'removeDownloadListItems', settings);
+                bindSelect('downloadLoc', 'downloadLocation', settings);
+
+                setSelect('tabLayout', settings.tabLayout || "Separate");
+                setSelect('openPagesInTabs', settings.openPagesInTabs || "Automatically");
+                setSelect('autoCloseTabs', settings.autoCloseTabs || "Manually");
+                bindSelect('tabLayout', 'tabLayout', settings);
+                bindSelect('openPagesInTabs', 'openPagesInTabs', settings);
+                bindSelect('autoCloseTabs', 'autoCloseTabs', settings);
+
+                const tabTitles = document.getElementById('showTabTitles');
+                tabTitles.checked = settings.showTabTitles;
+                tabTitles.addEventListener('change', function () { settings.setBool('showTabTitles', tabTitles.checked); });
+
+                const activateTabs = document.getElementById('activateNewTabs');
+                activateTabs.checked = settings.activateNewTabs;
+                activateTabs.addEventListener('change', function () { settings.setBool('activateNewTabs', activateTabs.checked); });
 
                 document.getElementById('setDefaultBtn').addEventListener('click', function () {
                     settings.openDefaultBrowserSettings();
@@ -695,13 +884,12 @@
                 });
 
                 // Drive the frameless settings window from the traffic lights.
-                const dialog = channel.objects.settingsDialog;
                 if (dialog) {
                     document.getElementById('closeBtn').addEventListener('click', function () {
                         dialog.closeSettingsDialog();
                     });
                     document.getElementById('minimizeBtn').addEventListener('click', function () {
-                        dialog.minimizeSettingsDialog();
+                        dialog.hideSettingsDialog();
                     });
                     document.getElementById('zoomBtn').addEventListener('click', function () {
                         dialog.toggleSettingsMaximize();
@@ -716,6 +904,101 @@
                 };
                 theme.themeSchemeChanged.connect(applyTheme);
                 applyTheme();
+
+                // ── Passwords tab ──────────────────────────────────────────
+                const passwords = channel.objects.passwords;
+                const esc = function (s) {
+                    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+                        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+                    });
+                };
+                const parseList = function (json) {
+                    try { return JSON.parse(json || '[]'); } catch (e) { return []; }
+                };
+                const renderPasswords = function () {
+                    const list = parseList(passwords.json);
+                    const el = document.getElementById('pwList');
+                    if (!el) return;
+                    if (!list.length) {
+                        el.innerHTML = '<div class="list-empty">No saved passwords yet. Log in on any site and BLACK offers to remember the login.</div>';
+                        return;
+                    }
+                    let html = '<div class="list-row row-head"><span class="list-site">Website</span><span class="list-user">Username</span><span class="list-pass">Password</span><span></span></div>';
+                    list.forEach(function (p) {
+                        const key = encodeURIComponent(p.host) + '|' + encodeURIComponent(p.username);
+                        html += '<div class="list-row"><span class="list-site">' + esc(p.host) + '</span>'
+                            + '<span class="list-user">' + esc(p.username) + '</span>'
+                            + '<span class="list-pass" data-key="' + key + '">••••••••</span>'
+                            + '<span style="display: flex; gap: 6px;">'
+                            + '<button class="mac-btn" data-toggle="' + key + '" style="padding: 2px 8px;">Show</button>'
+                            + '<button class="list-del" data-del="' + key + '" title="Delete">✕</button></span></div>';
+                    });
+                    el.innerHTML = html;
+                };
+                passwords.changed.connect(renderPasswords);
+                renderPasswords();
+
+                const pwListEl = document.getElementById('pwList');
+                if (pwListEl) {
+                    pwListEl.addEventListener('click', function (e) {
+                        const t = e.target;
+                        if (t.dataset.del) {
+                            const parts = t.dataset.del.split('|');
+                            passwords.remove(decodeURIComponent(parts[0]), decodeURIComponent(parts[1]));
+                        } else if (t.dataset.toggle) {
+                            const parts = t.dataset.toggle.split('|');
+                            const host = decodeURIComponent(parts[0]);
+                            const user = decodeURIComponent(parts[1]);
+                            const list = parseList(passwords.json);
+                            const span = pwListEl.querySelector('.list-pass[data-key="' + t.dataset.toggle + '"]');
+                            if (span && span.textContent === '••••••••') {
+                                for (let i = 0; i < list.length; i++) {
+                                    if (list[i].host === host && list[i].username === user) {
+                                        span.textContent = list[i].password;
+                                        break;
+                                    }
+                                }
+                            } else if (span) {
+                                span.textContent = '••••••••';
+                            }
+                        }
+                    });
+                }
+                const pwClearBtn = document.getElementById('pwClearBtn');
+                if (pwClearBtn) pwClearBtn.addEventListener('click', function () { passwords.clearAll(); });
+
+                // ── Profiles tab ───────────────────────────────────────────
+                const account = channel.objects.account;
+                const renderProfile = function () {
+                    document.getElementById('profileName').textContent = account.name;
+                    document.getElementById('profileMethod').textContent =
+                        account.signedIn ? ('Local profile (' + account.authMethod + ')') : 'Not signed in';
+                    document.getElementById('signOutBtn').style.display = account.signedIn ? '' : 'none';
+                };
+                account.changed.connect(renderProfile);
+                renderProfile();
+                document.getElementById('signOutBtn').addEventListener('click', function () { account.signOut(); });
+
+                // ── Extensions tab ─────────────────────────────────────────
+                const extensions = channel.objects.extensions;
+                const renderExtensions = function () {
+                    const list = parseList(extensions.json);
+                    const el = document.getElementById('extList');
+                    if (!el) return;
+                    if (!list.length) {
+                        el.innerHTML = '<div class="list-empty">No extensions installed. Drop a folder with a manifest.json into the BLACK extensions folder (&lt;AppData&gt;/BLACK/extensions/).</div>';
+                        return;
+                    }
+                    el.innerHTML = list.map(function (x) {
+                        return '<div class="list-row"><span class="list-site">' + esc(x.name) + '</span>'
+                            + '<span class="list-user">v' + esc(x.version)
+                            + (x.description ? ' — ' + esc(x.description) : '') + '</span>'
+                            + '<span class="list-pass">' + esc(x.id) + '</span></div>';
+                    }).join('');
+                };
+                extensions.changed.connect(renderExtensions);
+                renderExtensions();
+                document.getElementById('extReloadBtn').addEventListener('click', function () { extensions.reload(); });
             });
         }
     </script>

@@ -1,5 +1,7 @@
 #include "TrackerBlocker.h"
+#include "SafeBrowsing.h"
 #include <QWebEngineUrlRequestInfo>
+#include <QUrlQuery>
 #include <QStandardPaths>
 #include <QDir>
 #include <QFile>
@@ -175,6 +177,11 @@ void TrackerBlocker::interceptRequest(QWebEngineUrlRequestInfo &info)
                     sites.insert(host);
                 emit privacyChanged();
             }, Qt::QueuedConnection);
+        }
+
+        // Offline Safe Browsing: redirect known phishing hosts to a warning page.
+        if (SafeBrowsing::instance().isBlocked(info.requestUrl())) {
+            info.redirect(SafeBrowsing::warningUrl(info.requestUrl()));
         }
         return;
     }

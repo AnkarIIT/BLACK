@@ -220,18 +220,20 @@
         
         <!-- Login options -->
         <div class="social-login">
-            <!-- Apple Account -->
-            <a href="javascript:void(0)" class="social-btn apple" id="apple-login">
+            <!-- Apple Account (not wired up - needs a registered client ID) -->
+            <div class="social-btn apple" style="cursor: not-allowed; opacity: 0.5;"
+                 title="Cloud sign-in is not available - BLACK has no registered Apple OAuth client">
                 <div class="icon" style="width: 20px; height: 20px;">
                     <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
                         <path d="M16.365 1.43c-.1 0-.21 0-.31.03a15.9 15.9 0 0 0-2.56.54 18.13 18.13 0 0 0-2.33.73 20.2 20.2 0 0 0-3.1 1.21 21.8 21.8 0 0 0-2.33 1.49 22.27 22.27 0 0 0-1.9-.89 19.17 19.17 0 0 0-.31-.11c-.2 0-.4.01-.6.04a24.93 24.93 0 0 0-3.68 1.43 24.93 24.93 0 0 0-2.7 1T1.5 5.14a24.93 24.93 0 0 0-1.46 2.57 24.93 24.93 0 0 0-.49 2.52c-.06.33-.1.66-.1 1 0 .34.04.67.1 1 .15.39.42.75.7 1.07a24.93 24.93 0 0 0 1.34 1.33 24.93 24.93 0 0 0 1.95 1 24.93 24.93 0 0 0 2.7.73 24.93 24.93 0 0 0 3.68-.47 24.93 24.93 0 0 0 2.7-.81 23.88 23.88 0 0 0 3.12-1.31 21.91 21.91 0 0 0 2.7-2.33 19.53 19.53 0 0 0 2.17-2.88 18.05 18.05 0 0 0 1.94-3.43 16.24 16.24 0 0 0 1.28-4.19 14.21 14.21 0 0 0 .66-2.22.33-.06.66-.13 1-.1z"/>
                     </svg>
                 </div>
                 Continue with Apple
-            </a>
+            </div>
             
-            <!-- Google Account -->
-            <a href="javascript:void(0)" class="social-btn google" id="google-login">
+            <!-- Google Account (not wired up - needs a registered client ID) -->
+            <div class="social-btn google" style="cursor: not-allowed; opacity: 0.5;"
+                 title="Cloud sign-in is not available - BLACK has no registered Google OAuth client">
                 <div class="icon">
                     <svg viewBox="0 0 48 48" style="width: 20px; height: 20px;">
                         <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.01-6.01C32.37 2.8 28.35 0 24 0c-4.36 0-8.32 2.37-10.54 6.01l6.01 6.01C17.29 10.72 20.46 9.5 24 9.5z"/>
@@ -241,8 +243,14 @@
                     </svg>
                 </div>
                 Continue with Google
-            </a>
+            </div>
         </div>
+
+        <!-- Local profile -->
+        <div class="divider">Create a local profile</div>
+        <input type="text" id="profileName" placeholder="Your name (optional)" maxlength="40"
+               style="width: 100%; font-family: inherit; font-size: 14px; color: var(--text-primary); background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; outline: none; margin-bottom: 10px; box-sizing: border-box;">
+        <a href="javascript:createProfile()" class="guest-btn">Create Local Profile</a>
         
         <!-- Or divider -->
         <div class="divider">or</div>
@@ -274,61 +282,24 @@
     </div>
 
     <script>
-        // Handle login flows
-        document.getElementById('apple-login').addEventListener('click', function(e) {
-            e.preventDefault();
-            const appleAuthUrl = 'https://appleid.apple.com/auth/signin?client_id=com.blackbrowser.app';
-            window.open(appleAuthUrl, '_blank', 'noopener,noreferrer');
-            showLoginMessage('Apple ID login flow initiated');
-        });
+        // Honest login: BLACK has no cloud backend and no registered OAuth
+        // client IDs, so Apple/Google buttons are placeholders. "Sign in" here
+        // only creates a LOCAL profile stored on this device.
+        let account = null;
+        if (typeof QWebChannel !== 'undefined') {
+            new QWebChannel(qt.webChannelTransport, function (channel) {
+                account = channel.objects.account;
+            });
+        }
 
-        document.getElementById('google-login').addEventListener('click', function(e) {
-            e.preventDefault();
-            const googleAuthUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' +
-                'client_id=black-browser.apps.googleusercontent.com&' +
-                'redirect_uri=black://auth/google/callback&' +
-                'response_type=code&scope=openid%20email%20profile&' +
-                'prompt=consent';
-            window.open(googleAuthUrl, '_blank', 'noopener,noreferrer');
-            showLoginMessage('Google login flow initiated');
-        });
-
-        function continueGuest() {
+        function createProfile() {
+            const name = document.getElementById('profileName').value;
+            if (account) account.signIn(name);
             window.location.href = 'qrc:/startpage_enhanced.html';
         }
 
-        function showLoginMessage(msg) {
-            const existing = document.querySelector('.login-msg');
-            if (existing) existing.remove();
-            
-            const msgEl = document.createElement('div');
-            msgEl.className = 'login-msg';
-            msgEl.textContent = msg;
-            msgEl.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: var(--accent); color: white; padding: 10px 16px; border-radius: 6px; font-size: 12px; z-index: 1000;';
-            document.body.appendChild(msgEl);
-            
-            setTimeout(function() { msgEl.remove(); }, 2000);
-        }
-
-        // Handle OAuth callback
-        function handleOAuthCallback() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const code = urlParams.get('code');
-            const error = urlParams.get('error');
-            
-            if (code) {
-                console.log('OAuth code received:', code);
-                setTimeout(function() {
-                    window.location.href = 'qrc:/startpage_enhanced.html';
-                }, 1000);
-            } else if (error) {
-                console.error('OAuth error:', error);
-                showLoginMessage('Login failed. Please try again.');
-            }
-        }
-
-        if (window.location.search.includes('code=') || window.location.search.includes('error=')) {
-            handleOAuthCallback();
+        function continueGuest() {
+            window.location.href = 'qrc:/startpage_enhanced.html';
         }
 
         // Preload start page for better UX

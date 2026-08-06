@@ -8,7 +8,9 @@
 #include <QDir>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QTimer>
 #include "BrowserWindow.h"
+#include "BrowserSettings.h"
 #include "TrackerBlocker.h"
 
 // Platform detection for User-Agent
@@ -152,13 +154,28 @@ int main(int argc, char *argv[])
 
     // Login flow handling
     window.show();
+    if (QApplication::arguments().contains(QStringLiteral("--open-settings"))) {
+        QTimer::singleShot(1500, &window, &BrowserWindow::openSettingsForTesting);
+    }
     if (isFirstRun()) {
         // First run: Show login page
         window.loadLoginPage();
         markFirstRunComplete();
     } else {
-        // Normal run: Show start page
-        window.loadStartPage();
+        // Normal run: honor "Safari opens with"
+        const QString openWith = BrowserSettings::instance().opensWith();
+        if (openWith == QStringLiteral("All windows from last session")
+            || openWith == QStringLiteral("All non-private windows from last session")) {
+            // Session was already restored in the constructor; keep those tabs.
+        } else if (openWith == QStringLiteral("New private window")) {
+            window.loadStartPage();
+            auto *priv = new BrowserWindow(true);
+            priv->setAttribute(Qt::WA_DeleteOnClose);
+            priv->resize(window.size());
+            priv->show();
+        } else {
+            window.loadStartPage();
+        }
     }
 
     return app.exec();

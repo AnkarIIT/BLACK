@@ -14,6 +14,8 @@ qt_add_executable(BLACK
     BrowserWindow.h
     SafariWebView.cpp
     SafariWebView.h
+    SafariWebPage.cpp
+    SafariWebPage.h
     SafariTheme.cpp
     SafariTheme.h
     BrowserSettings.cpp
@@ -22,6 +24,14 @@ qt_add_executable(BLACK
     TrackerBlocker.h
     ShelfStore.cpp
     ShelfStore.h
+    PasswordStore.cpp
+    PasswordStore.h
+    ExtensionManager.cpp
+    ExtensionManager.h
+    Account.cpp
+    Account.h
+    SafeBrowsing.cpp
+    SafeBrowsing.h
     resources.rc
 )
 
@@ -35,6 +45,7 @@ qt_add_resources(BLACK "resources" PREFIX "/" BASE "${CMAKE_CURRENT_SOURCE_DIR}"
         extensions.html
         features.html
         privacyreport.html
+        safebrowsing_warning.html
         app.png
 )
 

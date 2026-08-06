@@ -1,5 +1,6 @@
 #include "SafariWebView.h"
 #include "SafariTheme.h"
+#include "SafariWebPage.h"
 
 #include <QMenu>
 #include <QAction>
@@ -20,7 +21,9 @@ void SafariWebView::setWebProfile(QWebEngineProfile *profile)
 {
     if (!profile)
         return;
-    setPage(new QWebEnginePage(profile, this));
+    auto *page = new SafariWebPage(profile, this);
+    connect(page, &SafariWebPage::newTabRequested, this, &SafariWebView::newTabRequested);
+    setPage(page);
 }
 
 void SafariWebView::contextMenuEvent(QContextMenuEvent *event)

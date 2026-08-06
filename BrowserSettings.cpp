@@ -10,6 +10,16 @@
 namespace {
 const QLatin1String kGeneralKey("general");
 const QLatin1String kThemeKey("theme");
+const QLatin1String kTabsKey("tabs");
+}
+
+int BrowserSettings::autoCloseDays(const QString &setting)
+{
+    if (setting == QLatin1String("After one day"))   return 1;
+    if (setting == QLatin1String("After one week"))  return 7;
+    if (setting == QLatin1String("After two weeks")) return 14;
+    if (setting == QLatin1String("After one month")) return 30;
+    return 0; // "Manually" or unknown
 }
 
 BrowserSettings &BrowserSettings::instance()
@@ -27,6 +37,13 @@ BrowserSettings::BrowserSettings(QObject *parent)
     , m_removeHistoryItems(QStringLiteral("After one year"))
     , m_removeDownloadListItems(QStringLiteral("After one day"))
     , m_openSafeFiles(true)
+    , m_homepage(QString())
+    , m_downloadLocation(QStringLiteral("Downloads"))
+    , m_tabLayout(QStringLiteral("Separate"))
+    , m_showTabTitles(true)
+    , m_openPagesInTabs(QStringLiteral("Automatically"))
+    , m_autoCloseTabs(QStringLiteral("Manually"))
+    , m_activateNewTabs(true)
 {
     load();
 }
@@ -67,6 +84,15 @@ void BrowserSettings::load()
     m_removeHistoryItems      = general.value(QStringLiteral("removeHistoryItems")).toString(m_removeHistoryItems);
     m_removeDownloadListItems = general.value(QStringLiteral("removeDownloadListItems")).toString(m_removeDownloadListItems);
     m_openSafeFiles           = general.value(QStringLiteral("openSafeFiles")).toBool(m_openSafeFiles);
+    m_homepage                = general.value(QStringLiteral("homepage")).toString(m_homepage);
+    m_downloadLocation        = general.value(QStringLiteral("downloadLocation")).toString(m_downloadLocation);
+
+    const QJsonObject tabs = obj.value(kTabsKey).toObject();
+    m_tabLayout             = tabs.value(QStringLiteral("tabLayout")).toString(m_tabLayout);
+    m_showTabTitles         = tabs.value(QStringLiteral("showTabTitles")).toBool(m_showTabTitles);
+    m_openPagesInTabs       = tabs.value(QStringLiteral("openPagesInTabs")).toString(m_openPagesInTabs);
+    m_autoCloseTabs         = tabs.value(QStringLiteral("autoCloseTabs")).toString(m_autoCloseTabs);
+    m_activateNewTabs       = tabs.value(QStringLiteral("activateNewTabs")).toBool(m_activateNewTabs);
 }
 
 void BrowserSettings::save()
@@ -80,7 +106,18 @@ void BrowserSettings::save()
     general.insert(QStringLiteral("removeHistoryItems"), m_removeHistoryItems);
     general.insert(QStringLiteral("removeDownloadListItems"), m_removeDownloadListItems);
     general.insert(QStringLiteral("openSafeFiles"), m_openSafeFiles);
+    general.insert(QStringLiteral("homepage"), m_homepage);
+    general.insert(QStringLiteral("downloadLocation"), m_downloadLocation);
     obj.insert(kGeneralKey, general);
+
+    QJsonObject tabs;
+    tabs.insert(QStringLiteral("tabLayout"), m_tabLayout);
+    tabs.insert(QStringLiteral("showTabTitles"), m_showTabTitles);
+    tabs.insert(QStringLiteral("openPagesInTabs"), m_openPagesInTabs);
+    tabs.insert(QStringLiteral("autoCloseTabs"), m_autoCloseTabs);
+    tabs.insert(QStringLiteral("activateNewTabs"), m_activateNewTabs);
+    obj.insert(kTabsKey, tabs);
+
     writeSettingsObject(obj);
 }
 
@@ -105,6 +142,21 @@ void BrowserSettings::setValue(const QString &key, const QString &value)
     } else if (key == QLatin1String("removeDownloadListItems") && m_removeDownloadListItems != value) {
         m_removeDownloadListItems = value;
         changed = true;
+    } else if (key == QLatin1String("homepage") && m_homepage != value) {
+        m_homepage = value;
+        changed = true;
+    } else if (key == QLatin1String("downloadLocation") && m_downloadLocation != value) {
+        m_downloadLocation = value;
+        changed = true;
+    } else if (key == QLatin1String("tabLayout") && m_tabLayout != value) {
+        m_tabLayout = value;
+        changed = true;
+    } else if (key == QLatin1String("openPagesInTabs") && m_openPagesInTabs != value) {
+        m_openPagesInTabs = value;
+        changed = true;
+    } else if (key == QLatin1String("autoCloseTabs") && m_autoCloseTabs != value) {
+        m_autoCloseTabs = value;
+        changed = true;
     }
     if (changed) {
         save();
@@ -116,6 +168,14 @@ void BrowserSettings::setBool(const QString &key, bool value)
 {
     if (key == QLatin1String("openSafeFiles") && m_openSafeFiles != value) {
         m_openSafeFiles = value;
+        save();
+        emit settingsChanged();
+    } else if (key == QLatin1String("showTabTitles") && m_showTabTitles != value) {
+        m_showTabTitles = value;
+        save();
+        emit settingsChanged();
+    } else if (key == QLatin1String("activateNewTabs") && m_activateNewTabs != value) {
+        m_activateNewTabs = value;
         save();
         emit settingsChanged();
     }

@@ -30,9 +30,13 @@
 class QProgressBar;
 class SafariWebView;
 class QWebEngineNewWindowRequest;
+class QWebEngineDownloadRequest;
 class QWebEngineProfile;
 class QWebChannel;
 class ShelfStore;
+class PasswordStore;
+class ExtensionManager;
+class Account;
 
 struct TabInfo {
     QWebEngineView* view = nullptr;
@@ -44,14 +48,17 @@ struct TabInfo {
     bool isPinned = false;
     bool isAudible = false;
     bool isMuted = false;
+    qint64 lastActive = 0; // ms since epoch, updated on creation/activation
 };
 
 struct DownloadItemInfo {
     QString fileName;
     QString filePath;
+    QString url;
     qint64 receivedBytes = 0;
     qint64 totalBytes = -1;
     int state = 0; // 0 = in progress, 1 = completed, 2 = failed/cancelled
+    QPointer<QWebEngineDownloadRequest> request;
 };
 
 class BrowserWindow : public QMainWindow
@@ -67,6 +74,12 @@ public:
     // Public methods for login flow and tab management
     void loadStartPage();
     void loadLoginPage();
+
+    // Current active tab URL (used by Settings > "Set to Current Page").
+    QString currentPageUrl() const;
+
+    // Opens the Settings sheet (used by --open-settings debug flag).
+    void openSettingsForTesting();
 
 protected:
     void mousePressEvent(QMouseEvent *event) override;
@@ -106,6 +119,7 @@ private slots:
     void showSettingsMenu();
     void openSettingsDialog();
     void updateWebViewTheme();
+    void installExtensionScripts();
 
 private:
     void setupUi();
@@ -122,7 +136,11 @@ private:
 
     void addNewTab(const QUrl &url);
     SafariWebView* addTabView(const QUrl &url, QWebEngineNewWindowRequest *request);
+    // activateOverride: -1 = follow activateNewTabs setting, 0 = background tab, 1 = force activate
+    SafariWebView* addTabView(const QUrl &url, QWebEngineNewWindowRequest *request, int activateOverride);
     QUrl newTabUrl() const;
+    QUrl homepageUrl() const;
+    QUrl samePageUrl() const;
     void addBookmarkForCurrentTab();
     void rebuildTabBar();
     void refreshTabLabel(int index);
@@ -131,6 +149,7 @@ private:
     void updateLoadingBar(int progress);
     void setWindowTitleFromTab();
     void openPrivateWindow();
+    void openNewWindow(const QUrl &url = QUrl());
 
     void handleCertificateError(QWebEngineCertificateError certificateError);
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
@@ -156,6 +175,19 @@ private:
     QParallelAnimationGroup *m_urlAnim;
     QToolButton    *m_shieldInside;
     QWidget        *m_central;
+
+    QFrame         *m_urlSuggest;
+    QVBoxLayout    *m_urlSuggestLayout;
+    QList<QPushButton*> m_urlSuggestRows;
+    QList<QUrl>    m_urlSuggestionUrls;
+    int             m_urlSuggestionIndex;
+
+    void setupUrlSuggestions();
+    void rebuildUrlSuggestions();
+    void showUrlSuggestions();
+    void hideUrlSuggestions();
+    void selectUrlSuggestion(int index);
+    void activateUrlSuggestion(int index);
 
     QWidget        *m_toolbar;
     QWidget        *m_tabBar;
@@ -203,6 +235,7 @@ private:
     QList<QLabel*> m_sidebarHeaders;
     QPushButton  *m_newGroupButton = nullptr;
     bool          m_urlFocused;
+    bool          m_urlMouseFocusPending;
 
     QPoint m_dragPosition;
     bool   m_isDragging;
@@ -224,6 +257,7 @@ private:
     void findPrevious();
     void setupDownloads();
     void showDownloadsMenu();
+    QWidget* buildDownloadRow(int index, const DownloadItemInfo &item);
     void saveSession();
     void restoreSession();
     void saveHistoryItem(const QString &title, const QString &url);
@@ -241,6 +275,9 @@ private:
     QWebChannel     *m_webChannel;
     ShelfStore      *m_bookmarks;
     ShelfStore      *m_history;
+    PasswordStore   *m_passwords;
+    ExtensionManager *m_extensions;
+    Account         *m_account;
     QMap<QString, bool> m_permissionChoices;
 };
 

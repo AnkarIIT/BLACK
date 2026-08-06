@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Warning - Deceptive Site</title>
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <style>
+        :root {
+            --bg: #1d1d1f;
+            --card: #ffffff;
+            --text: #1d1d1f;
+            --sec: #6e6e73;
+            --accent: #0066cc;
+            --danger: #d70015;
+            --border: #d2d2d2;
+        }
+        html.black-forced-dark {
+            color-scheme: dark;
+            --card: #1c1c1e;
+            --text: #f5f5f7;
+            --sec: #98989d;
+            --border: #3a3a3c;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+            -webkit-font-smoothing: antialiased;
+        }
+        .card {
+            width: 560px;
+            max-width: 100%;
+            background: var(--card);
+            border-radius: 14px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+            padding: 36px 32px;
+            text-align: center;
+        }
+        .icon {
+            font-size: 44px;
+            margin-bottom: 14px;
+        }
+        h1 {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        p {
+            font-size: 13px;
+            color: var(--sec);
+            line-height: 1.5;
+            margin-bottom: 14px;
+        }
+        .url {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--danger);
+            background: rgba(215, 0, 21, 0.08);
+            border: 1px solid rgba(215, 0, 21, 0.25);
+            border-radius: 8px;
+            padding: 10px 14px;
+            word-break: break-all;
+            margin-bottom: 20px;
+        }
+        .btn-row { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+        .btn {
+            border: none;
+            border-radius: 16px;
+            padding: 7px 20px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+        }
+        .btn-secondary {
+            background: transparent;
+            color: var(--accent);
+            border: 1px solid var(--border);
+        }
+        .btn-secondary.danger { color: var(--danger); }
+        .btn:hover { opacity: 0.88; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon">⚠️</div>
+        <h1>Deceptive Site Warning</h1>
+        <p>BLACK Safe Browsing blocked this page because it looks like a phishing site that tries to steal your passwords or personal information.</p>
+        <div class="url" id="urlText"></div>
+        <div class="btn-row">
+            <button class="btn btn-secondary" id="backBtn">Back to Safety</button>
+            <button class="btn btn-secondary danger" id="continueBtn">Continue Anyway</button>
+        </div>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const originalUrl = urlParams.get('url') || '';
+        document.getElementById('urlText').textContent = originalUrl || 'Unknown address';
+
+        document.getElementById('backBtn').addEventListener('click', function () {
+            if (history.length > 1) history.back();
+            else window.location.href = 'qrc:/startpage_enhanced.html';
+        });
+
+        document.getElementById('continueBtn').addEventListener('click', function () {
+            try {
+                const host = new URL(originalUrl).host;
+                new QWebChannel(qt.webChannelTransport, function (channel) {
+                    channel.objects.safeBrowsing.allow(host);
+                    window.location.href = originalUrl;
+                });
+            } catch (e) {
+                window.location.href = originalUrl;
+            }
+        });
+
+        if (typeof QWebChannel !== 'undefined') {
+            new QWebChannel(qt.webChannelTransport, function (channel) {
+                const theme = channel.objects.theme;
+                const apply = function () {
+                    const dark = (theme.themeScheme === 1);
+                    document.documentElement.classList.toggle('black-forced-dark', dark);
+                };
+                theme.themeSchemeChanged.connect(apply);
+                apply();
+            });
+        }
+    </script>
+</body>
+</html>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>New Tab - BLACK</title>
+    <title>New Tab</title>
     <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <style>
         :root {
@@ -550,7 +550,7 @@
                         </svg>
                     </div>
                     <div>
-                        <div class="report-number" id="privacyCount">9</div>
+                        <div class="report-number" id="privacyCount">0</div>
                         <div class="report-title">Trackers prevented</div>
                         <div class="report-sub">Last 30 days</div>
                     </div>
@@ -560,13 +560,13 @@
                     <div class="report-cols">
                         <div class="report-col">
                             <div class="col-label">Most contacted tracker</div>
-                            <div class="col-value" id="mostContacted">facebook.net</div>
-                            <div class="col-sub" id="mostContactedSub">Prevented from profiling you on one website</div>
+                            <div class="col-value" id="mostContacted">No trackers detected</div>
+                            <div class="col-sub" id="mostContactedSub">BLACK prevents trackers from profiling you</div>
                         </div>
                         <div class="report-col">
                             <div class="col-label">Websites contacted trackers</div>
-                            <div class="col-value" id="webPct">100%</div>
-                            <div class="col-sub" id="webSub">of websites you visited</div>
+                            <div class="col-value" id="webPct">0%</div>
+                            <div class="col-sub" id="webSub">of 0 websites you visited</div>
                         </div>
                     </div>
                 </div>
@@ -660,10 +660,23 @@
             const q = encodeURIComponent(query);
             switch (currentSearchEngine) {
                 case 'Bing': return 'https://www.bing.com/search?q=' + q;
+                case 'Yahoo': return 'https://search.yahoo.com/search?p=' + q;
+                case 'Baidu': return 'https://www.baidu.com/s?wd=' + q;
+                case 'Yandex': return 'https://yandex.com/search/?text=' + q;
                 case 'DuckDuckGo': return 'https://duckduckgo.com/?q=' + q;
                 case 'Brave': return 'https://search.brave.com/search?q=' + q;
-                case 'Yahoo': return 'https://search.yahoo.com/search?p=' + q;
+                case 'Startpage': return 'https://www.startpage.com/sp/search?query=' + q;
+                case 'SearXNG': return 'https://searx.be/search?q=' + q;
+                case 'Swisscows': return 'https://swisscows.com/en/web?query=' + q;
                 case 'Ecosia': return 'https://www.ecosia.org/search?q=' + q;
+                case 'Lilo': return 'https://search.lilo.org/?q=' + q;
+                case 'Wikipedia': return 'https://en.wikipedia.org/wiki/Special:Search?search=' + q;
+                case 'GitHub': return 'https://github.com/search?q=' + q;
+                case 'Stack Overflow': return 'https://stackoverflow.com/search?q=' + q;
+                case 'YouTube': return 'https://www.youtube.com/results?search_query=' + q;
+                case 'WolframAlpha': return 'https://www.wolframalpha.com/input?i=' + q;
+                case 'Perplexity': return 'https://www.perplexity.ai/search?q=' + q;
+                case 'Phind': return 'https://www.phind.com/search?q=' + q;
                 default: return 'https://www.google.com/search?q=' + q;
             }
         }
@@ -709,27 +722,27 @@
         function updatePrivacy(privacy) {
             const count = privacy.trackersBlockedLast30Days;
             const countEl = document.getElementById('privacyCount');
-            if (countEl) countEl.textContent = count > 0 ? count : '9';
+            if (countEl) countEl.textContent = count;
 
             const tracker = privacy.mostContactedTracker;
             const sites = privacy.mostContactedTrackerSites;
             const mostEl = document.getElementById('mostContacted');
             const subEl = document.getElementById('mostContactedSub');
-            if (mostEl) mostEl.textContent = (tracker && tracker !== 'No trackers detected') ? tracker : 'facebook.net';
+            if (mostEl) mostEl.textContent = (tracker && tracker !== 'No trackers detected') ? tracker : 'No trackers detected';
             if (subEl) {
-                if (tracker === 'No trackers detected')
-                    subEl.textContent = 'prevented from profiling you on one website';
+                if (tracker === 'No trackers detected' || !tracker)
+                    subEl.textContent = 'BLACK prevents trackers from profiling you';
                 else
                     subEl.textContent = 'prevented from profiling you on ' + plural(sites, 'website');
             }
 
             const visited = privacy.websitesVisited;
             const contacted = privacy.websitesContactedTrackers;
-            const pct = visited > 0 ? Math.round((contacted / visited) * 100) : 100;
+            const pct = visited > 0 ? Math.round((contacted / visited) * 100) : 0;
             const pctEl = document.getElementById('webPct');
             if (pctEl) pctEl.textContent = pct + '%';
             const webEl = document.getElementById('webSub');
-            if (webEl) webEl.textContent = 'of the ' + (visited > 0 ? visited : 1) + ' website' + (visited === 1 ? '' : 's') + ' you visited';
+            if (webEl) webEl.textContent = 'of the ' + visited + ' website' + (visited === 1 ? '' : 's') + ' you visited';
         }
 
         // Connect to QWebChannel if available

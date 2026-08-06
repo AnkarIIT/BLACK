@@ -4,6 +4,10 @@
 #include "TrackerBlocker.h"
 #include "BrowserSettings.h"
 #include "ShelfStore.h"
+#include "PasswordStore.h"
+#include "ExtensionManager.h"
+#include "Account.h"
+#include "SafeBrowsing.h"
 #include <QFrame>
 #include <QStyle>
 #include <QGraphicsDropShadowEffect>
@@ -46,6 +50,7 @@
 #include <QJsonDocument>
 #include <QDateTime>
 #include <QStandardPaths>
+#include <QFileDialog>
 #include <QActionGroup>
 #include <QDesktopServices>
 #include <QWebChannel>
@@ -53,6 +58,10 @@
 #include <QCheckBox>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QProcess>
+#include <QFileInfo>
+#include <QWidgetAction>
+#include <QKeyEvent>
 #include <functional>
 #include <utility>
 
@@ -67,9 +76,16 @@ class SettingsDialogBridge : public QObject
 {
     Q_OBJECT
 public:
-    explicit SettingsDialogBridge(QDialog *dialog)
+    explicit SettingsDialogBridge(QDialog *dialog, BrowserWindow *window)
         : QObject(dialog)
+        , m_window(window)
     {
+    }
+
+    // URL of the active tab, used by "Set to Current Page" in Settings.
+    Q_INVOKABLE QString currentPageUrl() const
+    {
+        return m_window ? m_window->currentPageUrl() : QString();
     }
 
     // Red: close (hide) the dialog without destroying it so Ctrl+, reopens fast.
@@ -79,11 +95,13 @@ public:
             dialog->close();
     }
 
-    // Yellow: collapse the frameless dialog to the taskbar.
-    Q_INVOKABLE void minimizeSettingsDialog()
+    // Yellow: hide the dialog (Safari-style). showMinimized() on a parented
+    // frameless window can leave an ugly MDI bottom-left strip on Windows;
+    // hiding keeps the dialog alive so Ctrl+, reopens it instantly.
+    Q_INVOKABLE void hideSettingsDialog()
     {
         if (auto *dialog = qobject_cast<QDialog *>(parent()))
-            dialog->showMinimized();
+            dialog->hide();
     }
 
     // Green: toggle between screen-fit (maximized) and the normal centered box.
@@ -102,6 +120,9 @@ public:
         else
             dialog->showMaximized();
     }
+
+private:
+    BrowserWindow *m_window = nullptr;
 };
 }
 
@@ -138,6 +159,9 @@ static const QString svgPlus        = "<svg xmlns=\"http://www.w3.org/2000/svg\"
 static const QString svgSearch      = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"11\" cy=\"11\" r=\"8\"/><line x1=\"21\" y1=\"21\" x2=\"16.65\" y2=\"16.65\"/></svg>";
 static const QString svgShield      = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z\"/></svg>";
 static const QString svgClose       = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2.5\" stroke-linecap=\"round\"><line x1=\"18\" y1=\"6\" x2=\"6\" y2=\"18\"/><line x1=\"6\" y1=\"6\" x2=\"18\" y2=\"18\"/></svg>";
+static const QString svgX           = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2.5\" stroke-linecap=\"round\"><line x1=\"18\" y1=\"6\" x2=\"6\" y2=\"18\"/><line x1=\"6\" y1=\"6\" x2=\"18\" y2=\"18\"/></svg>";
+static const QString svgRefresh     = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21.5 2v6h-6\"/><path d=\"M21.34 15.57a10 10 0 1 1-.59-8.31L21.5 8\"/></svg>";
+static const QString svgFolder      = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z\"/></svg>";
 static const QString svgBookmarks   = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z\"/></svg>";
 static const QString svgReadingList = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"6\" cy=\"12\" r=\"2\"/><circle cx=\"12\" cy=\"12\" r=\"2\"/><circle cx=\"18\" cy=\"12\" r=\"2\"/><line x1=\"8\" y1=\"12\" x2=\"16\" y2=\"12\"/></svg>";
 static const QString svgHistory     = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><polyline points=\"12 6 12 12 16 14\"/></svg>";
@@ -153,7 +177,17 @@ static const QString svgVolume2     = "<svg xmlns=\"http://www.w3.org/2000/svg\"
 static const QString svgVolumeMute = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"11 5 6 9 2 9 2 15 6 15 11 19 11 5\"/><line x1=\"23\" y1=\"9\" x2=\"17\" y2=\"15\"/><line x1=\"17\" y1=\"9\" x2=\"23\" y2=\"15\"/></svg>";
 
 // ── Page Theme (applied to web pages so they match the browser) ─────────────
-static const char *kPageThemeCss = "html.black-dark{color-scheme:dark;}html.black-light{color-scheme:light;}";
+// Dark: colour-scheme signal + forced contrast so sites with hardcoded light
+// text/backgrounds (e.g. Google/Gmail landing pages) stay readable. Media
+// (img/video/canvas/iframe/svg) and form controls are left untouched.
+static const char *kPageThemeCss =
+    "html.black-dark,html.black-dark body{background-color:#1a1a1a !important;color:#e3e3e3 !important;}"
+    "html.black-dark{color-scheme:dark;}"
+    "html.black-dark *:not(a):not(button):not(input):not(select):not(textarea):not(img):not(video):not(canvas):not(iframe):not(svg):not(path){color:inherit !important;background-color:transparent !important;border-color:rgba(255,255,255,0.15) !important;}"
+    "html.black-dark header,html.black-dark nav,html.black-dark [role=\"banner\"]{background-color:#242424 !important;border-bottom:1px solid rgba(255,255,255,0.1) !important;}"
+    "html.black-dark a{color:#8ab4f8 !important;}"
+    "html.black-light,html.black-light body{background-color:#ffffff !important;color:#1d1d1f !important;}"
+    "html.black-light{color-scheme:light;}";
 
 static const QString kPageThemeStyleScript = QStringLiteral(
     "(function(){var css=%1;var s=document.createElement('style');s.id='black-theme-style';s.textContent=css;"
@@ -165,14 +199,54 @@ static const QString kPageThemeClassScript = QStringLiteral(
     "el.classList.remove('black-dark','black-light');"
     "el.classList.add(dark?'black-dark':'black-light');})(%1);");
 
+// ── Password Manager (saves on form submit, autofills saved logins) ─────────
+static const QString kPasswordHandlerScript = QStringLiteral(
+    "(function(){"
+    "if(window.__blackPasswordReady)return;window.__blackPasswordReady=true;"
+    "var tries=0;function boot(){"
+    "tries++;if(!window.QWebChannel||!window.qt||!qt.webChannelTransport){if(tries<80)setTimeout(boot,100);return;}"
+    "new QWebChannel(qt.webChannelTransport,function(channel){"
+    "var ps=channel.objects.passwords;if(!ps)return;"
+    "var fill=function(){"
+    "var p=document.querySelector('input[type=\"password\"]');if(!p||p.value)return;"
+    "ps.entriesFor(location.host,function(entries){"
+    "if(!entries||!entries.length)return;var e=entries[0];"
+    "var u=document.querySelector('input[type=\"text\"],input[type=\"email\"],input[name*=\"user\" i],input[name*=\"login\" i],input[name*=\"mail\" i],input[id*=\"user\" i],input[id*=\"email\" i],input[autocomplete=\"username\"]');"
+    "if(u&&!u.value)u.value=e.username;"
+    "var p2=document.querySelector('input[type=\"password\"]');if(p2&&!p2.value)p2.value=e.password;});};"
+    "fill();setTimeout(fill,700);setTimeout(fill,2000);"
+    "document.addEventListener('submit',function(ev){"
+    "var f=ev.target;if(!f||f.tagName!=='FORM')return;"
+    "var p=f.querySelector('input[type=\"password\"]');if(!p||!p.value)return;"
+    "var u=f.querySelector('input[type=\"text\"],input[type=\"email\"],input[name*=\"user\" i],input[name*=\"login\" i],input[name*=\"mail\" i]');"
+    "try{ps.save(location.host,u?u.value:'',p.value);}catch(err){}},true);"
+    "});}"
+    "boot();})();");
+
+// Builds the full injected script: inline qwebchannel.js (if readable) so it
+// works on sites with a strict Content-Security-Policy, plus the handler above.
+static QString buildPasswordScript()
+{
+    QString lib;
+    QFile f(QStringLiteral(":/qtwebchannel/qwebchannel.js"));
+    if (f.open(QIODevice::ReadOnly))
+        lib = QString::fromUtf8(f.readAll());
+    if (lib.isEmpty()) {
+        return QStringLiteral(
+                   "(function(){var s=document.createElement('script');"
+                   "s.src='qrc:///qtwebchannel/qwebchannel.js';"
+                   "(document.head||document.documentElement).appendChild(s);})();")
+            + kPasswordHandlerScript;
+    }
+    return lib + QLatin1Char('\n') + kPasswordHandlerScript;
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
-static QString truncate(const QString &s, int max = 20) {
-    return s.length() > max ? s.left(max - 1) + QStringLiteral("\u2026") : s;
+static QString truncate(const QString &s, int max = 20) {    return s.length() > max ? s.left(max - 1) + QStringLiteral("\u2026") : s;
 }
 
 static QString shortUrl(const QString &url) {
-    QString display = url;
-    if (display.startsWith(QStringLiteral("qrc:/startpage_enhanced.html"))) return QStringLiteral("Start Page");
+    QString display = url;    if (display.startsWith(QStringLiteral("qrc:/startpage_enhanced.html"))) return QStringLiteral("Start Page");
     if (display.startsWith(QStringLiteral("qrc:/bookmarks.html"))) return QStringLiteral("Favourites");
     if (display.startsWith(QStringLiteral("qrc:/history.html"))) return QStringLiteral("History");
     if (display.startsWith(QStringLiteral("qrc:/settings.html"))) return QStringLiteral("Settings");
@@ -210,8 +284,34 @@ static QString searchUrlFor(const QString &query) {
         return QStringLiteral("https://search.brave.com/search?q=") + encoded;
     if (engine == QLatin1String("Yahoo"))
         return QStringLiteral("https://search.yahoo.com/search?p=") + encoded;
+    if (engine == QLatin1String("Baidu"))
+        return QStringLiteral("https://www.baidu.com/s?wd=") + encoded;
+    if (engine == QLatin1String("Yandex"))
+        return QStringLiteral("https://yandex.com/search/?text=") + encoded;
+    if (engine == QLatin1String("Startpage"))
+        return QStringLiteral("https://www.startpage.com/sp/search?query=") + encoded;
+    if (engine == QLatin1String("SearXNG"))
+        return QStringLiteral("https://searx.be/search?q=") + encoded;
+    if (engine == QLatin1String("Swisscows"))
+        return QStringLiteral("https://swisscows.com/en/web?query=") + encoded;
     if (engine == QLatin1String("Ecosia"))
         return QStringLiteral("https://www.ecosia.org/search?q=") + encoded;
+    if (engine == QLatin1String("Lilo"))
+        return QStringLiteral("https://search.lilo.org/?q=") + encoded;
+    if (engine == QLatin1String("Wikipedia"))
+        return QStringLiteral("https://en.wikipedia.org/wiki/Special:Search?search=") + encoded;
+    if (engine == QLatin1String("GitHub"))
+        return QStringLiteral("https://github.com/search?q=") + encoded;
+    if (engine == QLatin1String("Stack Overflow"))
+        return QStringLiteral("https://stackoverflow.com/search?q=") + encoded;
+    if (engine == QLatin1String("YouTube"))
+        return QStringLiteral("https://www.youtube.com/results?search_query=") + encoded;
+    if (engine == QLatin1String("WolframAlpha"))
+        return QStringLiteral("https://www.wolframalpha.com/input?i=") + encoded;
+    if (engine == QLatin1String("Perplexity"))
+        return QStringLiteral("https://www.perplexity.ai/search?q=") + encoded;
+    if (engine == QLatin1String("Phind"))
+        return QStringLiteral("https://www.phind.com/search?q=") + encoded;
     return QStringLiteral("https://www.google.com/search?q=") + encoded;
 }
 
@@ -258,6 +358,7 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     , m_sidebarSearch(nullptr)
     , m_sidebarVisible(false)
     , m_urlFocused(false)
+    , m_urlMouseFocusPending(false)
     , m_isDragging(false)
     , m_currentTabIndex(-1)
     , m_incognito(incognito)
@@ -265,8 +366,10 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     , m_webChannel(nullptr)
     , m_bookmarks(nullptr)
     , m_history(nullptr)
-{
-    setWindowFlags(Qt::Window | Qt::FramelessWindowHint |
+    , m_passwords(nullptr)
+    , m_extensions(nullptr)
+    , m_account(nullptr)
+{    setWindowFlags(Qt::Window | Qt::FramelessWindowHint |
                    Qt::WindowSystemMenuHint |
                    Qt::WindowMinimizeButtonHint |
                    Qt::WindowMaximizeButtonHint);
@@ -283,6 +386,13 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     m_webChannel->registerObject(QStringLiteral("browserSettings"), &BrowserSettings::instance());
     m_webChannel->registerObject(QStringLiteral("bookmarks"), m_bookmarks);
     m_webChannel->registerObject(QStringLiteral("history"), m_history);
+    m_passwords = new PasswordStore(this);
+    m_extensions = new ExtensionManager(this);
+    m_account = new Account(this);
+    m_webChannel->registerObject(QStringLiteral("passwords"), m_passwords);
+    m_webChannel->registerObject(QStringLiteral("extensions"), m_extensions);
+    m_webChannel->registerObject(QStringLiteral("account"), m_account);
+    m_webChannel->registerObject(QStringLiteral("safeBrowsing"), &SafeBrowsing::instance());
 
     // Inject the class-based theme stylesheet into every page of this profile.
     // Native color-scheme signalling (no invert filter): sites like YouTube and
@@ -296,6 +406,19 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     styleScript.setWorldId(QWebEngineScript::ApplicationWorld);
     styleScript.setRunsOnSubFrames(true);
     m_profile->scripts()->insert(styleScript);
+
+    // Password manager: MainWorld script on every page (saves + autofills).
+    QWebEngineScript passwordScript;
+    passwordScript.setName(QStringLiteral("black-passwords"));
+    passwordScript.setSourceCode(buildPasswordScript());
+    passwordScript.setInjectionPoint(QWebEngineScript::DocumentCreation);
+    passwordScript.setWorldId(QWebEngineScript::MainWorld);
+    passwordScript.setRunsOnSubFrames(true);
+    m_profile->scripts()->insert(passwordScript);
+
+    // Installed extension content scripts.
+    installExtensionScripts();
+    connect(m_extensions, &ExtensionManager::changed, this, &BrowserWindow::installExtensionScripts);
 
     if (m_incognito) {
         QWebEngineSettings *s = m_profile->settings();
@@ -329,6 +452,7 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
 
     connect(&BrowserSettings::instance(), &BrowserSettings::settingsChanged, this, [this]() {
         m_history->setRetentionDays(retentionDaysFor(BrowserSettings::instance().removeHistoryItems()));
+        rebuildTabBar();
     });
 
     connect(&SafariTheme::instance(), &SafariTheme::schemeChanged, this, [this]() {
@@ -357,6 +481,12 @@ void BrowserWindow::loadStartPage() {
     const QString preference = BrowserSettings::instance().newWindowsWith();
     if (preference == QStringLiteral("Favourites"))
         target = QUrl(QStringLiteral("qrc:/bookmarks.html"));
+    else if (preference == QStringLiteral("Homepage"))
+        target = homepageUrl();
+    else if (preference == QStringLiteral("Empty Page"))
+        target = QUrl(QStringLiteral("about:blank"));
+    else if (preference == QStringLiteral("Same Page"))
+        target = samePageUrl();
     if (!m_tabs.isEmpty() && m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count()) {
         m_tabs[m_currentTabIndex].view->setUrl(target);
     } else {
@@ -577,6 +707,7 @@ void BrowserWindow::setupUi()
     m_urlContainer->setMaximumWidth(520);
     m_urlContainer->setFixedHeight(30);
     m_urlContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_urlContainer->installEventFilter(this);
 
     QHBoxLayout *urlLayout = new QHBoxLayout(m_urlContainer);
     urlLayout->setContentsMargins(8, 0, 4, 0);
@@ -596,6 +727,8 @@ void BrowserWindow::setupUi()
     toolbarLayout->addWidget(m_urlContainer, 2);
     toolbarLayout->setAlignment(m_urlContainer, Qt::AlignVCenter);
     toolbarLayout->addStretch(1);
+
+    setupUrlSuggestions();
 
     // Right side buttons
     m_shareButton->setToolTip(QStringLiteral("Share"));
@@ -679,17 +812,18 @@ void BrowserWindow::setupUi()
 // ═══════════════════════════════════════════════════════════════════════════
 void BrowserWindow::setupTabBar()
 {
+    const bool compact = (BrowserSettings::instance().tabLayout() == QLatin1String("Compact"));
     m_tabBar = new QWidget(centralWidget());
     m_tabBar->setObjectName(QStringLiteral("TabBar"));
-    m_tabBar->setFixedHeight(36);
+    m_tabBar->setFixedHeight(compact ? 30 : 36);
 
     m_tabBarLayout = new QHBoxLayout(m_tabBar);
-    m_tabBarLayout->setContentsMargins(8, 0, 8, 0);
-    m_tabBarLayout->setSpacing(2);
+    m_tabBarLayout->setContentsMargins(compact ? 6 : 8, 0, 6, 0);
+    m_tabBarLayout->setSpacing(compact ? 1 : 2);
     m_tabBarLayout->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
     // Add tab button
-    m_addTabButton->setFixedSize(26, 26);
+    m_addTabButton->setFixedSize(compact ? 22 : 26, compact ? 22 : 26);
     m_addTabButton->setToolTip(QStringLiteral("New Tab"));
     connect(m_addTabButton, &QToolButton::clicked, this, &BrowserWindow::addTabAction);
 
@@ -1118,6 +1252,10 @@ void BrowserWindow::addNewTab(const QUrl &url) {
 }
 
 SafariWebView* BrowserWindow::addTabView(const QUrl &url, QWebEngineNewWindowRequest *request) {
+    return addTabView(url, request, -1);
+}
+
+SafariWebView* BrowserWindow::addTabView(const QUrl &url, QWebEngineNewWindowRequest *request, int activateOverride) {
     auto *view = new SafariWebView(this);
     view->setWebProfile(m_profile);
     view->page()->setWebChannel(m_webChannel);
@@ -1128,6 +1266,7 @@ SafariWebView* BrowserWindow::addTabView(const QUrl &url, QWebEngineNewWindowReq
     info.view  = view;
     info.title = QStringLiteral("New Tab");
     info.url   = request ? request->requestedUrl().toString() : url.toString();
+    info.lastActive = QDateTime::currentMSecsSinceEpoch();
     m_tabs.append(info);
 
     int index = m_tabs.count() - 1;
@@ -1215,11 +1354,24 @@ SafariWebView* BrowserWindow::addTabView(const QUrl &url, QWebEngineNewWindowReq
     });
     connect(view, &QWebEngineView::loadFinished, this, &BrowserWindow::updateNavigationState);
 
-    connect(view, &SafariWebView::newTabRequested, this, &BrowserWindow::addNewTab);
-
     // Open target="_blank", window.open() and other new-window requests as tabs.
-    connect(view->page(), &QWebEnginePage::newWindowRequested, this, [this](QWebEngineNewWindowRequest &req) {
-        addTabView(QUrl(), &req);
+    const auto openPagesInTabs = [this]() {
+        return BrowserSettings::instance().openPagesInTabs() != QLatin1String("Never");
+    };
+    connect(view, &SafariWebView::newTabRequested, this, [this, openPagesInTabs](const QUrl &u) {
+        if (openPagesInTabs()) addNewTab(u);
+        else openNewWindow(u);
+    });
+    connect(view->page(), &QWebEnginePage::newWindowRequested, this, [this, openPagesInTabs](QWebEngineNewWindowRequest &req) {
+        if (openPagesInTabs()) {
+            // Ctrl/Cmd+click and other background-tab gestures stay in the
+            // background; everything else follows the activateNewTabs setting.
+            const int activate = (req.destination() == QWebEngineNewWindowRequest::InNewBackgroundTab)
+                ? 0 : -1;
+            addTabView(QUrl(), &req, activate);
+        } else {
+            openNewWindow(req.requestedUrl());
+        }
     });
 
     // SSL certificate errors: let the user decide on overridable errors.
@@ -1245,13 +1397,21 @@ SafariWebView* BrowserWindow::addTabView(const QUrl &url, QWebEngineNewWindowReq
     } else {
         view->setUrl(newTabUrl());
     }
-    setCurrentTab(index);
+    bool activate;
+    if (activateOverride >= 0) {
+        activate = (activateOverride == 1);
+    } else {
+        activate = BrowserSettings::instance().activateNewTabs();
+    }
+    if (activate || m_tabs.count() == 1)
+        setCurrentTab(index);
     return view;
 }
 
 void BrowserWindow::setCurrentTab(int index) {
     if (index < 0 || index >= m_tabs.count()) return;
     m_currentTabIndex = index;
+    m_tabs[index].lastActive = QDateTime::currentMSecsSinceEpoch();
     m_tabStack->setCurrentIndex(index);
 
     QWebEngineView *v = m_tabs[index].view;
@@ -1350,14 +1510,41 @@ QUrl BrowserWindow::newTabUrl() const {
     const QString preference = BrowserSettings::instance().newTabsWith();
     if (preference == QStringLiteral("Favourites"))
         return QUrl(QStringLiteral("qrc:/bookmarks.html"));
-    if (preference == QStringLiteral("Set to Current Page")) {
-        if (m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count()) {
-            const QString current = m_tabs[m_currentTabIndex].url;
-            if (!current.isEmpty() && !current.startsWith(QStringLiteral("qrc:")))
-                return QUrl(current);
-        }
+    if (preference == QStringLiteral("Homepage"))
+        return homepageUrl();
+    if (preference == QStringLiteral("Empty Page"))
+        return QUrl(QStringLiteral("about:blank"));
+    if (preference == QStringLiteral("Same Page") || preference == QStringLiteral("Set to Current Page")) {
+        const QUrl same = samePageUrl();
+        if (!same.isEmpty())
+            return same;
     }
     return QUrl(QStringLiteral("qrc:/startpage_enhanced.html"));
+}
+
+QUrl BrowserWindow::homepageUrl() const {
+    const QString hp = BrowserSettings::instance().homepage().trimmed();
+    if (!hp.isEmpty())
+        return QUrl(hp);
+    return QUrl(QStringLiteral("qrc:/startpage_enhanced.html"));
+}
+
+QUrl BrowserWindow::samePageUrl() const {
+    if (m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count()) {
+        const QString current = m_tabs[m_currentTabIndex].url;
+        if (!current.isEmpty() && !current.startsWith(QStringLiteral("qrc:")))
+            return QUrl(current);
+    }
+    return QUrl();
+}
+
+QString BrowserWindow::currentPageUrl() const {
+    if (m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count()) {
+        const QString current = m_tabs[m_currentTabIndex].url;
+        if (!current.isEmpty() && !current.startsWith(QStringLiteral("qrc:")))
+            return current;
+    }
+    return QString();
 }
 
 void BrowserWindow::addBookmarkForCurrentTab() {
@@ -1380,6 +1567,15 @@ void BrowserWindow::openPrivateWindow() {
     window->show();
 }
 
+void BrowserWindow::openNewWindow(const QUrl &url) {
+    auto *window = new BrowserWindow(false);
+    window->setAttribute(Qt::WA_DeleteOnClose);
+    window->resize(size());
+    window->show();
+    if (url.isValid() && !url.isEmpty())
+        window->addNewTab(url);
+}
+
 void BrowserWindow::updateWebViewTheme() {
     const bool dark = (SafariTheme::instance().scheme() == SafariTheme::Scheme::Dark);
     const QString js = kPageThemeClassScript.arg(dark ? QStringLiteral("true") : QStringLiteral("false"));
@@ -1390,6 +1586,18 @@ void BrowserWindow::updateWebViewTheme() {
             continue;
         tab.view->page()->runJavaScript(js);
     }
+}
+
+void BrowserWindow::installExtensionScripts() {
+    if (!m_profile)
+        return;
+    QWebEngineScriptCollection *collection = m_profile->scripts();
+    const QList<QWebEngineScript> all = collection->toList();
+    for (const QWebEngineScript &s : all) {
+        if (s.name().startsWith(QStringLiteral("black-ext:")))
+            collection->remove(s);
+    }
+    collection->insert(m_extensions->buildScripts());
 }
 
 void BrowserWindow::showSettingsMenu() {
@@ -1433,6 +1641,11 @@ void BrowserWindow::showSettingsMenu() {
     menu.exec(mapToGlobal(QPoint(width() - 250, m_toolbar->height())));
 }
 
+void BrowserWindow::openSettingsForTesting()
+{
+    openSettingsDialog();
+}
+
 void BrowserWindow::openSettingsDialog()
 {
     if (m_settingsDialog && m_settingsDialog->isVisible()) {
@@ -1444,7 +1657,9 @@ void BrowserWindow::openSettingsDialog()
     }
 
     if (!m_settingsDialog) {
-        m_settingsDialog = new QDialog(this, Qt::FramelessWindowHint | Qt::Window | Qt::WindowSystemMenuHint);
+        // Qt::Tool keeps the settings sheet out of the taskbar / Alt-Tab so it
+        // doesn't show up as a second browser "tab" when minimized or hidden.
+        m_settingsDialog = new QDialog(this, Qt::FramelessWindowHint | Qt::Tool);
         m_settingsDialog->setWindowTitle(QStringLiteral("Settings"));
         m_settingsDialog->setAttribute(Qt::WA_TranslucentBackground);
         m_settingsDialog->setMinimumSize(520, 400);
@@ -1464,7 +1679,7 @@ void BrowserWindow::openSettingsDialog()
         layout->addWidget(m_settingsView);
 
         m_webChannel->registerObject(QStringLiteral("settingsDialog"),
-                                     new SettingsDialogBridge(m_settingsDialog));
+                                     new SettingsDialogBridge(m_settingsDialog, this));
     }
 
     m_settingsDialog->show();
@@ -1632,23 +1847,26 @@ void BrowserWindow::rebuildTabBar()
     m_tabItemIcons.clear();
     m_tabItemTexts.clear();
 
+    const bool compact = (BrowserSettings::instance().tabLayout() == QLatin1String("Compact"));
+
     // Rebuild: tabs left-aligned, add-tab button right after the last tab
     for (int i = 0; i < m_tabs.count(); ++i) {
         bool isActive = (i == m_currentTabIndex);
         const TabInfo &tab = m_tabs[i];
 
         auto *tabWidget = new QWidget(m_tabBar);
-        tabWidget->setFixedHeight(28);
+        tabWidget->setFixedHeight(compact ? 24 : 28);
         tabWidget->setCursor(Qt::PointingHandCursor);
         tabWidget->setProperty("tabIndex", i);
 
         if (tab.isPinned) {
-            tabWidget->setFixedSize(32, 28);
+            tabWidget->setFixedSize(compact ? 28 : 32, compact ? 24 : 28);
             tabWidget->setStyleSheet(QString(
-                "QWidget { background-color: %1; border-radius: 7px; border: none; }"
-                "QWidget:hover { background-color: %2; }"
-            ).arg(isActive ? tabActive() : tabInactive(),
-                 isActive ? tabActive() : tabHover()));
+                "QWidget { background-color: %1; border-radius: %2px; border: none; }"
+                "QWidget:hover { background-color: %3; }"
+            ).arg(isActive ? tabActive() : tabInactive())
+             .arg(compact ? 5 : 7)
+             .arg(isActive ? tabActive() : tabHover()));
 
             QGridLayout *gridLayout = new QGridLayout(tabWidget);
             gridLayout->setContentsMargins(4, 4, 4, 4);
@@ -1685,17 +1903,19 @@ void BrowserWindow::rebuildTabBar()
             m_tabItemIcons.append(iconLabel);
             m_tabItemTexts.append(nullptr); // Null text label for pinned tabs
         } else {
-            tabWidget->setMinimumWidth(80);
-            tabWidget->setMaximumWidth(200);
+            const bool showTitles = BrowserSettings::instance().showTabTitles();
+            tabWidget->setMinimumWidth(showTitles ? (compact ? 64 : 80) : 28);
+            tabWidget->setMaximumWidth(showTitles ? (compact ? 160 : 200) : 32);
             tabWidget->setStyleSheet(QString(
-                "QWidget { background-color: %1; border-radius: 7px; border: none; }"
-                "QWidget:hover { background-color: %2; }"
-            ).arg(isActive ? tabActive() : tabInactive(),
-                 isActive ? tabActive() : tabHover()));
+                "QWidget { background-color: %1; border-radius: %2px; border: none; }"
+                "QWidget:hover { background-color: %3; }"
+            ).arg(isActive ? tabActive() : tabInactive())
+             .arg(compact ? 5 : 7)
+             .arg(isActive ? tabActive() : tabHover()));
 
             QHBoxLayout *tabLayout = new QHBoxLayout(tabWidget);
-            tabLayout->setContentsMargins(8, 2, 4, 2);
-            tabLayout->setSpacing(4);
+            tabLayout->setContentsMargins(compact ? 6 : 8, 2, compact ? 2 : 4, 2);
+            tabLayout->setSpacing(compact ? 2 : 4);
 
             // Favicon
             QLabel *iconLabel = new QLabel(tabWidget);
@@ -1711,14 +1931,17 @@ void BrowserWindow::rebuildTabBar()
             tabLayout->addWidget(iconLabel);
 
             // Title
-            QString shownText = tab.title.isEmpty() ? QStringLiteral("New Tab") : tab.title;
-            auto *titleLbl = new QLabel(truncate(shownText, 18), tabWidget);
-            titleLbl->setStyleSheet(QString(
-                "color: %1; font-size: 12px; font-weight: %2; background: transparent;"
-            ).arg(isActive ? textPrimary() : textSecondary(),
-                 isActive ? "600" : "400"));
-            titleLbl->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-            tabLayout->addWidget(titleLbl, 1);
+            QLabel *titleLbl = nullptr;
+            if (showTitles) {
+                QString shownText = tab.title.isEmpty() ? QStringLiteral("New Tab") : tab.title;
+                titleLbl = new QLabel(truncate(shownText, compact ? 14 : 18), tabWidget);
+                titleLbl->setStyleSheet(QString(
+                    "color: %1; font-size: 12px; font-weight: %2; background: transparent;"
+                ).arg(isActive ? textPrimary() : textSecondary(),
+                     isActive ? "600" : "400"));
+                titleLbl->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+                tabLayout->addWidget(titleLbl, 1);
+            }
 
             if (tab.isAudible) {
                 QPushButton *audioBtn = new QPushButton(tabWidget);
@@ -1860,13 +2083,71 @@ bool BrowserWindow::eventFilter(QObject *obj, QEvent *event) {
     // URL bar focus ring + elastic expansion
     if (obj == m_urlContainer || obj == m_urlBar) {
         if (event->type() == QEvent::FocusIn) {
+            auto *fe = static_cast<QFocusEvent*>(event);
+            if (fe->reason() == Qt::MouseFocusReason)
+                m_urlMouseFocusPending = true;
             m_urlFocused = true;
             animateUrlBar(820);
             updateUrlContainerStyle();
+            if (obj == m_urlBar && !m_urlBar->text().trimmed().isEmpty()) {
+                rebuildUrlSuggestions();
+                showUrlSuggestions();
+            }
         } else if (event->type() == QEvent::FocusOut) {
             m_urlFocused = false;
+            m_urlMouseFocusPending = false;
             animateUrlBar(520);
             updateUrlContainerStyle();
+            QTimer::singleShot(150, this, [this]() {
+                if (m_urlSuggest && m_urlSuggest->isVisible() && !m_urlSuggest->underMouse()
+                    && !m_urlBar->hasFocus())
+                    hideUrlSuggestions();
+            });
+        } else if (event->type() == QEvent::MouseButtonPress) {
+            auto *me = static_cast<QMouseEvent*>(event);
+            const bool pending = m_urlMouseFocusPending;
+            m_urlMouseFocusPending = false;
+            if (me->button() == Qt::LeftButton && (!m_urlBar->hasFocus() || pending)) {
+                m_urlBar->setFocus();
+                m_urlBar->selectAll();
+                return true;
+            }
+        } else if (event->type() == QEvent::ShortcutOverride && obj == m_urlBar) {
+            auto *ke = static_cast<QKeyEvent*>(event);
+            if (ke->key() == Qt::Key_Escape) {
+                event->accept();
+                return true;
+            }
+        } else if (event->type() == QEvent::KeyPress && obj == m_urlBar) {
+            auto *ke = static_cast<QKeyEvent*>(event);
+            const bool visible = m_urlSuggest && m_urlSuggest->isVisible();
+            if (ke->key() == Qt::Key_Down) {
+                if (visible) {
+                    selectUrlSuggestion(m_urlSuggestionIndex + 1);
+                    return true;
+                }
+            } else if (ke->key() == Qt::Key_Up) {
+                if (visible) {
+                    selectUrlSuggestion(m_urlSuggestionIndex - 1);
+                    return true;
+                }
+            } else if (ke->key() == Qt::Key_Escape) {
+                if (visible) {
+                    hideUrlSuggestions();
+                    return true;
+                }
+                hideUrlSuggestions();
+                m_urlFocused = false;
+                if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget()))
+                    m_urlBar->setText(shortUrl(v->url().toString()));
+                m_urlBar->clearFocus();
+                return true;
+            } else if (ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) {
+                if (visible && m_urlSuggestionIndex >= 0) {
+                    activateUrlSuggestion(m_urlSuggestionIndex);
+                    return true;
+                }
+            }
         }
         return false;
     }
@@ -1903,6 +2184,170 @@ void BrowserWindow::animateUrlBar(int targetWidth)
 
     m_urlAnim = group;
     group->start();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── URL Bar Suggestions ───────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+void BrowserWindow::setupUrlSuggestions() {
+    m_urlSuggest = new QFrame(this, Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::WindowDoesNotAcceptFocus);
+    m_urlSuggest->setAttribute(Qt::WA_ShowWithoutActivating);
+    m_urlSuggest->setObjectName(QStringLiteral("UrlSuggest"));
+    m_urlSuggest->setMinimumWidth(320);
+    m_urlSuggest->setStyleSheet(QString(
+        "QFrame#UrlSuggest { background-color: %1; border: 0.5px solid %2; border-radius: 10px; }"
+    ).arg(cardBg(), border()));
+
+    m_urlSuggestLayout = new QVBoxLayout(m_urlSuggest);
+    m_urlSuggestLayout->setContentsMargins(6, 6, 6, 6);
+    m_urlSuggestLayout->setSpacing(1);
+    m_urlSuggestionIndex = -1;
+
+    connect(m_urlBar, &QLineEdit::textChanged, this, [this](const QString &text) {
+        if (!m_urlFocused) return;
+        if (text.trimmed().isEmpty()) {
+            hideUrlSuggestions();
+            return;
+        }
+        rebuildUrlSuggestions();
+        showUrlSuggestions();
+    });
+}
+
+void BrowserWindow::rebuildUrlSuggestions() {
+    while (QLayoutItem *item = m_urlSuggestLayout->takeAt(0)) {
+        if (QWidget *w = item->widget()) w->deleteLater();
+        delete item;
+    }
+    m_urlSuggestRows.clear();
+    m_urlSuggestionUrls.clear();
+    m_urlSuggestionIndex = -1;
+
+    const QString query = m_urlBar->text().trimmed();
+    if (query.isEmpty()) return;
+
+    const QString engine = BrowserSettings::instance().searchEngine();
+
+    const auto rowStyle = [this](bool selected) {
+        return QString(
+            "QPushButton { background: transparent; border: none; border-radius: 6px; }"
+            "QPushButton:hover { background-color: %1; }"
+            "QPushButton[selected=\"true\"] { background-color: %2; }"
+        ).arg(hover(), selected ? selectedBg() : hover());
+    };
+
+    const auto addRow = [&](const QUrl &url, const QString &title, const QString &urlText,
+                            const QString &iconSvg, const QString &iconColor, bool accentText) {
+        auto *row = new QPushButton(m_urlSuggest);
+        row->setCursor(Qt::PointingHandCursor);
+        row->setFixedHeight(30);
+        row->setStyleSheet(rowStyle(false));
+
+        auto *rl = new QHBoxLayout(row);
+        rl->setContentsMargins(10, 0, 10, 0);
+        rl->setSpacing(8);
+
+        QLabel *icon = new QLabel(row);
+        icon->setPixmap(createSvgIcon(iconSvg, 15, iconColor).pixmap(15, 15));
+        icon->setFixedSize(15, 15);
+        rl->addWidget(icon);
+
+        QLabel *titleLbl = new QLabel(truncate(title, 32), row);
+        titleLbl->setStyleSheet(QString("color: %1; background: transparent; font-size: 12px;")
+            .arg(accentText ? accent() : textPrimary()));
+        titleLbl->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        rl->addWidget(titleLbl, 1);
+
+        if (!urlText.isEmpty()) {
+            QLabel *hostLbl = new QLabel(truncate(urlText, 30), row);
+            hostLbl->setStyleSheet(QString("color: %1; background: transparent; font-size: 11px;").arg(textTertiary()));
+            hostLbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            rl->addWidget(hostLbl);
+        }
+
+        const int idx = m_urlSuggestionUrls.size();
+        connect(row, &QPushButton::clicked, this, [this, idx]() { activateUrlSuggestion(idx); });
+
+        m_urlSuggestLayout->addWidget(row);
+        m_urlSuggestRows.append(row);
+        m_urlSuggestionUrls.append(url);
+    };
+
+    // Chrome-style search chip: "Search <engine> for '<query>'".
+    addRow(QUrl(), QStringLiteral("Search %1 for \"%2\"").arg(engine, truncate(query, 26)),
+           QString(), svgSearch, accent(), true);
+
+    const QString ql = query.toLower();
+    QStringList seen;
+    int added = 0;
+    const auto addSource = [&](ShelfStore *store, bool isFavourite) {
+        if (!store || added >= 7) return;
+        const QJsonDocument doc = QJsonDocument::fromJson(store->json().toUtf8());
+        if (!doc.isArray()) return;
+        const QJsonArray arr = doc.array();
+        for (const QJsonValue &v : arr) {
+            if (added >= 7) break;
+            const QJsonObject o = v.toObject();
+            const QString title = o.value(QStringLiteral("title")).toString();
+            const QString url = o.value(QStringLiteral("url")).toString();
+            if (url.isEmpty() || seen.contains(url)) continue;
+            if (!title.toLower().contains(ql) && !url.toLower().contains(ql)) continue;
+            seen.append(url);
+            addRow(QUrl(url), title.isEmpty() ? url : title, QUrl(url).host(),
+                   isFavourite ? svgStar : svgHistory,
+                   isFavourite ? QStringLiteral("#f5a623") : textSecondary(), false);
+            ++added;
+        }
+    };
+    addSource(m_history, false);
+    addSource(m_bookmarks, true);
+
+    if (m_urlSuggestLayout->count() == 0)
+        hideUrlSuggestions();
+}
+
+void BrowserWindow::showUrlSuggestions() {
+    if (!m_urlSuggest || m_urlSuggestLayout->count() == 0) return;
+    m_urlSuggest->setFixedWidth(m_urlContainer->width());
+    m_urlSuggest->move(m_urlContainer->mapToGlobal(QPoint(0, m_urlContainer->height() + 2)));
+    m_urlSuggest->show();
+    m_urlSuggest->raise();
+    selectUrlSuggestion(-1);
+}
+
+void BrowserWindow::hideUrlSuggestions() {
+    if (m_urlSuggest)
+        m_urlSuggest->hide();
+    m_urlSuggestionIndex = -1;
+}
+
+void BrowserWindow::selectUrlSuggestion(int index) {
+    if (m_urlSuggestRows.isEmpty()) return;
+    if (index < -1) index = -1;
+    if (index >= m_urlSuggestRows.size()) index = m_urlSuggestRows.size() - 1;
+    m_urlSuggestionIndex = index;
+    for (int i = 0; i < m_urlSuggestRows.size(); ++i) {
+        QPushButton *row = m_urlSuggestRows[i];
+        row->setProperty("selected", i == index);
+        row->style()->unpolish(row);
+        row->style()->polish(row);
+    }
+}
+
+void BrowserWindow::activateUrlSuggestion(int index) {
+    if (index < 0 || index >= m_urlSuggestionUrls.size()) {
+        hideUrlSuggestions();
+        return;
+    }
+    const QUrl url = m_urlSuggestionUrls[index];
+    hideUrlSuggestions();
+    if (url.isEmpty()) {
+        navigateToUrl(); // the search chip row
+        return;
+    }
+    if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget()))
+        v->setUrl(url);
+    m_urlBar->clearFocus();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2022,6 +2467,12 @@ void BrowserWindow::setupKeyboardShortcuts()
     };
 
     addShortcut(QStringLiteral("Ctrl+T"), [this]() { addTabAction(); });
+    for (int i = 1; i <= 9; ++i) {
+        addShortcut(QString("Ctrl+%1").arg(i), [this, i]() {
+            if (i - 1 < m_tabs.count())
+                setCurrentTab(i - 1);
+        });
+    }
     addShortcut(QStringLiteral("Ctrl+D"), [this]() { addBookmarkForCurrentTab(); });
     addShortcut(QStringLiteral("Ctrl+Shift+N"), [this]() { openPrivateWindow(); });
     addShortcut(QStringLiteral("Ctrl+W"), [this]() { closeTab(m_currentTabIndex); });
@@ -2390,12 +2841,25 @@ void BrowserWindow::findPrevious() {
 
 void BrowserWindow::setupDownloads() {
     connect(m_profile, &QWebEngineProfile::downloadRequested, this, [this](QWebEngineDownloadRequest *download) {
+        if (BrowserSettings::instance().downloadLocation() == QStringLiteral("Ask each time")) {
+            const QString dir = QFileDialog::getExistingDirectory(
+                this, QStringLiteral("Choose Download Location"),
+                QStandardPaths::writableLocation(QStandardPaths::DownloadLocation));
+            if (dir.isEmpty()) {
+                download->cancel();
+                return;
+            }
+            download->setDownloadDirectory(dir);
+        }
+
         DownloadItemInfo info;
         info.fileName = download->downloadFileName();
         info.filePath = QDir(download->downloadDirectory()).filePath(download->downloadFileName());
+        info.url = download->url().toString();
         info.receivedBytes = download->receivedBytes();
         info.totalBytes = download->totalBytes();
         info.state = 0;
+        info.request = download;
         m_downloadsList.append(info);
 
         int idx = m_downloadsList.count() - 1;
@@ -2438,33 +2902,162 @@ void BrowserWindow::setupDownloads() {
 
 void BrowserWindow::showDownloadsMenu() {
     QMenu menu(this);
+    menu.setStyleSheet(QString(
+        "QMenu { background-color: %1; color: %2; border: 0.5px solid %3; "
+        "border-radius: 10px; padding: 6px; }"
+        "QMenu::item { padding: 6px 24px 6px 12px; border-radius: 6px; font-size: 13px; }"
+        "QMenu::item:selected { background-color: %4; }"
+        "QMenu::item:disabled { color: %5; }"
+        "QMenu::separator { height: 1px; background: %6; margin: 4px 8px; }"
+    ).arg(cardBg(), textPrimary(), border(), selectedBg(), textTertiary(), borderLight()));
+
     if (m_downloadsList.isEmpty()) {
         menu.addAction(QStringLiteral("No Downloads"))->setEnabled(false);
     } else {
+        auto *container = new QWidget(&menu);
+        container->setStyleSheet(QStringLiteral("background: transparent;"));
+        auto *lay = new QVBoxLayout(container);
+        lay->setContentsMargins(4, 2, 4, 2);
+        lay->setSpacing(2);
+
         for (int i = 0; i < m_downloadsList.count(); ++i) {
-            const DownloadItemInfo &item = m_downloadsList[i];
-            QString status;
-            switch (item.state) {
-            case 1: status = QStringLiteral("Completed"); break;
-            case 2: status = QStringLiteral("Failed"); break;
-            default:
-                if (item.totalBytes > 0)
-                    status = QStringLiteral("%1%").arg(int(100 * double(item.receivedBytes) / double(item.totalBytes)));
-                else
-                    status = QStringLiteral("%1 MB").arg(double(item.receivedBytes) / (1024.0 * 1024.0), 0, 'f', 1);
-                break;
-            }
-            QAction *act = menu.addAction(QStringLiteral("%1 \u2014 %2").arg(item.fileName, status));
-            if (item.state == 1 && !item.filePath.isEmpty()) {
-                connect(act, &QAction::triggered, this, [item]() {
-                    QDesktopServices::openUrl(QUrl::fromLocalFile(item.filePath));
-                });
-            } else {
-                act->setEnabled(false);
-            }
+            DownloadItemInfo &item = m_downloadsList[i];
+            lay->addWidget(buildDownloadRow(i, item));
         }
+
+        lay->addSpacing(4);
+        QPushButton *clearBtn = new QPushButton(QStringLiteral("Clear Completed"), container);
+        clearBtn->setCursor(Qt::PointingHandCursor);
+        clearBtn->setStyleSheet(QString(
+            "QPushButton { background: transparent; color: %1; border: none; text-align: left; padding: 4px 8px; border-radius: 6px; font-size: 12px; }"
+            "QPushButton:hover { background-color: %2; }"
+        ).arg(accent(), hover()));
+        connect(clearBtn, &QPushButton::clicked, this, [this]() {
+            for (int i = m_downloadsList.count() - 1; i >= 0; --i)
+                if (m_downloadsList[i].state != 0)
+                    m_downloadsList.removeAt(i);
+        });
+        lay->addWidget(clearBtn);
+
+        auto *wa = new QWidgetAction(&menu);
+        wa->setDefaultWidget(container);
+        menu.addAction(wa);
     }
     menu.exec(m_downloadsButton->mapToGlobal(QPoint(0, m_downloadsButton->height())));
+}
+
+QWidget* BrowserWindow::buildDownloadRow(int index, const DownloadItemInfo &item) {
+    auto *row = new QWidget;
+    row->setStyleSheet(QStringLiteral("background: transparent;"));
+    row->setFixedHeight(46);
+
+    auto *rl = new QHBoxLayout(row);
+    rl->setContentsMargins(8, 4, 4, 4);
+    rl->setSpacing(10);
+
+    auto *infoCol = new QVBoxLayout;
+    infoCol->setContentsMargins(0, 0, 0, 0);
+    infoCol->setSpacing(3);
+
+    QLabel *nameLbl = new QLabel(truncate(item.fileName, 34), row);
+    nameLbl->setStyleSheet(QString("color: %1; background: transparent; font-size: 12px; font-weight: 600;").arg(textPrimary()));
+    infoCol->addWidget(nameLbl);
+
+    if (item.state == 0) {
+        auto *bar = new QProgressBar(row);
+        bar->setFixedHeight(8);
+        bar->setTextVisible(false);
+        bar->setStyleSheet(QString(
+            "QProgressBar { background-color: %1; border: none; border-radius: 4px; }"
+            "QProgressBar::chunk { background-color: %2; border-radius: 4px; }"
+        ).arg(borderLight(), accent()));
+        if (item.totalBytes > 0) {
+            bar->setRange(0, 100);
+            bar->setValue(int(100 * double(item.receivedBytes) / double(item.totalBytes)));
+        } else {
+            bar->setRange(0, 0); // indeterminate
+        }
+        infoCol->addWidget(bar);
+
+        QLabel *subLbl = new QLabel(row);
+        if (item.totalBytes > 0) {
+            subLbl->setText(QStringLiteral("%1% \u2022 %2 of %3")
+                .arg(int(100 * double(item.receivedBytes) / double(item.totalBytes)))
+                .arg(QString::number(double(item.receivedBytes) / (1024.0 * 1024.0), 'f', 1), QStringLiteral("MB"))
+                .arg(QString::number(double(item.totalBytes) / (1024.0 * 1024.0), 'f', 1) + QStringLiteral(" MB")));
+        } else {
+            subLbl->setText(QStringLiteral("%1 MB").arg(double(item.receivedBytes) / (1024.0 * 1024.0), 0, 'f', 1));
+        }
+        subLbl->setStyleSheet(QString("color: %1; background: transparent; font-size: 11px;").arg(textTertiary()));
+        infoCol->addWidget(subLbl);
+    } else {
+        QLabel *statusLbl = new QLabel(item.state == 1 ? QStringLiteral("\u2713 Completed")
+                                                       : QStringLiteral("\u26A0 Failed"), row);
+        statusLbl->setStyleSheet(QString("color: %1; background: transparent; font-size: 11px; font-weight: 600;")
+            .arg(item.state == 1 ? accent() : QStringLiteral("#ff453a")));
+        infoCol->addWidget(statusLbl);
+    }
+    rl->addLayout(infoCol, 1);
+
+    if (item.state == 0) {
+        QToolButton *cancelBtn = new QToolButton(row);
+        cancelBtn->setIcon(createSvgIcon(svgX, 14, textSecondary()));
+        cancelBtn->setIconSize(QSize(14, 14));
+        cancelBtn->setFixedSize(24, 24);
+        cancelBtn->setToolTip(QStringLiteral("Cancel Download"));
+        cancelBtn->setCursor(Qt::PointingHandCursor);
+        cancelBtn->setStyleSheet(QString(
+            "QToolButton { background: transparent; border: none; border-radius: 6px; }"
+            "QToolButton:hover { background-color: %1; }"
+        ).arg(hover()));
+        connect(cancelBtn, &QToolButton::clicked, this, [this, index]() {
+            if (index < m_downloadsList.count() && m_downloadsList[index].request)
+                m_downloadsList[index].request->cancel();
+        });
+        rl->addWidget(cancelBtn);
+    } else if (item.state == 2 && !item.url.isEmpty()) {
+        QToolButton *retryBtn = new QToolButton(row);
+        retryBtn->setIcon(createSvgIcon(svgRefresh, 14, textSecondary()));
+        retryBtn->setIconSize(QSize(14, 14));
+        retryBtn->setFixedSize(24, 24);
+        retryBtn->setToolTip(QStringLiteral("Retry Download"));
+        retryBtn->setCursor(Qt::PointingHandCursor);
+        retryBtn->setStyleSheet(QString(
+            "QToolButton { background: transparent; border: none; border-radius: 6px; }"
+            "QToolButton:hover { background-color: %1; }"
+        ).arg(hover()));
+        connect(retryBtn, &QToolButton::clicked, this, [this, index]() {
+            if (index < m_downloadsList.count())
+                addNewTab(QUrl(m_downloadsList[index].url));
+        });
+        rl->addWidget(retryBtn);
+    }
+
+    if (item.state != 0) {
+        QToolButton *revealBtn = new QToolButton(row);
+        revealBtn->setIcon(createSvgIcon(svgFolder, 14, textSecondary()));
+        revealBtn->setIconSize(QSize(14, 14));
+        revealBtn->setFixedSize(24, 24);
+        revealBtn->setToolTip(QStringLiteral("Show in Explorer"));
+        revealBtn->setCursor(Qt::PointingHandCursor);
+        revealBtn->setStyleSheet(QString(
+            "QToolButton { background: transparent; border: none; border-radius: 6px; }"
+            "QToolButton:hover { background-color: %1; }"
+        ).arg(hover()));
+        connect(revealBtn, &QToolButton::clicked, this, [item]() {
+            if (item.filePath.isEmpty()) return;
+#if defined(Q_OS_WIN)
+            const QString native = QDir::toNativeSeparators(item.filePath);
+            QProcess::startDetached(QStringLiteral("explorer.exe"),
+                                    QStringList{ QStringLiteral("/select,") + native });
+#else
+            QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(item.filePath).absolutePath()));
+#endif
+        });
+        rl->addWidget(revealBtn);
+    }
+
+    return row;
 }
 
 void BrowserWindow::saveSession() {
@@ -2479,7 +3072,10 @@ void BrowserWindow::saveSession() {
                 continue;
             if (i == m_currentTabIndex)
                 currentSavedIndex = array.size();
-            array.append(tab.url);
+            QJsonObject entry;
+            entry[QStringLiteral("url")] = tab.url;
+            entry[QStringLiteral("lastActive")] = tab.lastActive;
+            array.append(entry);
         }
         QJsonObject obj;
         obj[QStringLiteral("tabs")] = array;
@@ -2496,6 +3092,13 @@ void BrowserWindow::restoreSession() {
         if (doc.isObject()) {
             QJsonArray array = doc.object()[QStringLiteral("tabs")].toArray();
             int restoreIdx = doc.object()[QStringLiteral("currentIndex")].toInt(0);
+
+            const int autoCloseDays = BrowserSettings::autoCloseDays(
+                BrowserSettings::instance().autoCloseTabs());
+            const qint64 cutoff = autoCloseDays > 0
+                ? QDateTime::currentMSecsSinceEpoch() - static_cast<qint64>(autoCloseDays) * 86400000
+                : 0;
+
             if (!array.isEmpty()) {
                 // Remove any pre-existing tabs without closeTab()'s side effects.
                 while (!m_tabs.isEmpty()) {
@@ -2503,11 +3106,30 @@ void BrowserWindow::restoreSession() {
                     if (v) { m_tabStack->removeWidget(v); v->deleteLater(); }
                 }
                 m_currentTabIndex = -1;
+                int restored = 0;
+                int adjustedRestoreIdx = -1;
                 for (const QJsonValue &v : array) {
-                    addNewTab(QUrl(v.toString()));
+                    QString url;
+                    qint64 lastActive = 0;
+                    if (v.isObject()) {
+                        url = v.toObject()[QStringLiteral("url")].toString();
+                        lastActive = v.toObject()[QStringLiteral("lastActive")].toDouble(0);
+                    } else {
+                        url = v.toString();
+                    }
+                    if (url.isEmpty())
+                        continue;
+                    // Auto-close: drop inactive tabs older than the cutoff.
+                    if (cutoff > 0 && lastActive > 0 && lastActive < cutoff)
+                        continue;
+                    if (restored == restoreIdx)
+                        adjustedRestoreIdx = m_tabs.count();
+                    addNewTab(QUrl(url));
+                    m_tabs.last().lastActive = lastActive;
+                    ++restored;
                 }
-                if (restoreIdx >= 0 && restoreIdx < m_tabs.count())
-                    setCurrentTab(restoreIdx);
+                if (adjustedRestoreIdx >= 0 && adjustedRestoreIdx < m_tabs.count())
+                    setCurrentTab(adjustedRestoreIdx);
             }
         }
     }

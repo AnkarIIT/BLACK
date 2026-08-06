@@ -19,6 +19,13 @@ class BrowserSettings : public QObject
     Q_PROPERTY(QString removeHistoryItems READ removeHistoryItems NOTIFY settingsChanged)
     Q_PROPERTY(QString removeDownloadListItems READ removeDownloadListItems NOTIFY settingsChanged)
     Q_PROPERTY(bool openSafeFiles READ openSafeFiles NOTIFY settingsChanged)
+    Q_PROPERTY(QString homepage READ homepage NOTIFY settingsChanged)
+    Q_PROPERTY(QString downloadLocation READ downloadLocation NOTIFY settingsChanged)
+    Q_PROPERTY(QString tabLayout READ tabLayout NOTIFY settingsChanged)
+    Q_PROPERTY(bool showTabTitles READ showTabTitles NOTIFY settingsChanged)
+    Q_PROPERTY(QString openPagesInTabs READ openPagesInTabs NOTIFY settingsChanged)
+    Q_PROPERTY(QString autoCloseTabs READ autoCloseTabs NOTIFY settingsChanged)
+    Q_PROPERTY(bool activateNewTabs READ activateNewTabs NOTIFY settingsChanged)
 
 public:
     static BrowserSettings &instance();
@@ -30,6 +37,13 @@ public:
     QString removeHistoryItems() const { return m_removeHistoryItems; }
     QString removeDownloadListItems() const { return m_removeDownloadListItems; }
     bool openSafeFiles() const { return m_openSafeFiles; }
+    QString homepage() const { return m_homepage; }
+    QString downloadLocation() const { return m_downloadLocation; }
+    QString tabLayout() const { return m_tabLayout; }
+    bool showTabTitles() const { return m_showTabTitles; }
+    QString openPagesInTabs() const { return m_openPagesInTabs; }
+    QString autoCloseTabs() const { return m_autoCloseTabs; }
+    bool activateNewTabs() const { return m_activateNewTabs; }
 
     Q_INVOKABLE void setValue(const QString &key, const QString &value);
     Q_INVOKABLE void setBool(const QString &key, bool value);
@@ -38,6 +52,10 @@ public:
     static QString settingsFilePath();
     static QJsonObject readSettingsObject();
     static void writeSettingsObject(const QJsonObject &obj);
+
+    // Auto-close policy: number of days after which an inactive tab is dropped
+    // at session restore (0 = never).
+    static int autoCloseDays(const QString &setting);
 
 signals:
     void settingsChanged();
@@ -54,6 +72,13 @@ private:
     QString m_removeHistoryItems;
     QString m_removeDownloadListItems;
     bool m_openSafeFiles;
+    QString m_homepage;
+    QString m_downloadLocation;
+    QString m_tabLayout;
+    bool m_showTabTitles;
+    QString m_openPagesInTabs;
+    QString m_autoCloseTabs;
+    bool m_activateNewTabs;
 };
 
 #endif
