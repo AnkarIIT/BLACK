@@ -61,8 +61,8 @@
 #endif
 
 namespace {
-// Lets the frameless Settings window close itself from its web content
-// (the macOS-style red traffic light) via the QWebChannel bridge.
+// Lets the frameless Settings window drive itself from its web content
+// (the macOS-style red/yellow/green traffic lights) via the QWebChannel bridge.
 class SettingsDialogBridge : public QObject
 {
     Q_OBJECT
@@ -72,10 +72,35 @@ public:
     {
     }
 
-    Q_INVOKABLE void closeDialog()
+    // Red: close (hide) the dialog without destroying it so Ctrl+, reopens fast.
+    Q_INVOKABLE void closeSettingsDialog()
     {
         if (auto *dialog = qobject_cast<QDialog *>(parent()))
             dialog->close();
+    }
+
+    // Yellow: collapse the frameless dialog to the taskbar.
+    Q_INVOKABLE void minimizeSettingsDialog()
+    {
+        if (auto *dialog = qobject_cast<QDialog *>(parent()))
+            dialog->showMinimized();
+    }
+
+    // Green: toggle between screen-fit (maximized) and the normal centered box.
+    Q_INVOKABLE void toggleSettingsMaximize()
+    {
+        auto *dialog = qobject_cast<QDialog *>(parent());
+        if (!dialog) return;
+
+        if (auto *layout = qobject_cast<QVBoxLayout *>(dialog->layout())) {
+            const int m = dialog->isMaximized() ? 16 : 0;
+            layout->setContentsMargins(m, m, m, m);
+        }
+
+        if (dialog->isMaximized())
+            dialog->showNormal();
+        else
+            dialog->showMaximized();
     }
 };
 }
@@ -128,7 +153,7 @@ static const QString svgVolume2     = "<svg xmlns=\"http://www.w3.org/2000/svg\"
 static const QString svgVolumeMute = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"11 5 6 9 2 9 2 15 6 15 11 19 11 5\"/><line x1=\"23\" y1=\"9\" x2=\"17\" y2=\"15\"/><line x1=\"17\" y1=\"9\" x2=\"23\" y2=\"15\"/></svg>";
 
 // ── Page Theme (applied to web pages so they match the browser) ─────────────
-static const char *kPageThemeCss = "html.black-dark{color-scheme:dark;}html.black-dark{filter:invert(0.88) hue-rotate(180deg) contrast(0.92);}html.black-dark img,html.black-dark video,html.black-dark iframe,html.black-dark canvas,html.black-dark embed,html.black-dark object{filter:invert(1) hue-rotate(180deg) contrast(0.92);}html.black-light{color-scheme:light;}";
+static const char *kPageThemeCss = "html.black-dark{color-scheme:dark;}html.black-light{color-scheme:light;}";
 
 static const QString kPageThemeStyleScript = QStringLiteral(
     "(function(){var css=%1;var s=document.createElement('style');s.id='black-theme-style';s.textContent=css;"
@@ -260,6 +285,10 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     m_webChannel->registerObject(QStringLiteral("history"), m_history);
 
     // Inject the class-based theme stylesheet into every page of this profile.
+    // Native color-scheme signalling (no invert filter): sites like YouTube and
+    // Google render their official dark/light themes via prefers-color-scheme.
+    m_profile->settings()->setAttribute(QWebEngineSettings::ForceDarkMode, false);
+
     QWebEngineScript styleScript;
     styleScript.setName(QStringLiteral("black-page-theme"));
     styleScript.setSourceCode(kPageThemeStyleScript);
@@ -1407,6 +1436,8 @@ void BrowserWindow::showSettingsMenu() {
 void BrowserWindow::openSettingsDialog()
 {
     if (m_settingsDialog && m_settingsDialog->isVisible()) {
+        if (m_settingsDialog->isMinimized())
+            m_settingsDialog->showNormal();
         m_settingsDialog->raise();
         m_settingsDialog->activateWindow();
         return;
@@ -1416,7 +1447,8 @@ void BrowserWindow::openSettingsDialog()
         m_settingsDialog = new QDialog(this, Qt::FramelessWindowHint | Qt::Window | Qt::WindowSystemMenuHint);
         m_settingsDialog->setWindowTitle(QStringLiteral("Settings"));
         m_settingsDialog->setAttribute(Qt::WA_TranslucentBackground);
-        m_settingsDialog->setFixedSize(800, 600);
+        m_settingsDialog->setMinimumSize(520, 400);
+        m_settingsDialog->resize(800, 600);
         m_settingsDialog->setStyleSheet(QStringLiteral("QDialog { background: transparent; }"));
 
         // Inset the web page so the HTML draws its own rounded Safari-style window.

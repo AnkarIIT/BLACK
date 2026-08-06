@@ -74,12 +74,14 @@
             height: 12px;
             border-radius: 6px;
             border: 0.5px solid rgba(0, 0, 0, 0.15);
-            cursor: default;
+            cursor: pointer;
         }
         .dot.red { background-color: #ff5f56; }
         .dot.yellow { background-color: #ffbd2e; }
         .dot.green { background-color: #27c93f; }
         .dot.red:hover { background-color: #e0443e; }
+        .dot.yellow:hover { background-color: #e0a226; }
+        .dot.green:hover { background-color: #1f9e31; }
 
         .window-title {
             position: absolute;
@@ -327,8 +329,8 @@
         <div class="titlebar">
             <div class="traffic-lights">
                 <span class="dot red" id="closeBtn" title="Close settings"></span>
-                <span class="dot yellow"></span>
-                <span class="dot green"></span>
+                <span class="dot yellow" id="minimizeBtn" title="Minimize settings"></span>
+                <span class="dot green" id="zoomBtn" title="Zoom settings"></span>
             </div>
             <div class="window-title" id="titleText">General</div>
         </div>
@@ -692,11 +694,17 @@
                     });
                 });
 
-                // Close the frameless settings window from the red traffic light.
+                // Drive the frameless settings window from the traffic lights.
                 const dialog = channel.objects.settingsDialog;
                 if (dialog) {
                     document.getElementById('closeBtn').addEventListener('click', function () {
-                        dialog.closeDialog();
+                        dialog.closeSettingsDialog();
+                    });
+                    document.getElementById('minimizeBtn').addEventListener('click', function () {
+                        dialog.minimizeSettingsDialog();
+                    });
+                    document.getElementById('zoomBtn').addEventListener('click', function () {
+                        dialog.toggleSettingsMaximize();
                     });
                 }
 
