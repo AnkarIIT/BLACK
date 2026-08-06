@@ -40,6 +40,9 @@ struct TabInfo {
     QIcon icon;
     QPixmap thumbnail;
     bool loading = false;
+    bool isPinned = false;
+    bool isAudible = false;
+    bool isMuted = false;
 };
 
 struct DownloadItemInfo {
@@ -92,6 +95,8 @@ private slots:
     void addTabAction();
     void closeTab(int index);
     void setCurrentTab(int index);
+    void togglePinTab(int index);
+    void toggleMuteTab(int index);
 
     void toggleSidebar();
     void toggleTabOverview();
