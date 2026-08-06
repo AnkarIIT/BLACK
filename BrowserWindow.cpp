@@ -103,6 +103,8 @@ static const QString svgUser        = "<svg xmlns=\"http://www.w3.org/2000/svg\"
 static const QString svgBriefcase   = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"7\" width=\"20\" height=\"14\" rx=\"2\"/><path d=\"M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16\"/></svg>";
 static const QString svgExtensions  = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 7l-3 3-4-1-2 2 4 1-1 4 2 2 1-4 3 3z\"/></svg>";
 static const QString svgFlag        = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z\"/><line x1=\"4\" y1=\"22\" x2=\"4\" y2=\"15\"/></svg>";
+static const QString svgVolume2     = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"11 5 6 9 2 9 2 15 6 15 11 19 11 5\"/><path d=\"M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07\"/></svg>";
+static const QString svgVolumeMute = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"11 5 6 9 2 9 2 15 6 15 11 19 11 5\"/><line x1=\"23\" y1=\"9\" x2=\"17\" y2=\"15\"/><line x1=\"17\" y1=\"9\" x2=\"23\" y2=\"15\"/></svg>";
 
 // ── Page Theme (applied to web pages so they match the browser) ─────────────
 static const char *kPageThemeCss = "html.black-dark{color-scheme:dark;}html.black-dark{filter:invert(0.88) hue-rotate(180deg) contrast(0.92);}html.black-dark img,html.black-dark video,html.black-dark iframe,html.black-dark canvas,html.black-dark embed,html.black-dark object{filter:invert(1) hue-rotate(180deg) contrast(0.92);}html.black-light{color-scheme:light;}";
@@ -1081,6 +1083,24 @@ SafariWebView* BrowserWindow::addTabView(const QUrl &url, QWebEngineNewWindowReq
         }
         onLoadStarted();
     });
+    connect(view->page(), &QWebEnginePage::recentlyAudibleChanged, this, [this, view](bool audible) {
+        for (int i = 0; i < m_tabs.count(); ++i) {
+            if (m_tabs[i].view == view) {
+                m_tabs[i].isAudible = audible;
+                rebuildTabBar();
+                break;
+            }
+        }
+    });
+    connect(view->page(), &QWebEnginePage::audioMutedChanged, this, [this, view](bool muted) {
+        for (int i = 0; i < m_tabs.count(); ++i) {
+            if (m_tabs[i].view == view) {
+                m_tabs[i].isMuted = muted;
+                rebuildTabBar();
+                break;
+            }
+        }
+    });
     connect(view, &QWebEngineView::loadProgress, this, &BrowserWindow::onLoadProgress);
     connect(view, &QWebEngineView::loadFinished, this, [this, view](bool ok) {
         for (int i = 0; i < m_tabs.count(); ++i) {
@@ -1187,6 +1207,49 @@ void BrowserWindow::closeTab(int index) {
     setCurrentTab(newIdx);
 
     if (m_overviewVisible) rebuildOverviewGrid();
+}
+
+void BrowserWindow::togglePinTab(int index) {
+    if (index < 0 || index >= m_tabs.count()) return;
+
+    QWebEngineView *activeView = (m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count()) ? m_tabs[m_currentTabIndex].view : nullptr;
+
+    m_tabs[index].isPinned = !m_tabs[index].isPinned;
+
+    QList<TabInfo> pinned;
+    QList<TabInfo> unpinned;
+    for (const TabInfo &tab : m_tabs) {
+        if (tab.isPinned) {
+            pinned.append(tab);
+        } else {
+            unpinned.append(tab);
+        }
+    }
+
+    m_tabs = pinned + unpinned;
+
+    if (activeView) {
+        for (int i = 0; i < m_tabs.count(); ++i) {
+            if (m_tabs[i].view == activeView) {
+                m_currentTabIndex = i;
+                break;
+            }
+        }
+    }
+
+    rebuildTabBar();
+    if (m_overviewVisible) rebuildOverviewGrid();
+}
+
+void BrowserWindow::toggleMuteTab(int index) {
+    if (index < 0 || index >= m_tabs.count()) return;
+    QWebEngineView *v = m_tabs[index].view;
+    if (v) {
+        bool mute = !v->page()->isAudioMuted();
+        v->page()->setAudioMuted(mute);
+        m_tabs[index].isMuted = mute;
+        rebuildTabBar();
+    }
 }
 
 void BrowserWindow::addTabAction() {
@@ -1450,60 +1513,116 @@ void BrowserWindow::rebuildTabBar()
 
         auto *tabWidget = new QWidget(m_tabBar);
         tabWidget->setFixedHeight(28);
-        tabWidget->setMinimumWidth(80);
-        tabWidget->setMaximumWidth(200);
         tabWidget->setCursor(Qt::PointingHandCursor);
-        // Active tab gets a frosted-glass pill (no underline), like native Safari.
-        tabWidget->setStyleSheet(QString(
-            "QWidget { background-color: %1; border-radius: 7px; border: none; }"
-            "QWidget:hover { background-color: %2; }"
-        ).arg(isActive ? tabActive() : tabInactive(),
-             isActive ? tabActive() : tabHover()));
-
-        QHBoxLayout *tabLayout = new QHBoxLayout(tabWidget);
-        tabLayout->setContentsMargins(8, 2, 4, 2);
-        tabLayout->setSpacing(4);
-
-        // Favicon
-        QLabel *iconLabel = new QLabel(tabWidget);
-        QPixmap pix = tab.icon.pixmap(14, 14);
-        if (!pix.isNull()) {
-            iconLabel->setPixmap(pix);
-        } else {
-            iconLabel->setText(QStringLiteral("\U0001F310"));
-            iconLabel->setStyleSheet(QString("font-size: 11px; background: transparent; color: %1;").arg(textSecondary()));
-        }
-        iconLabel->setFixedSize(14, 14);
-        iconLabel->setAlignment(Qt::AlignCenter);
-        tabLayout->addWidget(iconLabel);
-
-        // Title
-        QString shownText = tab.title.isEmpty() ? QStringLiteral("New Tab") : tab.title;
-        auto *titleLbl = new QLabel(truncate(shownText, 18), tabWidget);
-        titleLbl->setStyleSheet(QString(
-            "color: %1; font-size: 12px; font-weight: %2; background: transparent;"
-        ).arg(isActive ? textPrimary() : textSecondary(),
-             isActive ? "600" : "400"));
-        titleLbl->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-        tabLayout->addWidget(titleLbl, 1);
-
-        // Close button
-        auto *closeBtn = new QPushButton(QStringLiteral("\u2715"), tabWidget);
-        closeBtn->setFixedSize(18, 18);
-        closeBtn->setStyleSheet(QString(
-            "QPushButton { background: transparent; border: none; color: %1; font-size: 9px; border-radius: 9px; }"
-            "QPushButton:hover { background: rgba(255,59,48,0.12); color: #ff3b30; }"
-        ).arg(textTertiary()));
-        connect(closeBtn, &QPushButton::clicked, this, [this, i]() { closeTab(i); });
-        tabLayout->addWidget(closeBtn);
-
-        tabWidget->installEventFilter(this);
         tabWidget->setProperty("tabIndex", i);
 
-        m_tabBarLayout->addWidget(tabWidget);
-        m_tabWidgets.append(tabWidget);
-        m_tabItemIcons.append(iconLabel);
-        m_tabItemTexts.append(titleLbl);
+        if (tab.isPinned) {
+            tabWidget->setFixedSize(32, 28);
+            tabWidget->setStyleSheet(QString(
+                "QWidget { background-color: %1; border-radius: 7px; border: none; }"
+                "QWidget:hover { background-color: %2; }"
+            ).arg(isActive ? tabActive() : tabInactive(),
+                 isActive ? tabActive() : tabHover()));
+
+            QGridLayout *gridLayout = new QGridLayout(tabWidget);
+            gridLayout->setContentsMargins(4, 4, 4, 4);
+            gridLayout->setSpacing(0);
+
+            QLabel *iconLabel = new QLabel(tabWidget);
+            QPixmap pix = tab.icon.pixmap(16, 16);
+            if (!pix.isNull()) {
+                iconLabel->setPixmap(pix);
+            } else {
+                iconLabel->setText(QStringLiteral("\U0001F310"));
+                iconLabel->setStyleSheet(QString("font-size: 11px; background: transparent; color: %1;").arg(textSecondary()));
+            }
+            iconLabel->setFixedSize(16, 16);
+            iconLabel->setAlignment(Qt::AlignCenter);
+            gridLayout->addWidget(iconLabel, 0, 0, Qt::AlignCenter);
+
+            if (tab.isAudible) {
+                QPushButton *audioBtn = new QPushButton(tabWidget);
+                audioBtn->setFixedSize(12, 12);
+                QIcon volIcon = createSvgIcon(tab.isMuted ? svgVolumeMute : svgVolume2, 10, isActive ? accent() : textPrimary());
+                audioBtn->setIcon(volIcon);
+                audioBtn->setIconSize(QSize(10, 10));
+                audioBtn->setStyleSheet(QStringLiteral("QPushButton { background: transparent; border: none; padding: 0; }"));
+                connect(audioBtn, &QPushButton::clicked, this, [this, i](bool) {
+                    toggleMuteTab(i);
+                });
+                gridLayout->addWidget(audioBtn, 0, 0, Qt::AlignTop | Qt::AlignRight);
+            }
+
+            tabWidget->installEventFilter(this);
+            m_tabBarLayout->addWidget(tabWidget);
+            m_tabWidgets.append(tabWidget);
+            m_tabItemIcons.append(iconLabel);
+            m_tabItemTexts.append(nullptr); // Null text label for pinned tabs
+        } else {
+            tabWidget->setMinimumWidth(80);
+            tabWidget->setMaximumWidth(200);
+            tabWidget->setStyleSheet(QString(
+                "QWidget { background-color: %1; border-radius: 7px; border: none; }"
+                "QWidget:hover { background-color: %2; }"
+            ).arg(isActive ? tabActive() : tabInactive(),
+                 isActive ? tabActive() : tabHover()));
+
+            QHBoxLayout *tabLayout = new QHBoxLayout(tabWidget);
+            tabLayout->setContentsMargins(8, 2, 4, 2);
+            tabLayout->setSpacing(4);
+
+            // Favicon
+            QLabel *iconLabel = new QLabel(tabWidget);
+            QPixmap pix = tab.icon.pixmap(14, 14);
+            if (!pix.isNull()) {
+                iconLabel->setPixmap(pix);
+            } else {
+                iconLabel->setText(QStringLiteral("\U0001F310"));
+                iconLabel->setStyleSheet(QString("font-size: 11px; background: transparent; color: %1;").arg(textSecondary()));
+            }
+            iconLabel->setFixedSize(14, 14);
+            iconLabel->setAlignment(Qt::AlignCenter);
+            tabLayout->addWidget(iconLabel);
+
+            // Title
+            QString shownText = tab.title.isEmpty() ? QStringLiteral("New Tab") : tab.title;
+            auto *titleLbl = new QLabel(truncate(shownText, 18), tabWidget);
+            titleLbl->setStyleSheet(QString(
+                "color: %1; font-size: 12px; font-weight: %2; background: transparent;"
+            ).arg(isActive ? textPrimary() : textSecondary(),
+                 isActive ? "600" : "400"));
+            titleLbl->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+            tabLayout->addWidget(titleLbl, 1);
+
+            if (tab.isAudible) {
+                QPushButton *audioBtn = new QPushButton(tabWidget);
+                audioBtn->setFixedSize(16, 16);
+                QIcon volIcon = createSvgIcon(tab.isMuted ? svgVolumeMute : svgVolume2, 12, textSecondary());
+                audioBtn->setIcon(volIcon);
+                audioBtn->setIconSize(QSize(12, 12));
+                audioBtn->setStyleSheet(QStringLiteral("QPushButton { background: transparent; border: none; padding: 0; }"));
+                connect(audioBtn, &QPushButton::clicked, this, [this, i](bool) {
+                    toggleMuteTab(i);
+                });
+                tabLayout->addWidget(audioBtn);
+            }
+
+            // Close button
+            auto *closeBtn = new QPushButton(QStringLiteral("\u2715"), tabWidget);
+            closeBtn->setFixedSize(18, 18);
+            closeBtn->setStyleSheet(QString(
+                "QPushButton { background: transparent; border: none; color: %1; font-size: 9px; border-radius: 9px; }"
+                "QPushButton:hover { background: rgba(255,59,48,0.12); color: #ff3b30; }"
+            ).arg(textTertiary()));
+            connect(closeBtn, &QPushButton::clicked, this, [this, i]() { closeTab(i); });
+            tabLayout->addWidget(closeBtn);
+
+            tabWidget->installEventFilter(this);
+            m_tabBarLayout->addWidget(tabWidget);
+            m_tabWidgets.append(tabWidget);
+            m_tabItemIcons.append(iconLabel);
+            m_tabItemTexts.append(titleLbl);
+        }
     }
 
     m_tabBarLayout->addWidget(m_addTabButton);
@@ -1556,6 +1675,7 @@ void BrowserWindow::rebuildSidebarTabList()
 // ═══════════════════════════════════════════════════════════════════════════
 bool BrowserWindow::eventFilter(QObject *obj, QEvent *event) {
     if (event->type() == QEvent::MouseButtonPress) {
+        auto *me = static_cast<QMouseEvent*>(event);
         auto *w = qobject_cast<QWidget*>(obj);
         if (w) {
             QString action = w->property("sidebarAction").toString();
@@ -1566,14 +1686,44 @@ bool BrowserWindow::eventFilter(QObject *obj, QEvent *event) {
             QVariant v = w->property("tabIndex");
             if (v.isValid()) {
                 int idx = v.toInt();
-                if (idx >= 0 && idx < m_tabs.count()) {
-                    if (m_overviewVisible) hideTabOverview();
-                    setCurrentTab(idx);
-                    return true;
+                if (me->button() == Qt::RightButton) {
+                    if (idx >= 0 && idx < m_tabs.count()) {
+                        QMenu menu(this);
+                        menu.setStyleSheet(QString(
+                            "QMenu { background-color: %1; color: %2; border: 0.5px solid %3; "
+                            "border-radius: 8px; padding: 4px; }"
+                            "QMenu::item { padding: 6px 28px 6px 12px; border-radius: 5px; font-size: 13px; }"
+                            "QMenu::item:selected { background-color: %4; }"
+                        ).arg(bgUrlBar(), textPrimary(), border(), selectedBg()));
+
+                        const TabInfo &tab = m_tabs[idx];
+                        QAction *pinAction = menu.addAction(tab.isPinned ? QStringLiteral("Unpin Tab") : QStringLiteral("Pin Tab"));
+                        connect(pinAction, &QAction::triggered, this, [this, idx]() {
+                            togglePinTab(idx);
+                        });
+
+                        QAction *muteAction = menu.addAction(tab.isMuted ? QStringLiteral("Unmute Tab") : QStringLiteral("Mute Tab"));
+                        connect(muteAction, &QAction::triggered, this, [this, idx]() {
+                            toggleMuteTab(idx);
+                        });
+
+                        QAction *closeAction = menu.addAction(QStringLiteral("Close Tab"));
+                        connect(closeAction, &QAction::triggered, this, [this, idx]() {
+                            closeTab(idx);
+                        });
+
+                        menu.exec(me->globalPosition().toPoint());
+                        return true;
+                    }
+                } else if (me->button() == Qt::LeftButton) {
+                    if (idx >= 0 && idx < m_tabs.count()) {
+                        if (m_overviewVisible) hideTabOverview();
+                        setCurrentTab(idx);
+                        return true;
+                    }
                 }
             }
             if (obj == m_overviewOverlay) {
-                auto *me = static_cast<QMouseEvent*>(event);
                 if (!m_overviewPanel->geometry().contains(me->pos()))
                     hideTabOverview();
                 return true;
