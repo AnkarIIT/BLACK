@@ -13,6 +13,7 @@
 #include <QLineEdit>
 #include <QToolButton>
 #include <QPushButton>
+#include <QDialog>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QStackedWidget>
@@ -95,6 +96,7 @@ private slots:
     void showTabOverview();
     void hideTabOverview();
     void showSettingsMenu();
+    void openSettingsDialog();
     void updateWebViewTheme();
 
 private:
@@ -161,6 +163,8 @@ private:
     QToolButton *m_minimizeButton;
     QToolButton *m_maximizeButton;
     QToolButton *m_settingsButton;
+    QDialog      *m_settingsDialog;
+    QWebEngineView *m_settingsView;
 
     QProgressBar *m_loadingBar;
 
@@ -175,6 +179,7 @@ private:
     QPushButton *m_overviewNewTabButton;
     bool         m_overviewVisible;
 
+    QWidget      *m_sidebarHost;
     QFrame       *m_sidebar;
     QVBoxLayout  *m_sidebarLayout;
     QLineEdit    *m_sidebarSearch;
@@ -184,6 +189,7 @@ private:
     QList<QLabel*> m_sidebarItemIcons;
     QList<QLabel*> m_sidebarItemTexts;
     QList<QLabel*> m_sidebarHeaders;
+    QPushButton  *m_newGroupButton = nullptr;
     bool          m_urlFocused;
 
     QPoint m_dragPosition;

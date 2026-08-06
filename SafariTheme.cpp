@@ -134,7 +134,7 @@ void SafariTheme::loadPalette()
         bgTabBar      = QStringLiteral("#2d2d2d");      // Tab bar matching toolbar
         bgUrlBar      = QStringLiteral("#3c3c3c");      // URL bar (slightly lighter)
         bgSidebar     = QStringLiteral("#252526");      // Sidebar background (darker)
-        tabActive     = QStringLiteral("#3a3a3a");      // Active tab indicator
+        tabActive     = QStringLiteral("rgba(255,255,255,0.16)");      // Active tab indicator
         tabInactive   = QStringLiteral("transparent");
         tabHover      = QStringLiteral("rgba(255,255,255,0.08)");
         cardBg        = QStringLiteral("#303030");
@@ -147,7 +147,7 @@ void SafariTheme::loadPalette()
         borderLight   = QStringLiteral("rgba(255,255,255,0.06)");
         hover         = QStringLiteral("rgba(255,255,255,0.08)");
         searchBg      = QStringLiteral("rgba(255,255,255,0.10)");
-        selectedBg    = QStringLiteral("rgba(10,132,255,0.28)");
+        selectedBg    = QStringLiteral("rgba(0,122,255,0.25)");
         scrim         = QStringLiteral("rgba(0,0,0,0.60)");
         pageBackground = QStringLiteral("#1e1e1e");
     } else {
@@ -157,7 +157,7 @@ void SafariTheme::loadPalette()
         bgTabBar      = QStringLiteral("#e8e8ed");
         bgUrlBar      = QStringLiteral("#ffffff");
         bgSidebar     = QStringLiteral("#f0f0f2");
-        tabActive     = QStringLiteral("#ffffff");
+        tabActive     = QStringLiteral("rgba(0,0,0,0.10)");
         tabInactive   = QStringLiteral("transparent");
         tabHover      = QStringLiteral("rgba(0,0,0,0.06)");
         cardBg        = QStringLiteral("#ffffff");

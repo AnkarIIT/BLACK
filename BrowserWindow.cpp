@@ -5,6 +5,7 @@
 #include "BrowserSettings.h"
 #include <QFrame>
 #include <QStyle>
+#include <QGraphicsDropShadowEffect>
 #include <QtSvg/QSvgRenderer>
 #include <QPainter>
 #include <QPixmap>
@@ -61,7 +62,6 @@ static QString bgWindow()      { return SafariTheme::instance().bgWindow; }
 static QString bgToolbar()     { return SafariTheme::instance().bgToolbar; }
 static QString bgTabBar()      { return SafariTheme::instance().bgTabBar; }
 static QString bgUrlBar()      { return SafariTheme::instance().bgUrlBar; }
-static QString bgSidebar()     { return SafariTheme::instance().bgSidebar; }
 static QString tabActive()     { return SafariTheme::instance().tabActive; }
 static QString tabInactive()   { return SafariTheme::instance().tabInactive; }
 static QString tabHover()      { return SafariTheme::instance().tabHover; }
@@ -166,6 +166,8 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     , m_minimizeButton(nullptr)
     , m_maximizeButton(nullptr)
     , m_settingsButton(new QToolButton(this))
+    , m_settingsDialog(nullptr)
+    , m_settingsView(nullptr)
     , m_loadingBar(nullptr)
     , m_overviewOverlay(nullptr)
     , m_overviewTitle(nullptr)
@@ -411,7 +413,7 @@ void BrowserWindow::setupUi()
     // ── Toolbar ────────────────────────────────────────────────────────────
     m_toolbar = new QWidget(m_central);
     m_toolbar->setObjectName(QStringLiteral("Toolbar"));
-    m_toolbar->setFixedHeight(52);
+    m_toolbar->setFixedHeight(44);
 
     QHBoxLayout *toolbarLayout = new QHBoxLayout(m_toolbar);
     toolbarLayout->setContentsMargins(12, 0, 12, 0);
@@ -447,10 +449,10 @@ void BrowserWindow::setupUi()
     m_forwardButton->setToolTip(QStringLiteral("Forward"));
     toolbarLayout->addWidget(m_forwardButton);
 
-    m_reloadButton->setToolTip(QStringLiteral("Reload"));
-    toolbarLayout->addWidget(m_reloadButton);
+    // Reload now lives inside the address bar (right edge).
 
-    toolbarLayout->addSpacing(6);
+    // Center the address bar with flexible space on both sides
+    toolbarLayout->addStretch(1);
 
     // URL Bar (container with shield icon + borderless line edit)
     m_urlBar->setPlaceholderText(QStringLiteral("Search or enter website name"));
@@ -462,9 +464,12 @@ void BrowserWindow::setupUi()
 
     m_urlContainer = new QFrame(m_toolbar);
     m_urlContainer->setObjectName(QStringLiteral("UrlContainer"));
+    m_urlContainer->setMinimumWidth(360);
+    m_urlContainer->setMaximumWidth(800);
+    m_urlContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 
     QHBoxLayout *urlLayout = new QHBoxLayout(m_urlContainer);
-    urlLayout->setContentsMargins(8, 0, 8, 0);
+    urlLayout->setContentsMargins(8, 0, 4, 0);
     urlLayout->setSpacing(4);
 
     m_shieldInside = new QToolButton(m_urlContainer);
@@ -473,9 +478,13 @@ void BrowserWindow::setupUi()
     urlLayout->addWidget(m_shieldInside);
 
     urlLayout->addWidget(m_urlBar, 1);
-    toolbarLayout->addWidget(m_urlContainer, 1);
 
-    toolbarLayout->addSpacing(6);
+    m_reloadButton->setFixedSize(22, 22);
+    m_reloadButton->setToolTip(QStringLiteral("Reload"));
+    urlLayout->addWidget(m_reloadButton);
+
+    toolbarLayout->addWidget(m_urlContainer, 2);
+    toolbarLayout->addStretch(1);
 
     // Right side buttons
     m_shareButton->setToolTip(QStringLiteral("Share"));
@@ -489,9 +498,7 @@ void BrowserWindow::setupUi()
     connect(m_tabOverviewButton, &QToolButton::clicked, this, &BrowserWindow::toggleTabOverview);
     toolbarLayout->addWidget(m_tabOverviewButton);
 
-    m_settingsButton->setToolTip(QStringLiteral("Settings"));
-    connect(m_settingsButton, &QToolButton::clicked, this, &BrowserWindow::showSettingsMenu);
-    toolbarLayout->addWidget(m_settingsButton);
+    // Native Safari keeps Settings out of the toolbar (Cmd/Ctrl+, instead).
 
     rootLayout->addWidget(m_toolbar);
 
@@ -509,13 +516,31 @@ void BrowserWindow::setupUi()
     m_sidebar = new QFrame(m_central);
     m_sidebar->setObjectName(QStringLiteral("Sidebar"));
     m_sidebar->setFixedWidth(260);
-    m_sidebar->setVisible(false);
+    m_sidebar->setVisible(true);
+
+    // Floating card: inset host + rounded corners + soft shadow
+    auto *sidebarShadow = new QGraphicsDropShadowEffect(m_sidebar);
+    sidebarShadow->setBlurRadius(24);
+    sidebarShadow->setOffset(0, 4);
+    sidebarShadow->setColor(QColor(0, 0, 0, 140));
+    m_sidebar->setGraphicsEffect(sidebarShadow);
+
+    m_sidebarHost = new QWidget(m_central);
+    m_sidebarHost->setObjectName(QStringLiteral("SidebarHost"));
+    m_sidebarHost->setFixedWidth(276);
+    m_sidebarHost->setVisible(false);
+
+    QHBoxLayout *hostLayout = new QHBoxLayout(m_sidebarHost);
+    hostLayout->setContentsMargins(8, 8, 8, 8);
+    hostLayout->setSpacing(0);
+    hostLayout->addWidget(m_sidebar);
+    hostLayout->addStretch();
 
     QHBoxLayout *contentRow = new QHBoxLayout();
     contentRow->setContentsMargins(0, 0, 0, 0);
     contentRow->setSpacing(0);
 
-    contentRow->addWidget(m_sidebar);
+    contentRow->addWidget(m_sidebarHost);
     contentRow->addWidget(m_tabStack, 1);
 
     rootLayout->addLayout(contentRow, 1);
@@ -548,7 +573,7 @@ void BrowserWindow::setupTabBar()
     m_tabBar->setFixedHeight(36);
 
     m_tabBarLayout = new QHBoxLayout(m_tabBar);
-    m_tabBarLayout->setContentsMargins(76, 0, 4, 0);
+    m_tabBarLayout->setContentsMargins(8, 0, 8, 0);
     m_tabBarLayout->setSpacing(2);
     m_tabBarLayout->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
@@ -636,6 +661,14 @@ void BrowserWindow::setupSidebar()
     sidebarTopLayout->addWidget(m_sidebarSearch);
     sidebarTopLayout->addSpacing(8);
 
+    // Tab Groups
+    addSectionHeader(sidebarTopLayout, QStringLiteral("Tab Groups"));
+    addSidebarItem(sidebarTopLayout, svgBriefcase, QStringLiteral("Work"), QStringLiteral("group_work"));
+    addSidebarItem(sidebarTopLayout, svgBriefcase, QStringLiteral("Shopping"), QStringLiteral("group_shopping"));
+    addSidebarItem(sidebarTopLayout, svgBriefcase, QStringLiteral("Dev"), QStringLiteral("group_dev"));
+
+    sidebarTopLayout->addSpacing(8);
+
     // Favourites
     addSectionHeader(sidebarTopLayout, QStringLiteral("Favourites"));
     addSidebarItem(sidebarTopLayout, svgStar, QStringLiteral("Favourites"), QStringLiteral("start"), true);
@@ -643,7 +676,6 @@ void BrowserWindow::setupSidebar()
     // Reading List
     addSectionHeader(sidebarTopLayout, QStringLiteral("Reading List"));
     addSidebarItem(sidebarTopLayout, svgReadingList, QStringLiteral("Reading List"), QStringLiteral("reading"));
-    addSidebarItem(sidebarTopLayout, svgShield, QStringLiteral("Privacy Report"), QStringLiteral("privacy"));
 
     sidebarTopLayout->addSpacing(8);
 
@@ -658,10 +690,21 @@ void BrowserWindow::setupSidebar()
     sidebarBottomLayout->setContentsMargins(0, 0, 0, 0);
     sidebarBottomLayout->setSpacing(4);
 
-    // Bottom section
-    addSidebarItem(sidebarBottomLayout, svgSettings, QStringLiteral("Settings"), QStringLiteral("settings"));
-    addSidebarItem(sidebarBottomLayout, svgExtensions, QStringLiteral("Extensions"), QStringLiteral("extensions"));
-    addSidebarItem(sidebarBottomLayout, svgFlag, QStringLiteral("Features"), QStringLiteral("features"));
+    // Bottom action area: "+ New Tab Group"
+    m_newGroupButton = new QPushButton(QStringLiteral("+ New Tab Group"), m_sidebar);
+    m_newGroupButton->setObjectName(QStringLiteral("NewGroupBtn"));
+    m_newGroupButton->setCursor(Qt::PointingHandCursor);
+    m_newGroupButton->setFixedHeight(26);
+    sidebarBottomLayout->addWidget(m_newGroupButton);
+    connect(m_newGroupButton, &QPushButton::clicked, this,
+            [this, sidebarBottomLayout, addSidebarItem]() {
+        static int groupCounter = 1;
+        addSidebarItem(sidebarBottomLayout, svgBriefcase,
+                       QStringLiteral("New Group %1").arg(groupCounter),
+                       QStringLiteral("group_new%1").arg(groupCounter));
+        ++groupCounter;
+        styleSidebarItems();
+    });
 
     m_sidebarLayout->addWidget(sidebarTop, 1);
     m_sidebarLayout->addWidget(sidebarBottom, 0);
@@ -677,16 +720,13 @@ void BrowserWindow::openSidebarAction(const QString &action)
         setSidebarActive(action);
         return;
     }
+    if (action.startsWith(QStringLiteral("group"))) {
+        navigateCurrentTo(QUrl(QStringLiteral("qrc:/startpage.html")));
+        setSidebarActive(action);
+        return;
+    }
     if (action == QStringLiteral("reading")) {
         navigateCurrentTo(QUrl(QStringLiteral("qrc:/startpage.html#reading")));
-    } else if (action == QStringLiteral("privacy")) {
-        navigateCurrentTo(QUrl(QStringLiteral("qrc:/privacyreport.html")));
-    } else if (action == QStringLiteral("settings")) {
-        navigateCurrentTo(QUrl(QStringLiteral("qrc:/settings.html")));
-    } else if (action == QStringLiteral("extensions")) {
-        navigateCurrentTo(QUrl(QStringLiteral("qrc:/extensions.html")));
-    } else if (action == QStringLiteral("features")) {
-        navigateCurrentTo(QUrl(QStringLiteral("qrc:/features.html")));
     } else {
         navigateCurrentTo(QUrl(QStringLiteral("qrc:/startpage.html")));
     }
@@ -1172,9 +1212,7 @@ void BrowserWindow::showSettingsMenu() {
     menu.addSeparator();
 
     QAction *openSettings = menu.addAction(QStringLiteral("Settings\u2026"));
-    connect(openSettings, &QAction::triggered, this, [this]() {
-        navigateCurrentTo(QUrl(QStringLiteral("qrc:/settings.html")));
-    });
+    connect(openSettings, &QAction::triggered, this, &BrowserWindow::openSettingsDialog);
 
     QAction *privateWindow = menu.addAction(QStringLiteral("New Private Window"));
     connect(privateWindow, &QAction::triggered, this, &BrowserWindow::openPrivateWindow);
@@ -1182,7 +1220,37 @@ void BrowserWindow::showSettingsMenu() {
     QAction *downloads = menu.addAction(QStringLiteral("Downloads"));
     connect(downloads, &QAction::triggered, this, &BrowserWindow::showDownloadsMenu);
 
-    menu.exec(m_settingsButton->mapToGlobal(QPoint(0, m_settingsButton->height())));
+    menu.exec(mapToGlobal(QPoint(width() - 250, m_toolbar->height())));
+}
+
+void BrowserWindow::openSettingsDialog()
+{
+    if (m_settingsDialog && m_settingsDialog->isVisible()) {
+        m_settingsDialog->raise();
+        m_settingsDialog->activateWindow();
+        return;
+    }
+
+    if (!m_settingsDialog) {
+        m_settingsDialog = new QDialog(this, Qt::Dialog | Qt::WindowCloseButtonHint | Qt::WindowTitleHint);
+        m_settingsDialog->setWindowTitle(QStringLiteral("Settings"));
+        m_settingsDialog->setFixedSize(760, 560);
+        m_settingsDialog->setStyleSheet(QString(
+            "QDialog { background-color: %1; color: %2; }"
+        ).arg(bgWindow(), textPrimary()));
+
+        QVBoxLayout *layout = new QVBoxLayout(m_settingsDialog);
+        layout->setContentsMargins(0, 0, 0, 0);
+
+        m_settingsView = new SafariWebView(m_settingsDialog);
+        m_settingsView->page()->setWebChannel(m_webChannel);
+        m_settingsView->setUrl(QUrl(QStringLiteral("qrc:/settings.html")));
+        layout->addWidget(m_settingsView);
+    }
+
+    m_settingsDialog->show();
+    m_settingsDialog->raise();
+    m_settingsDialog->activateWindow();
 }
 
 void BrowserWindow::handleCertificateError(QWebEngineCertificateError certificateError) {
@@ -1345,9 +1413,7 @@ void BrowserWindow::rebuildTabBar()
     m_tabItemIcons.clear();
     m_tabItemTexts.clear();
 
-    // Rebuild: stretch -> tabs -> addTabButton -> spacing
-    m_tabBarLayout->addStretch();
-
+    // Rebuild: tabs left-aligned, add-tab button right after the last tab
     for (int i = 0; i < m_tabs.count(); ++i) {
         bool isActive = (i == m_currentTabIndex);
         const TabInfo &tab = m_tabs[i];
@@ -1357,13 +1423,12 @@ void BrowserWindow::rebuildTabBar()
         tabWidget->setMinimumWidth(80);
         tabWidget->setMaximumWidth(200);
         tabWidget->setCursor(Qt::PointingHandCursor);
-        // Active tab gets an accent underline instead of an expensive drop shadow.
+        // Active tab gets a frosted-glass pill (no underline), like native Safari.
         tabWidget->setStyleSheet(QString(
-            "QWidget { background-color: %1; border-radius: 6px; border-bottom: 2px solid %3; }"
+            "QWidget { background-color: %1; border-radius: 7px; border: none; }"
             "QWidget:hover { background-color: %2; }"
         ).arg(isActive ? tabActive() : tabInactive(),
-             isActive ? tabActive() : tabHover(),
-             isActive ? accent() : QStringLiteral("transparent")));
+             isActive ? tabActive() : tabHover()));
 
         QHBoxLayout *tabLayout = new QHBoxLayout(tabWidget);
         tabLayout->setContentsMargins(8, 2, 4, 2);
@@ -1444,7 +1509,7 @@ void BrowserWindow::refreshTabLabel(int index)
 void BrowserWindow::toggleSidebar()
 {
     m_sidebarVisible = !m_sidebarVisible;
-    m_sidebar->setVisible(m_sidebarVisible);
+    m_sidebarHost->setVisible(m_sidebarVisible);
     if (m_sidebarVisible && m_sidebarLayout) {
         m_sidebarLayout->invalidate();
         m_sidebarLayout->activate();
@@ -1650,6 +1715,7 @@ void BrowserWindow::setupKeyboardShortcuts()
         else if (m_sidebarVisible) toggleSidebar();
     });
     addShortcut(QStringLiteral("Ctrl+Shift+L"), [this]() { toggleSidebar(); });
+    addShortcut(QStringLiteral("Ctrl+,"), [this]() { showSettingsMenu(); });
     addShortcut(QStringLiteral("Alt+Left"), [this]() {
         if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) v->back();
     });
@@ -1741,6 +1807,12 @@ void BrowserWindow::applyTheme()
                             m_shareButton, m_downloadsButton, m_tabOverviewButton, m_settingsButton }) {
         b->setStyleSheet(navBtnStyle);
     }
+    // Reload sits inside the address bar, so it gets a tighter hit area.
+    m_reloadButton->setFixedSize(22, 22);
+    m_reloadButton->setStyleSheet(QString(
+        "QToolButton { border: none; background: transparent; border-radius: 5px; padding: 0; }"
+        "QToolButton:hover { background-color: %1; }"
+    ).arg(hover()));
     updateNavigationState();
 
     // URL bar
@@ -1760,10 +1832,11 @@ void BrowserWindow::applyTheme()
         "QProgressBar::chunk { background-color: %1; }"
     ).arg(accent()));
 
-    // Sidebar
+    // Sidebar (floating card)
     m_sidebar->setStyleSheet(QString(
-        "#Sidebar { background-color: %1; border-right: 0.5px solid %2; }"
-    ).arg(bgSidebar(), border()));
+        "#Sidebar { background-color: %1; border: 1px solid %2; border-radius: 12px; }"
+    ).arg(cardBg(), border()));
+    m_sidebarHost->setStyleSheet(QStringLiteral("#SidebarHost { background: transparent; }"));
     m_sidebarSearch->setStyleSheet(QString(
         "QLineEdit { background-color: %1; border: none; border-radius: 6px; "
         "padding: 6px 10px; font-size: 12px; color: %2; }"
@@ -1772,9 +1845,16 @@ void BrowserWindow::applyTheme()
 
     for (QLabel *lbl : m_sidebarHeaders) {
         lbl->setStyleSheet(QString(
-            "font-size: 11px; font-weight: 600; color: %1; padding: 4px 4px 2px 4px; "
-            "text-transform: uppercase; letter-spacing: 0.3px;"
-        ).arg(textSecondary()));
+            "font-size: 10px; font-weight: 500; color: %1; padding: 6px 4px 2px 4px; "
+            "letter-spacing: 0.2px;"
+        ).arg(textTertiary()));
+    }
+    if (m_newGroupButton) {
+        m_newGroupButton->setStyleSheet(QString(
+            "QPushButton { background: transparent; border: none; color: %1; "
+            "font-size: 12px; font-weight: 500; text-align: left; padding: 2px 8px; border-radius: 6px; }"
+            "QPushButton:hover { background-color: %2; }"
+        ).arg(textSecondary(), hover()));
     }
     styleSidebarItems();
 
@@ -1795,6 +1875,16 @@ void BrowserWindow::applyTheme()
     m_overviewPanel->setStyleSheet(QString(
         "#OverviewPanel { background-color: %1; border-radius: 14px; }"
     ).arg(bgWindow()));
+    if (m_overviewScroll) {
+        m_overviewScroll->setStyleSheet(QString(
+            "QScrollArea { background: transparent; border: none; }"
+            "QScrollBar:vertical { background: transparent; width: 8px; margin: 0; }"
+            "QScrollBar::handle:vertical { background: rgba(128,128,128,0.35); border-radius: 4px; min-height: 24px; }"
+            "QScrollBar::handle:vertical:hover { background: rgba(128,128,128,0.6); }"
+            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
+            "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }"
+        ));
+    }
     m_overviewTitle->setStyleSheet(QString("font-size: 16px; font-weight: 700; color: %1;").arg(textPrimary()));
     if (m_overviewSearch) {
         m_overviewSearch->setStyleSheet(QString(

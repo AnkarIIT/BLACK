@@ -413,22 +413,23 @@
             pointer-events: none;
         }
 
-        /* Safari-style scrollbar */
+        /* Safari-style overlay scrollbar */
         ::-webkit-scrollbar {
             width: 8px;
+            height: 8px;
         }
 
         ::-webkit-scrollbar-track {
-            background: var(--bg-card);
+            background: transparent;
         }
 
         ::-webkit-scrollbar-thumb {
-            background: var(--accent);
+            background: rgba(128, 128, 128, 0.35);
             border-radius: 4px;
         }
 
         ::-webkit-scrollbar-thumb:hover {
-            background: var(--accentHover);
+            background: rgba(128, 128, 128, 0.6);
         }
 
         /* Responsive adjustments */
@@ -647,8 +648,7 @@
         // Time-based greeting
         const hour = new Date().getHours();
         const greeting = document.getElementById('greeting');
-        const names = ['Very early!', 'Good early!', 'Good morning,'];
-        if (hour < 6) greeting.textContent = 'Good early,';
+        if (hour < 6) greeting.textContent = 'Good early morning,';
         else if (hour < 12) greeting.textContent = 'Good morning,';
         else if (hour < 18) greeting.textContent = 'Good afternoon,';
         else greeting.textContent = 'Good evening,';

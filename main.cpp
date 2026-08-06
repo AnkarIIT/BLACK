@@ -11,6 +11,33 @@
 #include "BrowserWindow.h"
 #include "TrackerBlocker.h"
 
+// Platform detection for User-Agent
+#ifdef Q_OS_WIN
+    #define PLATFORM_WINDOWS 1
+#elif defined(Q_OS_MAC)
+    #define PLATFORM_MACOS 1
+#elif defined(Q_OS_LINUX)
+    #define PLATFORM_LINUX 1
+#else
+    #define PLATFORM_UNKNOWN 1
+#endif
+
+QString getSafariUserAgent() {
+#ifdef PLATFORM_MACOS
+    // Native Safari on macOS - Safari 17.5 on macOS Sequoia 15
+    return QStringLiteral("Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15");
+#elif defined(PLATFORM_WINDOWS)
+    // Safari-style browser on Windows
+    return QStringLiteral("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15 BLACK/1.0");
+#elif defined(PLATFORM_LINUX)
+    // Safari-style browser on Linux
+    return QStringLiteral("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15 BLACK/1.0");
+#else
+    // Generic Safari UA
+    return QStringLiteral("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15 BLACK/1.0");
+#endif
+}
+
 // Check if this is the first run
 bool isFirstRun() {
     const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
@@ -38,6 +65,28 @@ void markFirstRunComplete() {
 
 int main(int argc, char *argv[])
 {
+    // ============================================================
+    // Chromium/Chrome Performance Flags (Qt WebEngine compatible)
+    // These flags optimize GPU, memory, and rendering performance
+    // ============================================================
+    
+    // Chromium command-line switches for optimal performance
+    // These improve GPU rasterization, memory management, and smoothness
+    qputenv("QTWEBENGINE_CHROMIUM_FLAGS",
+        "--enable-gpu-rasterization "
+        "--enable-zero-copy "
+        "--enable-gpu-compositing "
+        "--enable-features=VizDisplayCompositor "
+        "--enable-features=Accelerated2dCanvas "
+        "--enable-features=NativeGpuMemoryBuffers "
+        "--enable-quic "
+        "--dns-prefetch-disable=false "
+        "--disk-cache-size=104857600 "
+        "--enable-smooth-scrolling "
+        "--enable-precise-memory-info "
+        "--enable-webgl-developer-extensions "
+    );
+
     // Enable high DPI scaling for system default graphics
     QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
 
@@ -55,7 +104,11 @@ int main(int argc, char *argv[])
 
     QWebEngineSettings *settings = profile->settings();
     
-    // Performance and GPU acceleration settings for system default graphics
+    // ============================================================
+    // Core WebEngine Settings (Chromium-based optimizations)
+    // ============================================================
+    
+    // Performance and GPU acceleration settings
     settings->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, true);
     settings->setAttribute(QWebEngineSettings::PluginsEnabled, false);
     settings->setAttribute(QWebEngineSettings::JavascriptEnabled, true);
@@ -64,20 +117,19 @@ int main(int argc, char *argv[])
     settings->setAttribute(QWebEngineSettings::WebGLEnabled, true);
     settings->setAttribute(QWebEngineSettings::Accelerated2dCanvasEnabled, true);
     
-    // System default GPU settings for smooth experience
-    settings->setAttribute(QWebEngineSettings::ScrollAnimatorEnabled, true);
+    // Rendering optimizations
     settings->setAttribute(QWebEngineSettings::SpatialNavigationEnabled, true);
     settings->setAttribute(QWebEngineSettings::ScreenCaptureEnabled, true);
-    
-    // Enable smooth animations and transitions
     settings->setAttribute(QWebEngineSettings::FocusOnNavigationEnabled, true);
     settings->setAttribute(QWebEngineSettings::PrintElementBackgrounds, true);
     settings->setAttribute(QWebEngineSettings::AutoLoadIconsForPage, true);
     settings->setAttribute(QWebEngineSettings::TouchIconsEnabled, true);
     settings->setAttribute(QWebEngineSettings::DnsPrefetchEnabled, true);
     settings->setAttribute(QWebEngineSettings::PdfViewerEnabled, true);
+    settings->setAttribute(QWebEngineSettings::AutoLoadImages, true);
 
-    profile->setHttpUserAgent(QStringLiteral("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.167 Safari/537.36 BLACK/1.0"));
+    // Set Safari-style User-Agent based on platform detection
+    profile->setHttpUserAgent(getSafariUserAgent());
 
     TrackerBlocker::instance().loadData();
     profile->setUrlRequestInterceptor(&TrackerBlocker::instance());
