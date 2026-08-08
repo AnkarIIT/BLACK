@@ -39,8 +39,12 @@ qt_add_executable(BLACK
     OnboardingBridge.h
     BookmarkImporter.cpp
     BookmarkImporter.h
-    resources.rc
 )
+
+if(WIN32)
+    target_sources(BLACK PRIVATE resources.rc)
+    target_link_libraries(BLACK PRIVATE crypt32)
+endif()
 
 qt_add_resources(BLACK "resources" PREFIX "/" BASE "${CMAKE_CURRENT_SOURCE_DIR}"
     FILES
@@ -77,4 +81,6 @@ endif()
 set_target_properties(BLACK PROPERTIES
     WIN32_EXECUTABLE ON
     MACOSX_BUNDLE ON
+    MACOSX_BUNDLE_BUNDLE_NAME "BLACK"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "com.black.browser"
 )
