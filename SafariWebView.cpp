@@ -11,6 +11,7 @@
 #include <QWebEngineHistory>
 #include <QWebEnginePage>
 #include <QWebEngineProfile>
+#include <QWebChannel>
 
 SafariWebView::SafariWebView(QWidget *parent)
     : QWebEngineView(parent)
@@ -24,6 +25,18 @@ void SafariWebView::setWebProfile(QWebEngineProfile *profile)
     auto *page = new SafariWebPage(profile, this);
     connect(page, &SafariWebPage::newTabRequested, this, &SafariWebView::newTabRequested);
     setPage(page);
+}
+
+void SafariWebView::setWebChannelObject(QWebChannel *channel)
+{
+    if (auto *page = qobject_cast<SafariWebPage*>(this->page()))
+        page->setWebChannelObject(channel);
+}
+
+void SafariWebView::setPasswordChannelObject(QWebChannel *channel)
+{
+    if (auto *page = qobject_cast<SafariWebPage*>(this->page()))
+        page->setPasswordChannelObject(channel);
 }
 
 void SafariWebView::contextMenuEvent(QContextMenuEvent *event)

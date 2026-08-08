@@ -163,6 +163,8 @@ BLACK/
 | Offline Safe Browsing (no cloud API) | ✅ |
 | Encrypted local password vault (DPAPI / PBKDF2-HMAC) | ✅ |
 | Isolated-world content scripts | ✅ |
+| Password bridge scoped to internal pages / private autofill world | ✅ |
+| Single-instance guard (`QLockFile` + URL hand-off) | ✅ |
 | Renderer sandbox + process isolation (Chromium) | ✅ |
 | Private / incognito windows | ✅ |
 | Clipboard & screen-capture disabled | ✅ |

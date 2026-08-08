@@ -48,8 +48,12 @@ ecosystem features (iCloud/Keychain, Apple Pay, Safari Notify Me, OAuth sign-in)
 
 ## Open Items
 
-1. Restrict `PasswordStore::passwordFor`/`entriesFor` to `qrc:/` internal pages
-   and native autofill only (currently the bridge is registered globally).
-2. Single-instance guard (e.g., `QLockFile`/`CreateMutex`) to prevent multiple
-   processes clobbering profile data and session history.
+1. (done) Extension password-bridge isolation: the password-only QWebChannel
+   bridge is exposed only in the private `kPasswordWorld` (autofill script) and
+   the full bridge only on `qrc:/` internal pages; extension content scripts in
+   `ApplicationWorld` can no longer reach the vault.
+2. (done) Single-instance guard in main.cpp: a `QLockFile` in the profile
+   directory prevents a second process from touching shared state; a secondary
+   `BLACK.exe` forwards its command-line URLs over a `QLocalSocket` and exits,
+   so profile data and session history cannot be clobbered.
 3. Fix the three compositing hitches noted above.

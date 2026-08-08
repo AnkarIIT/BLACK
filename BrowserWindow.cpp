@@ -1,5 +1,6 @@
 #include "BrowserWindow.h"
 #include "SafariWebView.h"
+#include "SafariWebPage.h"
 #include "SafariTheme.h"
 #include "TrackerBlocker.h"
 #include "BrowserSettings.h"
@@ -8,6 +9,8 @@
 #include "ExtensionManager.h"
 #include "Account.h"
 #include "SafeBrowsing.h"
+#include "OSPaths.h"
+#include "BookmarkImporter.h"
 #include <QFrame>
 #include <QStyle>
 #include <QGraphicsDropShadowEffect>
@@ -59,15 +62,59 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QProcess>
-#include <QFileInfo>
 #include <QWidgetAction>
 #include <QKeyEvent>
+#include <QFileInfo>
+#include <QSet>
 #include <functional>
 #include <utility>
 
 #if defined(Q_OS_WIN)
 #include <qt_windows.h>
 #endif
+
+namespace {
+// Only one non-incognito window may restore/save the persisted session; later
+// windows start fresh so tabs are never cloned across windows.
+bool &sessionRestoredFlag()
+{
+    static bool restored = false;
+    return restored;
+}
+
+// Download auto-open allowlist: only inert content types are ever launched
+// after a download completes. Executables, scripts, HTML/SVG (can embed
+// scripts), Office macros and anything else remotely code-bearing are never
+// auto-opened, regardless of the "open safe files" setting.
+const QSet<QString> &safeDownloadExtensions()
+{
+    static const QSet<QString> extensions = {
+        // Pictures
+        QStringLiteral("png"), QStringLiteral("jpg"), QStringLiteral("jpeg"),
+        QStringLiteral("gif"), QStringLiteral("bmp"), QStringLiteral("webp"),
+        QStringLiteral("ico"), QStringLiteral("tif"), QStringLiteral("tiff"),
+        QStringLiteral("avif"), QStringLiteral("heic"),
+        // Sounds
+        QStringLiteral("mp3"), QStringLiteral("wav"), QStringLiteral("ogg"),
+        QStringLiteral("oga"), QStringLiteral("m4a"), QStringLiteral("aac"),
+        QStringLiteral("flac"), QStringLiteral("opus"), QStringLiteral("wma"),
+        // Movies
+        QStringLiteral("mp4"), QStringLiteral("mkv"), QStringLiteral("webm"),
+        QStringLiteral("mov"), QStringLiteral("avi"), QStringLiteral("m4v"),
+        QStringLiteral("mpg"), QStringLiteral("mpeg"), QStringLiteral("wmv"),
+        QStringLiteral("flv"),
+        // Documents
+        QStringLiteral("pdf"), QStringLiteral("txt"), QStringLiteral("md"),
+        QStringLiteral("log"), QStringLiteral("csv"), QStringLiteral("json"),
+        QStringLiteral("rtf"),
+        // Archives (opened by the archive manager, not executed)
+        QStringLiteral("zip"), QStringLiteral("rar"), QStringLiteral("7z"),
+        QStringLiteral("tar"), QStringLiteral("gz"), QStringLiteral("bz2"),
+        QStringLiteral("xz"), QStringLiteral("tgz"),
+    };
+    return extensions;
+}
+}
 
 namespace {
 // Lets the frameless Settings window drive itself from its web content
@@ -200,9 +247,18 @@ static const QString kPageThemeClassScript = QStringLiteral(
     "el.classList.add(dark?'black-dark':'black-light');})(%1);");
 
 // ── Password Manager (saves on form submit, autofills saved logins) ─────────
+// Runs in the isolated ApplicationWorld on http/https pages. Hosts are stored
+// under a normalized key (hostname, lowercased, "www." stripped) so a login
+// saved on "www.example.com" autofills on "example.com" and vice-versa, and so
+// the "Never for This Site" list (normalized in PasswordStore) actually matches.
 static const QString kPasswordHandlerScript = QStringLiteral(
     "(function(){"
     "if(window.__blackPasswordReady)return;window.__blackPasswordReady=true;"
+    "if(window.top!==window)return;" // only ever touch the top frame's page
+    "if(location.protocol!=='http:'&&location.protocol!=='https:')return;" // skip qrc:/file:/about: pages
+    "var HOST=(location.hostname||'').toLowerCase();"
+    "if(HOST.indexOf('www.')===0)HOST=HOST.slice(4);"
+    "if(!HOST)return;"
     "var tries=0;function boot(){"
     "tries++;if(!window.QWebChannel||!window.qt||!qt.webChannelTransport){if(tries<80)setTimeout(boot,100);return;}"
     "new QWebChannel(qt.webChannelTransport,function(channel){"
@@ -212,31 +268,46 @@ static const QString kPasswordHandlerScript = QStringLiteral(
     "var pwds=f.querySelectorAll('input[type=\"password\"]');"
     "if(pwds.length!==1)return false;"
     "return !!f.querySelector('input[type=\"text\"],input[type=\"email\"],input[name*=\"user\" i],input[name*=\"login\" i],input[name*=\"mail\" i],input[id*=\"user\" i],input[id*=\"email\" i],input[autocomplete=\"username\"]');};"
+    "var usernameOf=function(f){return f.querySelector('input[type=\"text\"],input[type=\"email\"],input[name*=\"user\" i],input[name*=\"login\" i],input[name*=\"mail\" i],input[id*=\"user\" i],input[id*=\"email\" i],input[autocomplete=\"username\"]')||document.querySelector('input[type=\"text\"],input[type=\"email\"],input[autocomplete=\"username\"]');};"
+    // Write a value the way a real user would. Direct .value= does not update
+    // the internal state of React/Angular/Vue forms, so the submit would send
+    // empty fields on those sites. Using the native prototype value setter and
+    // then dispatching input+change lets the framework's own handlers sync.
+    "var setVal=function(el,v){"
+    "if(!el)return;"
+    "var proto=el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;"
+    "var d=Object.getOwnPropertyDescriptor(proto,'value');"
+    "if(d&&d.set){d.set.call(el,v);}else{el.value=v;}"
+    "el.dispatchEvent(new Event('input',{bubbles:true}));"
+    "el.dispatchEvent(new Event('change',{bubbles:true}));};"
     "var NS=[];var loadNS=function(){ps.neverSaveJson(function(s){try{NS=JSON.parse(s||'[]');}catch(e){NS=[];}});};"
     "loadNS();ps.changed.connect(loadNS);"
-    "var neverSaveHost=function(h){for(var i=0;i<NS.length;i++){if(NS[i]===h)return true;}return false;};"
+    "var neverSaveHost=function(){for(var i=0;i<NS.length;i++){if(NS[i]===HOST)return true;}return false;};"
     "var findLoginForm=function(){var fs=document.forms;for(var i=0;i<fs.length;i++){if(isLoginForm(fs[i]))return fs[i];}return null;};"
+    "var filled=false;var ticks=0;"
     "var fill=function(){"
-    "if(neverSaveHost(location.host))return;"
+    "if(filled||neverSaveHost())return;"
     "var f=findLoginForm();if(!f)return;"
     "var p=f.querySelector('input[type=\"password\"]');if(!p||p.value)return;"
-    "ps.entriesFor(location.host,function(entries){"
+    "ps.entriesFor(HOST,function(entries){"
     "if(!entries||!entries.length)return;var e=entries[0];"
-    "var u=f.querySelector('input[type=\"text\"],input[type=\"email\"],input[name*=\"user\" i],input[name*=\"login\" i],input[name*=\"mail\" i],input[id*=\"user\" i],input[id*=\"email\" i],input[autocomplete=\"username\"]');"
-    "if(!u)u=document.querySelector('input[type=\"text\"],input[type=\"email\"],input[autocomplete=\"username\"]');"
-    "if(u&&!u.value)u.value=e.username;"
-    "var p2=f.querySelector('input[type=\"password\"]');if(p2&&!p2.value)p2.value=e.password;});};"
-    "fill();setTimeout(fill,700);setTimeout(fill,2000);"
+    "var u=usernameOf(f);if(u&&!u.value)setVal(u,e.username);"
+    "var p2=f.querySelector('input[type=\"password\"]');if(p2&&!p2.value){setVal(p2,e.password);filled=true;}});};"
+    // Forms rendered late (SPA hydration, lazy login panels, tab switches) are
+    // covered by a short re-check loop in addition to the immediate attempt.
+    "fill();"
+    "document.addEventListener('DOMContentLoaded',fill);"
+    "var iv=setInterval(function(){fill();if(++ticks>=40)clearInterval(iv);},500);"
     "var toast=null;"
     "var dismissToast=function(){if(toast&&toast.parentNode)toast.parentNode.removeChild(toast);toast=null;};"
     "var showToast=function(){"
     "dismissToast();"
     "var el=document.createElement('div');toast=el;"
     "el.style.cssText='position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:2147483647;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;max-width:72vw;background:rgba(30,30,32,0.97);color:#f5f5f7;font:13px -apple-system,Segoe UI,sans-serif;padding:10px 14px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.4);';"
-    "var msg=document.createElement('span');msg.textContent='Password saved for '+location.host+'.';el.appendChild(msg);"
+    "var msg=document.createElement('span');msg.textContent='Password saved for '+HOST+'.';el.appendChild(msg);"
     "var st=function(label,bg){var b=document.createElement('button');b.textContent=label;b.style.cssText='border:none;border-radius:8px;padding:6px 12px;font:13px -apple-system,Segoe UI,sans-serif;cursor:pointer;color:#fff;background:'+bg+';';return b;};"
     "var never=st('Never for This Site','#48484a');never.title='Do not autofill or save passwords on this site';"
-    "never.onclick=function(){dismissToast();try{ps.setNeverSave(location.host,true);}catch(e){}};"
+    "never.onclick=function(){dismissToast();try{ps.setNeverSave(HOST,true);}catch(e){}};"
     "var ok=st('OK','#0a84ff');ok.onclick=dismissToast;"
     "el.appendChild(never);el.appendChild(ok);"
     "document.body.appendChild(el);"
@@ -245,10 +316,10 @@ static const QString kPasswordHandlerScript = QStringLiteral(
     "document.addEventListener('submit',function(ev){"
     "var f=ev.target;if(!f||f.tagName!=='FORM')return;"
     "if(!isLoginForm(f))return;"
-    "if(neverSaveHost(location.host))return;"
+    "if(neverSaveHost())return;"
     "var p=f.querySelector('input[type=\"password\"]');if(!p||!p.value)return;"
-    "var u=f.querySelector('input[type=\"text\"],input[type=\"email\"],input[name*=\"user\" i],input[name*=\"login\" i],input[name*=\"mail\" i]');"
-    "try{ps.save(location.host,u?u.value:'',p.value);showToast();}catch(err){}"
+    "var u=usernameOf(f);"
+    "try{ps.save(HOST,u?u.value:'',p.value);showToast();}catch(err){}"
     "},true);"
     "});}"
     "boot();})();");
@@ -391,9 +462,11 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     , m_urlMouseFocusPending(false)
     , m_isDragging(false)
     , m_currentTabIndex(-1)
+    , m_ownsSession(false)
     , m_incognito(incognito)
     , m_profile(incognito ? new QWebEngineProfile(this) : webProfile())
     , m_webChannel(nullptr)
+    , m_passwordChannel(nullptr)
     , m_bookmarks(nullptr)
     , m_history(nullptr)
     , m_passwords(nullptr)
@@ -419,10 +492,20 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     m_passwords = new PasswordStore(this);
     m_extensions = new ExtensionManager(this);
     m_account = new Account(this);
+    m_bookmarkImporter = new BookmarkImporter(this);
     m_webChannel->registerObject(QStringLiteral("passwords"), m_passwords);
     m_webChannel->registerObject(QStringLiteral("extensions"), m_extensions);
     m_webChannel->registerObject(QStringLiteral("account"), m_account);
+    m_webChannel->registerObject(QStringLiteral("bookmarkImporter"), m_bookmarkImporter);
     m_webChannel->registerObject(QStringLiteral("safeBrowsing"), &SafeBrowsing::instance());
+
+    // Password-only bridge for external pages. SafariWebPage exposes this
+    // channel to no one except the native autofill content script, and only in
+    // the private kPasswordWorld — extension content scripts (ApplicationWorld)
+    // and page scripts (main world) cannot reach it. The full bridge above is
+    // only ever installed on internal qrc: pages.
+    m_passwordChannel = new QWebChannel(this);
+    m_passwordChannel->registerObject(QStringLiteral("passwords"), m_passwords);
 
     // Inject the class-based theme stylesheet into every page of this profile.
     // Native color-scheme signalling (no invert filter): sites like YouTube and
@@ -437,14 +520,25 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     styleScript.setRunsOnSubFrames(true);
     m_profile->scripts()->insert(styleScript);
 
-    // Password manager: MainWorld script on every page (saves + autofills).
-    QWebEngineScript passwordScript;
-    passwordScript.setName(QStringLiteral("black-passwords"));
-    passwordScript.setSourceCode(buildPasswordScript());
-    passwordScript.setInjectionPoint(QWebEngineScript::DocumentCreation);
-    passwordScript.setWorldId(QWebEngineScript::MainWorld);
-    passwordScript.setRunsOnSubFrames(true);
-    m_profile->scripts()->insert(passwordScript);
+    // Password manager: private-world script on every page (saves + autofills).
+    // It runs in kPasswordWorld — NOT ApplicationWorld — because extension
+    // content scripts live in ApplicationWorld, and a world an extension can
+    // read is a world it can exfiltrate from. Only this script sees the
+    // password-only bridge (SafariWebPage installs it in kPasswordWorld), so
+    // neither the page nor any extension can query the vault. It runs on the
+    // top frame only: autofilling cross-origin iframes would be a
+    // credential-injection vector and usually wrong.
+    // Private windows skip it entirely: nothing typed in a private session may
+    // be written into the shared password vault.
+    if (!m_incognito) {
+        QWebEngineScript passwordScript;
+        passwordScript.setName(QStringLiteral("black-passwords"));
+        passwordScript.setSourceCode(buildPasswordScript());
+        passwordScript.setInjectionPoint(QWebEngineScript::DocumentCreation);
+        passwordScript.setWorldId(SafariWebPage::kPasswordWorld);
+        passwordScript.setRunsOnSubFrames(false);
+        m_profile->scripts()->insert(passwordScript);
+    }
 
     // Installed extension content scripts.
     installExtensionScripts();
@@ -458,6 +552,9 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
         s->setAttribute(QWebEngineSettings::WebGLEnabled, true);
         s->setAttribute(QWebEngineSettings::PluginsEnabled, false);
         m_profile->setHttpUserAgent(QStringLiteral("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.167 Safari/537.36 BLACK/1.0"));
+        // Private windows must get the same tracker/SafeBrowsing protection as
+        // the main profile; the shared singleton interceptor covers both.
+        m_profile->setUrlRequestInterceptor(&TrackerBlocker::instance());
     }
 
     setupUi();
@@ -469,8 +566,12 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     setupKeyboardShortcuts();
     applyTheme();
 
-    if (!m_incognito)
+    if (!m_incognito && !sessionRestoredFlag())
+        m_ownsSession = true;
+    if (m_ownsSession) {
         restoreSession();
+        sessionRestoredFlag() = true;
+    }
     if (m_tabs.isEmpty()) {
         addNewTab(newTabUrl());
     }
@@ -491,7 +592,7 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
 }
 
 BrowserWindow::~BrowserWindow() {
-    if (!m_incognito)
+    if (m_ownsSession)
         saveSession();
     if (BrowserSettings::instance().removeDownloadListItems() == QStringLiteral("On Quit"))
         m_downloadsList.clear();
@@ -1288,7 +1389,8 @@ SafariWebView* BrowserWindow::addTabView(const QUrl &url, QWebEngineNewWindowReq
 SafariWebView* BrowserWindow::addTabView(const QUrl &url, QWebEngineNewWindowRequest *request, int activateOverride) {
     auto *view = new SafariWebView(this);
     view->setWebProfile(m_profile);
-    view->page()->setWebChannel(m_webChannel);
+    view->setWebChannelObject(m_webChannel);
+    view->setPasswordChannelObject(m_passwordChannel);
     view->page()->setBackgroundColor(QColor(SafariTheme::instance().pageBackground));
     m_tabStack->addWidget(view);
 
@@ -1508,6 +1610,19 @@ void BrowserWindow::togglePinTab(int index) {
 
     m_tabs = pinned + unpinned;
 
+    // Re-sync the stacked widget to the new tab order so the tab-stack index
+    // always matches the tab-list index (pinned tabs are moved to the front).
+    // Otherwise setCurrentTab(index) would show a different view than the tab
+    // strip highlights.
+    QList<QWebEngineView*> views;
+    views.reserve(m_tabs.size());
+    for (const TabInfo &tab : m_tabs)
+        views.append(tab.view);
+    for (QWebEngineView *v : views)
+        m_tabStack->removeWidget(v);
+    for (QWebEngineView *v : views)
+        m_tabStack->addWidget(v);
+
     if (activeView) {
         for (int i = 0; i < m_tabs.count(); ++i) {
             if (m_tabs[i].view == activeView) {
@@ -1516,6 +1631,7 @@ void BrowserWindow::togglePinTab(int index) {
             }
         }
     }
+    m_tabStack->setCurrentIndex(m_currentTabIndex);
 
     rebuildTabBar();
     if (m_overviewVisible) rebuildOverviewGrid();
@@ -1710,9 +1826,10 @@ void BrowserWindow::openSettingsDialog()
 
         m_settingsView = new SafariWebView(m_settingsDialog);
         m_settingsView->setWebProfile(m_profile);
+        m_settingsView->setWebChannelObject(m_webChannel);
+        m_settingsView->setPasswordChannelObject(m_passwordChannel);
         m_settingsView->page()->setBackgroundColor(Qt::transparent);
         m_settingsView->page()->settings()->setAttribute(QWebEngineSettings::ShowScrollBars, false);
-        m_settingsView->page()->setWebChannel(m_webChannel);
         m_settingsView->setUrl(QUrl(QStringLiteral("qrc:/settings.html")));
         layout->addWidget(m_settingsView);
 
@@ -2395,12 +2512,25 @@ void BrowserWindow::navigateToUrl() {
     QString input = m_urlBar->text().trimmed();
     if (input.isEmpty()) return;
 
-    if (!input.startsWith(QStringLiteral("http://")) && !input.startsWith(QStringLiteral("https://"))) {
-        if (input.contains(QStringLiteral(".")) && !input.contains(QStringLiteral(" "))) {
+    const QString lower = input.toLower();
+    const bool hasScheme = lower.startsWith(QStringLiteral("http://"))
+                        || lower.startsWith(QStringLiteral("https://"))
+                        || lower.startsWith(QStringLiteral("file://"))
+                        || lower.startsWith(QStringLiteral("qrc:"))
+                        || lower.startsWith(QStringLiteral("about:"));
+    if (!hasScheme && !input.contains(QLatin1Char(' '))) {
+        // Treat as a URL (instead of a search term) when it looks like a host:
+        // dotted domains, bare "localhost" (optionally with a port), or anything
+        // containing a port/IPv6 colon.
+        const bool looksLikeHost = lower.startsWith(QStringLiteral("localhost"))
+                                || input.contains(QLatin1Char('.'))
+                                || input.contains(QLatin1Char(':'));
+        if (looksLikeHost)
             input = QStringLiteral("https://") + input;
-        } else {
+        else
             input = searchUrlFor(input);
-        }
+    } else if (!hasScheme) {
+        input = searchUrlFor(input);
     }
 
     if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget()))
@@ -2505,12 +2635,13 @@ void BrowserWindow::setupKeyboardShortcuts()
     };
 
     addShortcut(QStringLiteral("Ctrl+T"), [this]() { addTabAction(); });
-    for (int i = 1; i <= 9; ++i) {
+    for (int i = 1; i <= 8; ++i) {
         addShortcut(QString("Ctrl+%1").arg(i), [this, i]() {
             if (i - 1 < m_tabs.count())
                 setCurrentTab(i - 1);
         });
     }
+    addShortcut(QStringLiteral("Ctrl+9"), [this]() { if (!m_tabs.isEmpty()) setCurrentTab(m_tabs.count() - 1); });
     addShortcut(QStringLiteral("Ctrl+D"), [this]() { addBookmarkForCurrentTab(); });
     addShortcut(QStringLiteral("Ctrl+Shift+N"), [this]() { openPrivateWindow(); });
     addShortcut(QStringLiteral("Ctrl+W"), [this]() { closeTab(m_currentTabIndex); });
@@ -2564,15 +2695,6 @@ void BrowserWindow::setupKeyboardShortcuts()
             setCurrentTab(prev);
         }
     });
-    addShortcut(QStringLiteral("Ctrl+1"), [this]() { if (m_tabs.count() > 0) setCurrentTab(0); });
-    addShortcut(QStringLiteral("Ctrl+2"), [this]() { if (m_tabs.count() > 1) setCurrentTab(1); });
-    addShortcut(QStringLiteral("Ctrl+3"), [this]() { if (m_tabs.count() > 2) setCurrentTab(2); });
-    addShortcut(QStringLiteral("Ctrl+4"), [this]() { if (m_tabs.count() > 3) setCurrentTab(3); });
-    addShortcut(QStringLiteral("Ctrl+5"), [this]() { if (m_tabs.count() > 4) setCurrentTab(4); });
-    addShortcut(QStringLiteral("Ctrl+6"), [this]() { if (m_tabs.count() > 5) setCurrentTab(5); });
-    addShortcut(QStringLiteral("Ctrl+7"), [this]() { if (m_tabs.count() > 6) setCurrentTab(6); });
-    addShortcut(QStringLiteral("Ctrl+8"), [this]() { if (m_tabs.count() > 7) setCurrentTab(7); });
-    addShortcut(QStringLiteral("Ctrl+9"), [this]() { if (!m_tabs.isEmpty()) setCurrentTab(m_tabs.count() - 1); });
     addShortcut(QStringLiteral("F11"), [this]() {
         if (isFullScreen()) showNormal();
         else showFullScreen();
@@ -2913,11 +3035,15 @@ void BrowserWindow::setupDownloads() {
         connect(download, &QWebEngineDownloadRequest::stateChanged, this, [this, idx, download](QWebEngineDownloadRequest::DownloadState state) {
             if (idx < m_downloadsList.count()) {
                 switch (state) {
-                case QWebEngineDownloadRequest::DownloadCompleted:
+                case QWebEngineDownloadRequest::DownloadCompleted: {
                     m_downloadsList[idx].state = 1;
-                    if (BrowserSettings::instance().openSafeFiles() && !m_downloadsList[idx].filePath.isEmpty())
-                        QDesktopServices::openUrl(QUrl::fromLocalFile(m_downloadsList[idx].filePath));
+                    const QString filePath = m_downloadsList[idx].filePath;
+                    if (BrowserSettings::instance().openSafeFiles()
+                        && !filePath.isEmpty()
+                        && safeDownloadExtensions().contains(QFileInfo(filePath).suffix().toLower()))
+                        QDesktopServices::openUrl(QUrl::fromLocalFile(filePath));
                     break;
+                }
                 case QWebEngineDownloadRequest::DownloadCancelled:
                 case QWebEngineDownloadRequest::DownloadInterrupted:
                     m_downloadsList[idx].state = 2;
@@ -3076,7 +3202,7 @@ QWidget* BrowserWindow::buildDownloadRow(int index, const DownloadItemInfo &item
         revealBtn->setIcon(createSvgIcon(svgFolder, 14, textSecondary()));
         revealBtn->setIconSize(QSize(14, 14));
         revealBtn->setFixedSize(24, 24);
-        revealBtn->setToolTip(QStringLiteral("Show in Explorer"));
+        revealBtn->setToolTip(QStringLiteral("Show in Folder"));
         revealBtn->setCursor(Qt::PointingHandCursor);
         revealBtn->setStyleSheet(QString(
             "QToolButton { background: transparent; border: none; border-radius: 6px; }"
@@ -3084,13 +3210,7 @@ QWidget* BrowserWindow::buildDownloadRow(int index, const DownloadItemInfo &item
         ).arg(hover()));
         connect(revealBtn, &QToolButton::clicked, this, [item]() {
             if (item.filePath.isEmpty()) return;
-#if defined(Q_OS_WIN)
-            const QString native = QDir::toNativeSeparators(item.filePath);
-            QProcess::startDetached(QStringLiteral("explorer.exe"),
-                                    QStringList{ QStringLiteral("/select,") + native });
-#else
-            QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(item.filePath).absolutePath()));
-#endif
+            OSPaths::showInFileManager(item.filePath);
         });
         rl->addWidget(revealBtn);
     }

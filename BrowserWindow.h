@@ -37,6 +37,7 @@ class ShelfStore;
 class PasswordStore;
 class ExtensionManager;
 class Account;
+class BookmarkImporter;
 
 struct TabInfo {
     QWebEngineView* view = nullptr;
@@ -242,6 +243,11 @@ private:
 
     QList<TabInfo> m_tabs;
     int            m_currentTabIndex;
+    // Only the first non-incognito window owns the persisted session: it is the
+    // only one allowed to restoreSession() (avoids duplicate-tab cloning) and
+    // the only one that saves it on close (avoids a secondary window clobbering
+    // the stored session).
+    bool m_ownsSession;
 
     QWidget     *m_findBar;
     QLineEdit   *m_findInput;
@@ -273,11 +279,13 @@ private:
     bool            m_incognito;
     QWebEngineProfile *m_profile;
     QWebChannel     *m_webChannel;
+    QWebChannel     *m_passwordChannel;
     ShelfStore      *m_bookmarks;
     ShelfStore      *m_history;
     PasswordStore   *m_passwords;
     ExtensionManager *m_extensions;
     Account         *m_account;
+    BookmarkImporter *m_bookmarkImporter;
     QMap<QString, bool> m_permissionChoices;
 };
 
