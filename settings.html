@@ -701,7 +701,7 @@
                     <div class="list-empty">No saved passwords yet. Log in on any site and BLACK offers to remember the login.</div>
                 </div>
                 <div class="subtext" style="margin-top: 10px;">
-                    Passwords are saved locally on this device (obfuscated on disk, not encrypted) and never synced to the cloud. For real encryption, use a dedicated password manager.
+                    Passwords are encrypted locally on this device (OS-protected on Windows, strong key derivation elsewhere) and never synced to the cloud.
                 </div>
 
                 <div class="pane-title" style="font-size: 13px; margin-top: 22px;">Never Save Passwords For</div>
@@ -952,25 +952,27 @@
                     try { return JSON.parse(json || '[]'); } catch (e) { return []; }
                 };
                 const renderPasswords = function () {
-                    const list = parseList(passwords.json);
-                    const el = document.getElementById('pwList');
-                    if (!el) return;
-                    if (!list.length) {
-                        el.innerHTML = '<div class="list-empty">No saved passwords yet. Log in on any site and BLACK offers to remember the login.</div>';
-                        return;
-                    }
-                    let html = '<div class="list-row row-head"><span class="list-site">Website</span><span class="list-user">Username</span><span class="list-pass">Password</span><span></span></div>';
-                    list.forEach(function (p) {
-                        const key = encodeURIComponent(p.host) + '|' + encodeURIComponent(p.username);
-                        html += '<div class="list-row"><span class="list-site">' + esc(p.host) + '</span>'
-                            + '<span class="list-user">' + esc(p.username) + '</span>'
-                            + '<span class="list-pass" data-key="' + key + '">••••••••</span>'
-                            + '<span style="display: flex; gap: 4px; align-items: center;">'
-                            + '<button class="mac-btn" data-toggle="' + key + '" style="padding: 2px 8px;">Show</button>'
-                            + '<button class="row-edit" data-edit="' + key + '" title="Edit login">✎</button>'
-                            + '<button class="list-del" data-del="' + key + '" title="Delete">✕</button></span></div>';
+                    passwords.hosts(function (list) {
+                        list = list || [];
+                        const el = document.getElementById('pwList');
+                        if (!el) return;
+                        if (!list.length) {
+                            el.innerHTML = '<div class="list-empty">No saved passwords yet. Log in on any site and BLACK offers to remember the login.</div>';
+                            return;
+                        }
+                        let html = '<div class="list-row row-head"><span class="list-site">Website</span><span class="list-user">Username</span><span class="list-pass">Password</span><span></span></div>';
+                        list.forEach(function (p) {
+                            const key = encodeURIComponent(p.host) + '|' + encodeURIComponent(p.username);
+                            html += '<div class="list-row"><span class="list-site">' + esc(p.host) + '</span>'
+                                + '<span class="list-user">' + esc(p.username) + '</span>'
+                                + '<span class="list-pass" data-key="' + key + '">••••••••</span>'
+                                + '<span style="display: flex; gap: 4px; align-items: center;">'
+                                + '<button class="mac-btn" data-toggle="' + key + '" style="padding: 2px 8px;">Show</button>'
+                                + '<button class="row-edit" data-edit="' + key + '" title="Edit login">✎</button>'
+                                + '<button class="list-del" data-del="' + key + '" title="Delete">✕</button></span></div>';
+                        });
+                        el.innerHTML = html;
                     });
-                    el.innerHTML = html;
                 };
                 passwords.changed.connect(renderPasswords);
                 renderPasswords();
@@ -986,15 +988,11 @@
                             const parts = t.dataset.toggle.split('|');
                             const host = decodeURIComponent(parts[0]);
                             const user = decodeURIComponent(parts[1]);
-                            const list = parseList(passwords.json);
                             const span = pwListEl.querySelector('.list-pass[data-key="' + t.dataset.toggle + '"]');
                             if (span && span.textContent === '••••••••') {
-                                for (let i = 0; i < list.length; i++) {
-                                    if (list[i].host === host && list[i].username === user) {
-                                        span.textContent = list[i].password;
-                                        break;
-                                    }
-                                }
+                                passwords.passwordFor(host, user, function (pwd) {
+                                    if (span) span.textContent = pwd || '';
+                                });
                             } else if (span) {
                                 span.textContent = '••••••••';
                             }
@@ -1004,26 +1002,24 @@
                             const user = decodeURIComponent(parts[1]);
                             const row = t.closest('.list-row');
                             if (!row) return;
-                            const list = parseList(passwords.json);
-                            let pwd = '';
-                            for (let i = 0; i < list.length; i++) {
-                                if (list[i].host === host && list[i].username === user) { pwd = list[i].password; break; }
-                            }
-                            row.innerHTML = '<span class="list-site">' + esc(host) + '</span>'
-                                + '<span class="list-user"><input class="row-input" id="editUser" value="' + esc(user) + '" style="width: 100%;"></span>'
-                                + '<span class="list-pass"><input class="row-input" id="editPwd" value="' + esc(pwd) + '" style="width: 100%;"></span>'
-                                + '<span style="display: flex; gap: 6px; align-items: center;">'
-                                + '<button class="mac-btn" id="editSave" style="padding: 2px 8px;">Save</button>'
-                                + '<button class="mac-btn" id="editCancel" style="padding: 2px 8px;">Cancel</button></span>';
-                            document.getElementById('editUser').focus();
-                            document.getElementById('editSave').onclick = function () {
-                                const nu = document.getElementById('editUser').value;
-                                const np = document.getElementById('editPwd').value;
-                                if (!np) return;
-                                passwords.remove(host, user);
-                                passwords.save(host, nu, np);
-                            };
-                            document.getElementById('editCancel').onclick = function () { renderPasswords(); };
+                            passwords.passwordFor(host, user, function (pwd) {
+                                pwd = pwd || '';
+                                row.innerHTML = '<span class="list-site">' + esc(host) + '</span>'
+                                    + '<span class="list-user"><input class="row-input" id="editUser" value="' + esc(user) + '" style="width: 100%;"></span>'
+                                    + '<span class="list-pass"><input class="row-input" id="editPwd" value="' + esc(pwd) + '" style="width: 100%;"></span>'
+                                    + '<span style="display: flex; gap: 6px; align-items: center;">'
+                                    + '<button class="mac-btn" id="editSave" style="padding: 2px 8px;">Save</button>'
+                                    + '<button class="mac-btn" id="editCancel" style="padding: 2px 8px;">Cancel</button></span>';
+                                document.getElementById('editUser').focus();
+                                document.getElementById('editSave').onclick = function () {
+                                    const nu = document.getElementById('editUser').value;
+                                    const np = document.getElementById('editPwd').value;
+                                    if (!np) return;
+                                    passwords.remove(host, user);
+                                    passwords.save(host, nu, np);
+                                };
+                                document.getElementById('editCancel').onclick = function () { renderPasswords(); };
+                            });
                         }
                     });
                 }
