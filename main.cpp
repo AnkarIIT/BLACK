@@ -63,17 +63,6 @@ bool isFirstRun() {
     return true;
 }
 
-void markFirstRunComplete() {
-    const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QDir dir(dataDir);
-    if (!dir.exists()) {
-        dir.mkpath(dataDir);
-    }
-    QFile markerFile(dataDir + "/.first_run_done");
-    markerFile.open(QIODevice::WriteOnly);
-    markerFile.write("1");
-}
-
 int main(int argc, char *argv[])
 {
     // ============================================================
@@ -207,9 +196,11 @@ int main(int argc, char *argv[])
         QTimer::singleShot(1500, &window, &BrowserWindow::openSettingsForTesting);
     }
     if (isFirstRun()) {
-        // First run: Show login page
+        // First run: Show the onboarding/login page. The marker is only
+        // written when the user actually finishes onboarding (see
+        // Account::completeOnboarding in login.html), so closing the app on
+        // the login page will show it again next launch.
         window.loadLoginPage();
-        markFirstRunComplete();
     } else {
         // Normal run: honor "Safari opens with"
         const QString openWith = BrowserSettings::instance().opensWith();
