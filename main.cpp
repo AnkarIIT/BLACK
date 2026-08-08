@@ -9,6 +9,12 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTimer>
+#include <QList>
+#include <QUrl>
+#include <QLockFile>
+#include <QLocalServer>
+#include <QLocalSocket>
+#include <QHash>
 #include "BrowserWindow.h"
 #include "BrowserSettings.h"
 #include "TrackerBlocker.h"
@@ -18,7 +24,6 @@
 #include <QWebEnginePage>
 #include <QWebChannel>
 #include <QWebEngineScript>
-#include <QUrl>
 #include "Account.h"
 #include "OnboardingBridge.h"
 
@@ -63,6 +68,56 @@ bool isFirstRun() {
     return true;
 }
 
+// ── Single-instance hand-off state ────────────────────────────────────────
+// URLs a secondary instance asked us to open are queued here until the main
+// window exists (it may still be inside the first-run onboarding flow when a
+// hand-off connection arrives).
+static BrowserWindow *g_activeWindow = nullptr;
+static QList<QUrl> g_pendingUrls;
+
+// Command-line arguments that look like URLs (BLACK flags such as
+// "--open-settings" are skipped).
+static QStringList commandLineUrls()
+{
+    QStringList urls;
+    const QStringList args = QApplication::arguments();
+    for (int i = 1; i < args.size(); ++i) {
+        const QString a = args.at(i);
+        if (a.startsWith(QLatin1Char('-')))
+            continue;
+        urls.append(a);
+    }
+    return urls;
+}
+
+// Parse a hand-off payload (newline-separated strings) into http/https URLs.
+static QList<QUrl> parseHandoffUrls(const QByteArray &payload)
+{
+    QList<QUrl> urls;
+    for (const QByteArray &line : payload.split('\n')) {
+        const QString s = QString::fromUtf8(line).trimmed();
+        if (s.isEmpty())
+            continue;
+        const QUrl url = QUrl::fromUserInput(s);
+        if (url.isValid()
+            && (url.scheme() == QLatin1String("http")
+                || url.scheme() == QLatin1String("https")))
+            urls.append(url);
+    }
+    return urls;
+}
+
+// Route URLs to the running window, or queue them until it exists.
+static void routeOpenRequest(const QList<QUrl> &urls)
+{
+    if (g_activeWindow) {
+        for (const QUrl &url : urls)
+            g_activeWindow->addNewTab(url);
+    } else {
+        g_pendingUrls.append(urls);
+    }
+}
+
 int main(int argc, char *argv[])
 {
     // ============================================================
@@ -92,6 +147,49 @@ int main(int argc, char *argv[])
     app.setOrganizationName("BLACK");
     app.setApplicationDisplayName("BLACK");
     app.setWindowIcon(QIcon(":/app.png"));
+
+    // ════════════════════════════════════════════════════════════════════
+    // Single-instance guard
+    // Only one process may own the shared profile directory (QtWebEngine
+    // storage, session.json, settings.json). A second BLACK.exe hands its
+    // command-line URLs to the running instance — which opens them in a new
+    // tab — and exits immediately, so two processes can never clobber profile
+    // data or session history.
+    // ════════════════════════════════════════════════════════════════════
+    const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(dataDir);
+
+    QLockFile lockFile(dataDir + QStringLiteral("/black.lock"));
+    lockFile.setStaleLockTime(30000); // reclaim a crashed process's lock after 30s
+    const QString serverName = QStringLiteral("BLACK-instance-%1").arg(qHash(dataDir));
+
+    if (!lockFile.tryLock(100)) {
+        // Another instance owns the profile: forward our URLs and quit.
+        QLocalSocket socket;
+        socket.connectToServer(serverName);
+        if (socket.waitForConnected(1000)) {
+            const QByteArray payload = commandLineUrls().join(QLatin1Char('\n')).toUtf8();
+            socket.write(payload);
+            socket.flush();
+            socket.waitForBytesWritten(1000);
+        }
+        return 0;
+    }
+
+    // Primary instance: accept URL hand-offs from secondary instances.
+    QLocalServer server;
+    QLocalServer::removeServer(serverName); // clear a stale pipe from a crash
+    if (server.listen(serverName)) {
+        QObject::connect(&server, &QLocalServer::newConnection, &server, [&server]() {
+            while (QLocalSocket *client = server.nextPendingConnection()) {
+                if (!client->waitForReadyRead(1000))
+                    client->abort();
+                const QByteArray payload = client->readAll();
+                client->deleteLater();
+                routeOpenRequest(parseHandoffUrls(payload));
+            }
+        });
+    }
 
     QWebEngineProfile *profile = BrowserWindow::webProfile();
     const QString storageDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/QtWebEngine");
@@ -175,6 +273,7 @@ int main(int argc, char *argv[])
     }
 
     BrowserWindow window;
+    g_activeWindow = &window;
 
     const QSize desired(1400, 900);
     QScreen *screen = QGuiApplication::primaryScreen();
@@ -213,6 +312,15 @@ int main(int argc, char *argv[])
         } else {
             window.loadStartPage();
         }
+    }
+
+    // Open URLs passed on this process's own command line, plus any handed off
+    // by a secondary instance that started while the window was still coming up.
+    routeOpenRequest(parseHandoffUrls(commandLineUrls().join(QLatin1Char('\n')).toUtf8()));
+    if (!g_pendingUrls.isEmpty()) {
+        for (const QUrl &url : g_pendingUrls)
+            window.addNewTab(url);
+        g_pendingUrls.clear();
     }
 
     return app.exec();
