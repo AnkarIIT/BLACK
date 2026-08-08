@@ -98,10 +98,9 @@ RECENTLY CLOSED
 - Text-transform: uppercase
 - Letter-spacing: 0.3px
 
-### Login Page Styling (Safari First-Run experience)
+### Onboarding Styling (Safari First-Run experience)
 - Circular logo (56x56px) with accent color
 - Card-based layout with subtle shadow
-- Social login buttons with Apple/Google styling
 - Divider with "or" text
 - Privacy policy note in smaller text
 
@@ -122,7 +121,7 @@ RECENTLY CLOSED
   - BrowserWindow.h
   - SafariTheme.cpp
   - SafariTheme.h
-  - login.html
+  - onboarding_experience.html
   - startpage_enhanced.html
   - CMakeLists.txt
 

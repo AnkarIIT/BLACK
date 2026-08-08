@@ -1,6 +1,10 @@
 #ifndef BROWSERWINDOW_H
 #define BROWSERWINDOW_H
 
+// Safari-style User-Agent shared by the main and private-window profiles so
+// both present an identical fingerprint to sites.
+QString getSafariUserAgent();
+
 #include <QMainWindow>
 #include <QWebEngineView>
 #include <QWebEngineHistory>
@@ -72,9 +76,8 @@ public:
 
     static QWebEngineProfile *webProfile();
 
-    // Public methods for login flow and tab management
+    // Public methods for tab management
     void loadStartPage();
-    void loadLoginPage();
 
     // Current active tab URL (used by Settings > "Set to Current Page").
     QString currentPageUrl() const;

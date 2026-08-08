@@ -73,6 +73,21 @@
 #include <qt_windows.h>
 #endif
 
+// Safari-style User-Agent shared by the main and private-window profiles so
+// both present an identical fingerprint to sites. (Declared in BrowserWindow.h.)
+QString getSafariUserAgent()
+{
+#if defined(Q_OS_MACOS)
+    return QStringLiteral("Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15");
+#elif defined(Q_OS_WIN)
+    return QStringLiteral("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15 BLACK/1.0");
+#elif defined(Q_OS_LINUX)
+    return QStringLiteral("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15 BLACK/1.0");
+#else
+    return QStringLiteral("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15 BLACK/1.0");
+#endif
+}
+
 namespace {
 // Only one non-incognito window may restore/save the persisted session; later
 // windows start fresh so tabs are never cloned across windows.
@@ -551,10 +566,12 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
         s->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, true);
         s->setAttribute(QWebEngineSettings::WebGLEnabled, true);
         s->setAttribute(QWebEngineSettings::PluginsEnabled, false);
-        m_profile->setHttpUserAgent(QStringLiteral("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.167 Safari/537.36 BLACK/1.0"));
-        // Private windows must get the same tracker/SafeBrowsing protection as
-        // the main profile; the shared singleton interceptor covers both.
-        m_profile->setUrlRequestInterceptor(&TrackerBlocker::instance());
+        m_profile->setHttpUserAgent(getSafariUserAgent());
+        // Private windows get the same tracker/SafeBrowsing/HTTPS-First
+        // protection as the main profile, through a dedicated interceptor
+        // instance that never records privacy stats: incognito activity is
+        // never written into the persistent privacy.json.
+        m_profile->setUrlRequestInterceptor(&TrackerBlocker::privateInstance());
     }
 
     setupUi();
@@ -622,14 +639,6 @@ void BrowserWindow::loadStartPage() {
         m_tabs[m_currentTabIndex].view->setUrl(target);
     } else {
         addNewTab(target);
-    }
-}
-
-void BrowserWindow::loadLoginPage() {
-    if (!m_tabs.isEmpty() && m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count()) {
-        m_tabs[m_currentTabIndex].view->setUrl(QUrl(QStringLiteral("qrc:/login.html")));
-    } else {
-        addNewTab(QUrl(QStringLiteral("qrc:/login.html")));
     }
 }
 
@@ -1842,27 +1851,39 @@ void BrowserWindow::openSettingsDialog()
     m_settingsDialog->activateWindow();
 }
 
-void BrowserWindow::handleCertificateError(QWebEngineCertificateError certificateError) {
-    if (!certificateError.isOverridable()) {
-        certificateError.rejectCertificate();
+void BrowserWindow::handleCertificateError(QWebEngineCertificateError error) {
+    if (!error.isOverridable()) {
+        error.rejectCertificate();
         return;
     }
 
-    QMessageBox box(QMessageBox::Warning,
-                    QStringLiteral("Security Warning"),
-                    QStringLiteral("BLACK cannot verify the identity of this website."),
-                    QMessageBox::NoButton,
-                    this);
-    box.setInformativeText(certificateError.url().toString() + QStringLiteral("\n\n")
-                           + certificateError.description()
-                           + QStringLiteral("\n\nProceeding anyway could allow someone to intercept the data you send."));
-    QPushButton *proceedButton = box.addButton(QStringLiteral("Proceed Anyway"), QMessageBox::AcceptRole);
-    box.addButton(QMessageBox::Cancel);
-    box.exec();
-    if (box.clickedButton() == proceedButton)
-        certificateError.acceptCertificate();
-    else
-        certificateError.rejectCertificate();
+    error.deferCertificateError();
+
+    auto *dialog = new QMessageBox(QMessageBox::Warning,
+                                   QStringLiteral("Security Warning"),
+                                   QStringLiteral("BLACK cannot verify the identity of this website."),
+                                   QMessageBox::NoButton,
+                                   this);
+    dialog->setInformativeText(error.url().toString() + QStringLiteral("\n\n")
+                               + error.description()
+                               + QStringLiteral("\n\nProceeding anyway could allow someone to intercept the data you send."));
+    QPushButton *proceedButton = dialog->addButton(QStringLiteral("Proceed Anyway"), QMessageBox::AcceptRole);
+    dialog->addButton(QMessageBox::Cancel);
+
+    QObject::connect(dialog, &QMessageBox::finished, this,
+                     [dialog, proceedButton, error](int) mutable {
+        if (dialog->clickedButton() == proceedButton)
+            error.acceptCertificate();
+        else
+            error.rejectCertificate();
+        dialog->deleteLater();
+    });
+
+    // Show the dialog without a nested event loop (open() returns immediately).
+    // Window-modal keeps it app-modal so the rest of the browser cannot be
+    // used while the certificate decision is pending.
+    dialog->setWindowModality(Qt::WindowModal);
+    dialog->open();
 }
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)

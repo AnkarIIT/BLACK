@@ -188,12 +188,19 @@ bool isLocalOrIpAddress(const QString &host)
 
 TrackerBlocker &TrackerBlocker::instance()
 {
-    static TrackerBlocker blocker;
+    static TrackerBlocker blocker(false);
     return blocker;
 }
 
-TrackerBlocker::TrackerBlocker()
+TrackerBlocker &TrackerBlocker::privateInstance()
+{
+    static TrackerBlocker blocker(true);
+    return blocker;
+}
+
+TrackerBlocker::TrackerBlocker(bool incognito)
     : QWebEngineUrlRequestInterceptor(nullptr)
+    , m_incognito(incognito)
     , m_today(0)
     , m_lastDate(QDate::currentDate())
 {
@@ -210,6 +217,11 @@ bool TrackerBlocker::isBlockedHost(const QString &host) const
     return false;
 }
 
+bool TrackerBlocker::isIncognito() const
+{
+    return m_incognito;
+}
+
 void TrackerBlocker::rollDayIfNeeded() const
 {
     // m_today is a cumulative counter, so roll it over the first time it is
@@ -224,14 +236,14 @@ void TrackerBlocker::rollDayIfNeeded() const
 
 void TrackerBlocker::interceptRequest(QWebEngineUrlRequestInfo &info)
 {
-    // Record every distinct site visited so the Privacy Report can show the
-    // percentage of websites that contacted trackers.
+    const bool incognito = isIncognito();
+
     if (info.resourceType() == QWebEngineUrlRequestInfo::ResourceTypeMainFrame) {
         // HTTPS-First: auto-upgrade insecure http:// main-frame loads to
         // https://, except for local hosts and IP literals (typically
         // self-hosted dev/test servers that do not speak TLS). The redirected
         // https request is re-intercepted, so it still gets recorded and
-        // Safe-Browsing checked below.
+        // Safe-Browsing checked below. Applies to private windows too.
         const QUrl requestUrl = info.requestUrl();
         if (requestUrl.scheme().compare(QLatin1String("http"), Qt::CaseInsensitive) == 0
             && !isLocalOrIpAddress(requestUrl.host())) {
@@ -243,15 +255,20 @@ void TrackerBlocker::interceptRequest(QWebEngineUrlRequestInfo &info)
             return;
         }
 
-        const QString host = requestUrl.host().toLower();
-        if (!host.isEmpty()) {
-            QMetaObject::invokeMethod(this, [this, host]() {
-                const QString day = QDate::currentDate().toString(Qt::ISODate);
-                QSet<QString> &sites = m_sitesByDay[day];
-                if (sites.size() < kMaxSitesPerDay)
-                    sites.insert(host);
-                emit privacyChanged();
-            }, Qt::QueuedConnection);
+        // Record every distinct site visited so the Privacy Report can show the
+        // percentage of websites that contacted trackers. Never recorded for
+        // private-window traffic.
+        if (!incognito) {
+            const QString host = requestUrl.host().toLower();
+            if (!host.isEmpty()) {
+                QMetaObject::invokeMethod(this, [this, host]() {
+                    const QString day = QDate::currentDate().toString(Qt::ISODate);
+                    QSet<QString> &sites = m_sitesByDay[day];
+                    if (sites.size() < kMaxSitesPerDay)
+                        sites.insert(host);
+                    emit privacyChanged();
+                }, Qt::QueuedConnection);
+            }
         }
 
         // Offline Safe Browsing: redirect known phishing hosts to a warning page.
@@ -262,9 +279,13 @@ void TrackerBlocker::interceptRequest(QWebEngineUrlRequestInfo &info)
     }
 
     const QString host = info.requestUrl().host().toLower();
-    if (!host.isEmpty() && isBlockedHost(host)) {
-        const QString firstPartyHost = info.firstPartyUrl().host().toLower();
-        info.block(true);
+    if (host.isEmpty() || !isBlockedHost(host))
+        return;
+
+    const QString firstPartyHost = info.firstPartyUrl().host().toLower();
+    info.block(true);
+
+    if (!incognito) {
         QMetaObject::invokeMethod(this, [this, host, firstPartyHost]() {
             rollDayIfNeeded();
             const QString day = QDate::currentDate().toString(Qt::ISODate);

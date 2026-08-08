@@ -23,8 +23,8 @@ since been implemented as "fiction."
 
 ## Security — implemented
 
-- Tracker blocking via `QWebEngineUrlRequestInterceptor` (EasyList-style list +
-  local overrides), with daily/weekly/30-day counters.
+- Tracker blocking via `QWebEngineUrlRequestInterceptor` (fixed embedded
+  EasyList/EasyPrivacy-style host list), with daily/weekly/30-day counters.
 - HTTPS-First: `http://` main-frame loads auto-upgraded to `https://` (local
   hosts and IP literals exempt).
 - Offline Safe Browsing: embedded + local blocklist, warning-page redirect,
@@ -32,8 +32,42 @@ since been implemented as "fiction."
 - Encrypted local password vault: DPAPI on Windows, PBKDF2-HMAC-SHA256 keystream
   fallback; only per-entry lookups are exposed over the bridge.
 - Isolated-world scripting (`ApplicationWorld`) for autofill and injected scripts.
-- Private/incognito windows use a throwaway profile and skip session persistence.
+- Private/incognito windows use a throwaway profile, skip session persistence,
+  and install a dedicated non-recording interceptor (`privateInstance()`) so
+  incognito traffic is never written into privacy.json.
 - Clipboard and screen capture disabled in WebEngine settings.
+
+## Corrections from this audit pass (applied)
+
+1. Certificate-error handling — `handleCertificateError()` now calls
+   `error.deferCertificateError()` (the `defer()` API does not exist) and shows
+   the decision dialog window-modal, so the browser is locked until the user
+   accepts or rejects the certificate.
+2. Private-window tracker protection — incognito profiles install
+   `TrackerBlocker::privateInstance()` (constructed with `m_incognito = true`)
+   instead of a recording instance: identical blocking, HTTPS-First and
+   Safe-Browsing protection, but no stats are recorded or persisted. The old
+   mutable `setIncognito()` setter was removed in favor of the ctor flag.
+3. Tracker blocklist is a fixed embedded list; there is no runtime user-override
+   file. It is read on Chromium's IO thread from a set written only at
+   construction, so it needs no lock.
+4. HTTPS-First applies to both normal and private windows; localhost, *.local and
+   IP literals are exempt, and upgraded URLs drop an explicit `:80` port.
+5. Safe Browsing lookups are `QReadWriteLock`-guarded (`QReadLocker` in
+   `isBlocked`); the optional local `safebrowsing.json` list and per-host
+   allowlist are merged in `loadExtraList()` / `allow()`.
+6. `getSafariUserAgent()` returns a platform-appropriate Safari UA (macOS gets
+   the plain Apple UA; Windows/Linux append `BLACK/1.0`) and is used for both
+   the main and private profiles.
+
+## Lane 1 fixes (this pass)
+
+- Deleted the dead `login.html` first-run page from resources; README.md and
+  SAFARI_ENHANCEMENT.md updated so onboarding is the only documented first-run
+  flow, and the stale troubleshooting entry now points at the `.first_run_done`
+  marker.
+- Fixed the certificate-error API call and dialog modality (correction 1).
+- Incognito interceptor fix (correction 2).
 
 ## Feature Parity
 

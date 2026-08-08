@@ -21,32 +21,29 @@ A high-performance, Safari-inspired browser for Windows, built with **Qt 6.8.0**
 ### Onboarding
 - A frameless, **16-frame WebGL cinematic** first-run experience built with **Three.js & GSAP**, covering profile creation, import, personalization, and privacy level — all local, no account required.
 
-## First-Time Login Flow
+## First-Run Flow
 
-On first launch BLACK shows a login page with two honest options — there is **no cloud sign-in**:
-
-1. **Create Local Profile** - stores a profile name on this device only.
-2. **Continue as Guest** - browse without creating a profile.
+On first launch BLACK shows the cinematic onboarding experience described above — there is **no cloud sign-in** and no separate login page. Finishing the cinematic (Launch / Skip) writes the `.first_run_done` marker and the browser opens honoring the "opens with" setting; closing the setup window without finishing exits the app.
 
 ```
-┌─────────────────┐
-│  Welcome Screen │
-│   (login.html)  │
-└────────┬────────┘
-         │
-    ┌────┴────┐
-    ▼         ▼
- Local     Continue
-Profile    as Guest
-    │         │
-    └────┬────┘
-         ▼
+        First Launch?
+        (.first_run_done)
+              │
+     ┌────────┴─────────┐
+     ▼                  ▼
+  Yes (first run)    No / done
+     │                  │
+     ▼                  ▼
+ Onboarding dialog  Honor "opens with"
+ (onboarding_experience.html)   │
+     │                  ├── Last session (restore)
+     │ (Launch/Skip)    ├── New private window
+     ▼                  └── Start page
+ Write .first_run_done
+     │
+     ▼
     Start Page
 (startpage_enhanced.html)
-         │
-         ▼
-    Normal
-   Browsing
 ```
 
 ## Features
@@ -106,7 +103,7 @@ cd build\Release
 
 ```
 BLACK/
-├── main.cpp                      # App entry point with first-run/login flow
+├── main.cpp                      # App entry point with first-run/onboarding flow
 ├── BrowserWindow.cpp/.h          # Main window, tabs, sidebar, find, downloads
 ├── SafariWebView.cpp/.h          # QWebEngineView subclass with context menu
 ├── SafariWebPage.cpp/.h          # Page lifecycle, isolated-world script injection
@@ -121,7 +118,6 @@ BLACK/
 ├── ShelfStore.cpp/.h             # Local favorites / bookmarks store
 ├── ExtensionManager.cpp/.h       # Internal extension pages
 ├── Account.cpp/.h                # Local profile + first-run marker
-├── login.html                    # First-run login (local profile / guest)
 ├── onboarding_experience.html    # 16-frame WebGL cinematic onboarding
 ├── startpage_enhanced.html       # Start page
 ├── settings.html, bookmarks.html # Settings & bookmarks UI
@@ -179,7 +175,7 @@ bool isFirstRun() {
     return !marker.exists();
 }
 ```
-The marker is created by `Account::completeOnboarding()`, which is called from the login page (create profile / continue as guest) or when the cinematic onboarding finishes.
+The marker is created by `Account::completeOnboarding()`, which is called when the cinematic onboarding finishes (Launch / Skip).
 
 ### Adding an Isolated-World Content Script
 ```cpp
@@ -202,6 +198,6 @@ cmake -S . -B build ...
 $env:PATH += ";C:\Codes\BLACK\Qt\6.8.0\msvc2022_64\bin"
 ```
 
-**Login page not showing**
-- Check that `login.html` is in resources
-- Verify `main.cpp` checks `isFirstRun()` correctly
+**Onboarding not showing**
+- Delete the `.first_run_done` marker in `%AppData%/BLACK` and relaunch
+- Verify `main.cpp` checks `isFirstRun()` before constructing the main window

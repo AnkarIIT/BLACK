@@ -20,7 +20,13 @@ class TrackerBlocker : public QWebEngineUrlRequestInterceptor
     Q_PROPERTY(int websitesVisited READ websitesVisited NOTIFY privacyChanged)
 
 public:
+    // Persistent interceptor installed on the main profile: blocks trackers and
+    // records privacy-report stats.
     static TrackerBlocker &instance();
+    // Separate interceptor for private-window profiles: identical blocking,
+    // HTTPS-First and Safe-Browsing protection, but it never records stats, so
+    // incognito activity never reaches the persistent privacy.json.
+    static TrackerBlocker &privateInstance();
 
     void interceptRequest(QWebEngineUrlRequestInfo &info) override;
 
@@ -41,7 +47,7 @@ signals:
     void privacyChanged();
 
 private:
-    TrackerBlocker();
+    explicit TrackerBlocker(bool incognito);
     Q_DISABLE_COPY(TrackerBlocker)
 
     bool isBlockedHost(const QString &host) const;
@@ -49,6 +55,7 @@ private:
     QList<QDate> daysInWindow(int days) const;
     void rollDayIfNeeded() const;
 
+    bool m_incognito = false;
     QSet<QString> m_blockedHosts;
     mutable int m_today;
     mutable QDate m_lastDate;                          // last day m_today was rolled

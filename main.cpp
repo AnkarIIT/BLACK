@@ -27,33 +27,6 @@
 #include "Account.h"
 #include "OnboardingBridge.h"
 
-// Platform detection for User-Agent
-#ifdef Q_OS_WIN
-    #define PLATFORM_WINDOWS 1
-#elif defined(Q_OS_MAC)
-    #define PLATFORM_MACOS 1
-#elif defined(Q_OS_LINUX)
-    #define PLATFORM_LINUX 1
-#else
-    #define PLATFORM_UNKNOWN 1
-#endif
-
-QString getSafariUserAgent() {
-#ifdef PLATFORM_MACOS
-    // Native Safari on macOS - Safari 17.5 on macOS Sequoia 15
-    return QStringLiteral("Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15");
-#elif defined(PLATFORM_WINDOWS)
-    // Safari-style browser on Windows
-    return QStringLiteral("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15 BLACK/1.0");
-#elif defined(PLATFORM_LINUX)
-    // Safari-style browser on Linux
-    return QStringLiteral("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15 BLACK/1.0");
-#else
-    // Generic Safari UA
-    return QStringLiteral("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15 BLACK/1.0");
-#endif
-}
-
 // Check if this is the first run
 bool isFirstRun() {
     const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
@@ -133,7 +106,7 @@ int main(int argc, char *argv[])
         "--enable-gpu-compositing "
         "--enable-features=VizDisplayCompositor,Accelerated2dCanvas,NativeGpuMemoryBuffers "
         "--enable-quic "
-        "--dns-prefetch-disable=false "
+        "--dns-prefetch-disable "
         "--disk-cache-size=104857600 "
         "--enable-smooth-scrolling "
         "--enable-webgl-developer-extensions "
@@ -165,10 +138,19 @@ int main(int argc, char *argv[])
 
     if (!lockFile.tryLock(100)) {
         // Another instance owns the profile: forward our URLs and quit.
+        // The primary takes the lock before QLocalServer::listen() starts, so
+        // a secondary may connect before the server socket exists; retry a few
+        // times so URLs handed off in that window are not silently dropped.
         QLocalSocket socket;
-        socket.connectToServer(serverName);
-        if (socket.waitForConnected(1000)) {
-            const QByteArray payload = commandLineUrls().join(QLatin1Char('\n')).toUtf8();
+        const QByteArray payload = commandLineUrls().join(QLatin1Char('\n')).toUtf8();
+        bool connected = false;
+        for (int attempt = 0; attempt < 20 && !connected; ++attempt) {
+            if (socket.state() == QLocalSocket::UnconnectedState)
+                socket.connectToServer(serverName);
+            if (socket.waitForConnected(100))
+                connected = true;
+        }
+        if (connected) {
             socket.write(payload);
             socket.flush();
             socket.waitForBytesWritten(1000);
@@ -219,7 +201,7 @@ int main(int argc, char *argv[])
     settings->setAttribute(QWebEngineSettings::PrintElementBackgrounds, true);
     settings->setAttribute(QWebEngineSettings::AutoLoadIconsForPage, true);
     settings->setAttribute(QWebEngineSettings::TouchIconsEnabled, true);
-    settings->setAttribute(QWebEngineSettings::DnsPrefetchEnabled, true);
+    settings->setAttribute(QWebEngineSettings::DnsPrefetchEnabled, false);
     settings->setAttribute(QWebEngineSettings::PdfViewerEnabled, true);
     settings->setAttribute(QWebEngineSettings::AutoLoadImages, true);
 
@@ -286,17 +268,15 @@ int main(int argc, char *argv[])
         window.resize(desired);
     }
 
-    // Login flow handling
+    // First-run startup behavior: if onboarding has never been completed,
+    // show the local start page. A separate first-run cinematic is shown
+    // earlier if this is the very first launch.
     window.show();
     if (QApplication::arguments().contains(QStringLiteral("--open-settings"))) {
         QTimer::singleShot(1500, &window, &BrowserWindow::openSettingsForTesting);
     }
     if (isFirstRun()) {
-        // First run: Show the onboarding/login page. The marker is only
-        // written when the user actually finishes onboarding (see
-        // Account::completeOnboarding in login.html), so closing the app on
-        // the login page will show it again next launch.
-        window.loadLoginPage();
+        window.loadStartPage();
     } else {
         // Normal run: honor "Safari opens with"
         const QString openWith = BrowserSettings::instance().opensWith();
