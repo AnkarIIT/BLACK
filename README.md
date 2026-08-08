@@ -1,19 +1,33 @@
 # BLACK Browser
 
-A high-performance, Safari-inspired browser for Windows, built with **Qt 6.8.0** and **Qt WebEngine (Chromium 122)**. BLACK delivers macOS Safari aesthetics — traffic-light window controls, a fluid tab bar, a live tab overview grid, a smart sidebar, and a custom start page — with automatic **light/dark system theming**, full security features, and **Apple/Google account integration**.
+A high-performance, Safari-inspired browser for Windows, built with **Qt 6.8.0** and **Qt WebEngine (Chromium 122)**. BLACK borrows macOS Safari's visual language — traffic-light window controls, a fluid tab bar, a live tab overview grid, and a smart sidebar — while staying fully **local-first**: no cloud accounts, no telemetry, no sync.
 
-**Note**: Uses Chromium (Blink) engine with Safari UI styling. For real WebKit engine, see architecture.md.
+**Note**: BLACK uses the Chromium (Blink) engine with Safari-inspired UI styling. It is not WebKit and has no macOS/Apple integration.
+
+## Architecture
+
+### Core Engine
+- **Qt WebEngine (Chromium 122)** with a Safari-themed chrome built in native Qt widgets.
+- **Isolated-world scripting**: all injected scripts (autofill, UI helpers) run in a dedicated `ApplicationWorld`, so page content cannot tamper with or read the bridge. Extension content scripts and page scripts are kept separate from internal logic.
+
+### Security & Privacy
+- **Local encrypted vault**: saved passwords are stored in an encrypted envelope (`passwords.json`) via `VaultCrypto` — native **DPAPI** (`CryptProtectData`) on Windows, with a **PBKDF2-HMAC-SHA256**-keyed keystream fallback elsewhere. The vault is never handed out over the bridge; callers get per-entry lookups only.
+- **Tracker blocking**: a `QWebEngineUrlRequestInterceptor` blocks known tracker hosts (EasyList-style list + local overrides) and records daily/weekly/30-day blocked counts.
+- **HTTPS-First**: insecure `http://` main-frame loads are auto-upgraded to `https://` (except local hosts and IP literals).
+- **Offline Safe Browsing**: navigation to hosts on an embedded blocklist (plus local overrides) is redirected to a warning page. Lookups run on Chromium's IO thread against a `QReadWriteLock`-guarded set — no cloud Safe Browsing API.
+- **Private mode**: incognito windows use a throwaway `QWebEngineProfile` and skip session persistence.
+- **Hardened WebEngine**: clipboard and screen-capture access are disabled in the page settings.
+
+### Onboarding
+- A frameless, **15-frame WebGL cinematic** first-run experience built with **Three.js & GSAP**, covering profile creation, import, personalization, and privacy level — all local, no account required.
 
 ## First-Time Login Flow
 
-When you launch BLACK for the first time, you'll see a welcome/login page with options to:
+On first launch BLACK shows a login page with two honest options — there is **no cloud sign-in**:
 
-### Account Options
-1. **Continue with Apple ID** - Sign in with your Apple account
-2. **Continue with Google** - Sign in with your Google account  
-3. **Continue as Guest** - Skip account creation, browse privately
+1. **Create Local Profile** - stores a profile name on this device only.
+2. **Continue as Guest** - browse without creating a profile.
 
-### Login Flow Diagram
 ```
 ┌─────────────────┐
 │  Welcome Screen │
@@ -21,15 +35,13 @@ When you launch BLACK for the first time, you'll see a welcome/login page with o
 └────────┬────────┘
          │
     ┌────┴────┐
-    │         │
     ▼         ▼
-Apple ID   Google
-Login      Login
+ Local     Continue
+Profile    as Guest
     │         │
     └────┬────┘
-         │
          ▼
-   Start Page
+    Start Page
 (startpage_enhanced.html)
          │
          ▼
@@ -37,30 +49,31 @@ Login      Login
    Browsing
 ```
 
-### Account Benefits (When Logged In)
-- iCloud bookmark sync (via Google/Apple)
-- Saved passwords & passkeys
-- History sync across devices
-- Personalized speed dial
-- Sync open tabs between devices
+## Features
 
-## Latest Safari 17.5 / macOS Sequoia 15 Features
+| Feature | Status |
+|---------|--------|
+| Tabbed browsing, tab overview (live thumbnails) | ✅ |
+| Pinned tabs & manual tab groups | ✅ |
+| Find in page, downloads, session restore, history | ✅ |
+| Favorites / bookmarks & reading list (local) | ✅ |
+| Smart sidebar | ✅ |
+| Automatic light/dark system theming | ✅ |
+| Tracker blocking (EasyList-style interceptor) | ✅ |
+| HTTPS-First upgrades | ✅ |
+| Offline Safe Browsing with warning page | ✅ |
+| Password manager (local, encrypted) + autofill | ✅ |
+| Private / incognito windows | ✅ |
+| macOS-style chrome & keyboard shortcuts | ✅ |
+| Extension manager (internal pages) | ✅ |
 
-### Core Features Implemented
-- **Tab Groups** - Organise tabs by topic, auto-group related pages
-- **Intelligent Tracking Prevention** - Block trackers with machine learning
-- **Passkeys** - Passwordless authentication with biometric support
-- **Safari Notify Me** - Monitor pages for price drops, restocks, updates
-- **Enhanced Reader** - Streamlined reading with Highlights extraction
-- **Distraction Control** - Hide disruptive page elements
-- **iCloud Keychain** - Password and passkey sync across devices
-- **Apple Pay** - Secure checkout experiences
-
-### Performance Benchmarks (vs Safari)
-- **+45% faster** loading frequently visited sites vs Chrome
-- **+5.9x faster** rendering animated content vs Chrome on Windows
-- **+18 hours** video streaming battery life on Mac
-- **Intelligent Tracking Prevention** - Blocks 3rd party cookies by default
+### Not Included (by design / not yet implemented)
+- No cloud sync, no accounts, no iCloud/Keychain, no Apple Pay
+- No passkeys / WebAuthn
+- No Safari Notify Me
+- No reader mode, PiP, or translation
+- No per-site content settings
+- No content-blocker extension API (uBlock-style)
 
 ## Build Instructions (Windows)
 
@@ -93,35 +106,33 @@ cd build\Release
 
 ```
 BLACK/
-├── main.cpp                      # App entry point with login flow
+├── main.cpp                      # App entry point with first-run/login flow
 ├── BrowserWindow.cpp/.h          # Main window, tabs, sidebar, find, downloads
 ├── SafariWebView.cpp/.h          # QWebEngineView subclass with context menu
+├── SafariWebPage.cpp/.h          # Page lifecycle, isolated-world script injection
 ├── SafariTheme.cpp/.h            # Light/dark theme singleton + system scheme
 ├── BrowserSettings.cpp/.h        # Web engine profile and settings
-├── TrackerBlocker.cpp/.h         # Intelligent Tracking Prevention
-├── login.html                    # First-time welcome/login page
-├── startpage_enhanced.html       # Enhanced Safari 17.5+ start page
-├── SAFARI_ENHANCEMENT.md         # Detailed enhancement documentation
+├── TrackerBlocker.cpp/.h         # Request interceptor: tracker blocking + HTTPS-First
+├── SafeBrowsing.cpp/.h           # Offline blocklist + warning page (thread-safe)
+├── PasswordStore.cpp/.h          # Local password manager (per-entry bridge lookups)
+├── VaultCrypto.cpp/.h            # DPAPI / PBKDF2-HMAC encryption envelope
+├── OSPaths.cpp/.h                # Platform data-directory resolution
+├── BookmarkImporter.cpp/.h       # Import bookmarks from other browsers
+├── ShelfStore.cpp/.h             # Local favorites / bookmarks store
+├── ExtensionManager.cpp/.h       # Internal extension pages
+├── Account.cpp/.h                # Local profile + first-run marker
+├── login.html                    # First-run login (local profile / guest)
+├── onboarding_experience.html    # 15-frame WebGL cinematic onboarding
+├── startpage_enhanced.html       # Start page
+├── settings.html, bookmarks.html # Settings & bookmarks UI
+├── history.html, extensions.html # History & extensions UI
+├── features.html                 # Feature overview
+├── privacyreport.html            # Privacy report
+├── safebrowsing_warning.html     # Safe Browsing interstitial
 ├── CMakeLists.txt                # Qt 6 CMake build
-└── deploy.ps1                   # Automated deployment script
+├── deploy.ps1                    # Automated deployment script
+└── installer.iss                 # Inno Setup installer
 ```
-
-## Features
-
-| Feature | Safari 17.5 | BLACK Implementation |
-|---------|-------------|---------------------|
-| Tab Groups | ✓ Auto-topic grouping | ✓ Manual groups |
-| Intelligent Tracker Blocking | ✓ (WebKit) | ✓ (EasyList-style) |
-| Passkeys | ✓ iCloud | ⚠ Partial (WebAuthn) |
-| Safari Notify Me | ✓ Price/restock | ✓ Monitoring system |
-| Reader Mode | ✓ Enhanced | ⚠ Basic |
-| Highlights | ✓ Info extraction | ⚠ Not implemented |
-| Distraction Control | ✓ Hide elements | ⚠ Not implemented |
-| Private Browsing | ✓ ITP | ✓ Incognito mode |
-| Tab Overview | ✓ Grid view | ✓ Live thumbnails |
-| Favourites/Reading List | ✓ iCloud sync | ✓ Local storage |
-| Sidebars | ✓ Multiple panes | ✓ Smart sidebar |
-| **Apple/Google Login** | ✓ Native | ✓ OAuth integration |
 
 ## Keyboard Shortcuts
 
@@ -142,32 +153,20 @@ BLACK/
 | `Ctrl++` / `Ctrl+-` | Zoom in / out |
 | `F11` | Toggle full screen |
 | `Escape` | Close find bar / overview |
-| `Cmd+1` (Mac) | Tab groups |
 
 ## Security
 
-| Protection | Safari | BLACK |
-|------------|--------|-------|
-| Tracker Blocking | ✓ WebKit ITP | ✓ EasyList + custom |
-| Safe Browsing | ✓ Google | ⚠ Not implemented |
-| Certificate UI | ✓ Native | ✓ Custom dialogs |
-| Permission Prompts | ✓ Native | ✓ Custom dialogs |
-| Passkeys | ✓ iCloud Keychain | ⚠ WebAuthn |
-| Sandbox | ✓ Process isolation | ✓ Process isolation |
-| Private Mode | ✓ ITP | ✓ Incognito |
-
-## Architecture
-
-**Current**: Qt WebEngine (Chromium 122 / Blink engine)
-- Pros: Modern web standards, fast JS (V8), active security updates, cross-platform
-- Cons: Not real WebKit/Safari engine
-
-**Real Safari Engine** requires:
-- Qt WebKit (discontinued, Qt 5 only)
-- Native WebKit embedding (macOS/iOS only)
-- Or a different approach (Electron, CEF)
-
-See `SAFARI_ENHANCEMENT.md` for detailed analysis and enhancement guide.
+| Protection | BLACK |
+|------------|-------|
+| Tracker Blocking (EasyList-style interceptor) | ✅ |
+| HTTPS-First upgrades | ✅ |
+| Offline Safe Browsing (no cloud API) | ✅ |
+| Encrypted local password vault (DPAPI / PBKDF2-HMAC) | ✅ |
+| Isolated-world content scripts | ✅ |
+| Renderer sandbox + process isolation (Chromium) | ✅ |
+| Private / incognito windows | ✅ |
+| Clipboard & screen-capture disabled | ✅ |
+| Certificate & permission dialogs | ✅ |
 
 ## Development
 
@@ -178,35 +177,12 @@ bool isFirstRun() {
     return !marker.exists();
 }
 ```
+The marker is created by `Account::completeOnboarding()`, which is called from the login page (create profile / continue as guest) or when the cinematic onboarding finishes.
 
-### Adding Tab Groups with Topic Detection
+### Adding an Isolated-World Content Script
 ```cpp
-struct TabGroup {
-    QString name;
-    QList<int> tabIndices;
-    QColor visualColor;
-    QDateTime createdAt;
-};
-
-QMap<QString, TabGroup> m_tabGroups;
-QString m_activeTabGroup;
-
-void autoGroupTabs();  // Analyze page content, group similar topics
-void saveTabGroups();  // Persist to localStorage
-```
-
-### Adding Safari Notify Me
-```cpp
-class MonitorEntry {
-    QUrl url;
-    QString type;  // "price", "restock", "update"
-    QDateTime lastCheck;
-    QStringList keywords;
-};
-
-QList<MonitorEntry> m_monitors;
-QTimer m_monitorTimer;
-void startMonitoring();
+// Scripts are injected into ApplicationWorld so the page cannot touch the bridge:
+webPage->runJavaScript(script, QWebEngineScript::ApplicationWorld);
 ```
 
 ## Troubleshooting

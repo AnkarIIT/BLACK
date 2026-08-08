@@ -325,34 +325,6 @@
             white-space: nowrap;
         }
 
-        /* Notify Me Section */
-        .notify-card {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 14px 16px;
-            background: var(--accent);
-            color: #fff;
-            border-radius: var(--radius);
-            cursor: pointer;
-            transition: opacity 0.2s;
-        }
-
-        .notify-card:hover {
-            opacity: 0.95;
-        }
-
-        .notify-icon {
-            width: 24px;
-            height: 24px;
-            fill: #fff;
-        }
-
-        .notify-text {
-            font-size: 13px;
-            font-weight: 500;
-        }
-
         /* Favorites Grid */
         .favorites-grid {
             display: grid;
@@ -605,20 +577,6 @@
             </div>
         </div>
 
-        <!-- Notify Me Section (Safari 17.5+ feature) -->
-        <div class="section">
-            <div class="section-header open">
-                <span class="section-chevron">&#9656;</span>
-                <span class="section-title">Safari Notify Me</span>
-            </div>
-            <div class="notify-card" onclick="showNotifySettings()">
-                <svg class="notify-icon" viewBox="0 0 24 24">
-                    <path d="M12 2C6.48 2 2 6.48 2 12v4h4l4 4 4-4h4v-4C20 6.48 15.52 2 10 2zm0 18c-1.1 0-2-.9-2-2h4c0 1.1-.9 2-2 2zm6-6h-4v-4h4v4z"/>
-                </svg>
-                <span class="notify-text">Monitor pages for price drops, restocks, and updates</span>
-            </div>
-        </div>
-
         <!-- Reading List Section -->
         <div class="section">
             <div class="section-header open">
@@ -709,11 +667,6 @@
                 // In real implementation, this would create a new tab group
                 alert('Tab group "' + name + '" would be created here');
             }
-        }
-
-        function showNotifySettings() {
-            // Show Safari Notify Me settings
-            alert('Safari Notify Me allows you to monitor pages for:\n- Price drops\n- Restocks\n- Content updates\n\nThis feature would show a settings panel in the full implementation.');
         }
 
         // Update privacy stats from WebChannel

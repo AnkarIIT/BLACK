@@ -153,19 +153,6 @@
     @keyframes orbitPulse { 0%,100% { box-shadow: 0 0 8px rgba(255,100,0,0.4);} 50% { box-shadow: 0 0 18px rgba(255,100,0,0.9);} }
     .privacy-card .orb { width: 14px; height: 14px; margin: 0 auto 14px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); }
 
-    /* Connect services */
-    .service-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 26px auto 30px; max-width: 560px; }
-    .service-card {
-        padding: 18px 8px; border-radius: 12px; text-align: center; cursor: pointer;
-        border: 1px solid rgba(255,255,255,0.10); background: rgba(255,255,255,0.02);
-        transition: all 0.3s ease; opacity: 0; transform: translateY(12px) scale(0.94);
-    }
-    .service-card:hover { border-color: rgba(255,100,0,0.5); transform: translateY(-3px); }
-    .service-card .sc-ic { font-size: 22px; color: var(--accent); margin-bottom: 8px; transition: transform 0.3s ease; }
-    .service-card .sc-name { font-size: 11px; letter-spacing: 1px; color: var(--muted); }
-    .service-card.connected { border-color: var(--accent); background: rgba(255,100,0,0.07); }
-    .service-card.connected .sc-name::after { content: "  ✓ Connected"; color: var(--accent); }
-
     /* Build / Optimize panels */
     .task-panel { text-align: left; width: min(500px, 86vw); margin: 22px auto 6px; }
     .task-row {
@@ -220,13 +207,11 @@
     <div id="frame-06" class="frame-card">
         <div class="kicker">Welcome</div>
         <h2>Welcome back</h2>
-        <p class="sub">Sync your universe.</p>
+        <p class="sub">Everything stays on this device &mdash; no accounts, no cloud.</p>
         <input class="name-field" id="profile-name" type="text" maxlength="24"
                placeholder="Your name (optional)">
-        <button class="provider-btn" data-continue><span class="ic">G</span> Continue with Google</button>
-        <button class="provider-btn" data-continue><span class="ic">&#63743;</span> Continue with Apple</button>
-        <button class="provider-btn" data-continue><span class="ic">&#8862;</span> Continue with Microsoft</button>
-        <div><button class="btn-ghost" data-continue>Continue without account</button></div>
+        <button class="btn-orange provider-btn" data-continue>Create local profile</button>
+        <div><button class="btn-ghost" data-continue>Continue as guest</button></div>
     </div>
 
     <div id="frame-07" class="frame-card">
@@ -281,23 +266,6 @@
             <div class="privacy-card" data-privacy><div class="orb"></div><div class="lv">Maximum</div><div class="desc">Block trackers everywhere.</div></div>
         </div>
         <button class="btn-orange" id="btn-privacy" style="opacity:0.45; pointer-events:none;">Next &rarr;</button>
-    </div>
-
-    <div id="frame-10" class="frame-card">
-        <div class="kicker">Connect</div>
-        <h2>Connect your services</h2>
-        <p class="sub">Optional &mdash; always under your control.</p>
-        <div class="service-grid">
-            <div class="service-card" data-service><div class="sc-ic">G</div><div class="sc-name">Google</div></div>
-            <div class="service-card" data-service><div class="sc-ic">&#9760;</div><div class="sc-name">GitHub</div></div>
-            <div class="service-card" data-service><div class="sc-ic">N</div><div class="sc-name">Notion</div></div>
-            <div class="service-card" data-service><div class="sc-ic">&#9873;</div><div class="sc-name">Slack</div></div>
-            <div class="service-card" data-service><div class="sc-ic">&#128196;</div><div class="sc-name">Drive</div></div>
-            <div class="service-card" data-service><div class="sc-ic">&#128229;</div><div class="sc-name">Dropbox</div></div>
-            <div class="service-card" data-service><div class="sc-ic">&#128197;</div><div class="sc-name">Calendar</div></div>
-            <div class="service-card" data-service><div class="sc-ic">+</div><div class="sc-name">More</div></div>
-        </div>
-        <button class="btn-orange" id="btn-connect">Continue &rarr;</button>
     </div>
 
     <div id="frame-11" class="frame-card">
@@ -712,27 +680,9 @@ document.querySelectorAll(".privacy-card").forEach(function (c) {
 });
 document.getElementById("btn-privacy").addEventListener("click", function () {
     setPlanet(false);
-    showCard("frame-10");
-    gsap.fromTo(".service-card", { opacity: 0, y: 14, scale: 0.94 },
-                { opacity: 1, y: 0, scale: 1, duration: 0.5, stagger: 0.06, ease: "power2.out" });
+    goBuild();
 });
 
-/* ---------------- Frame 10: connect ---------------- */
-document.querySelectorAll(".service-card").forEach(function (c) {
-    c.addEventListener("click", function () {
-        c.classList.toggle("connected");
-    });
-});
-document.getElementById("btn-connect").addEventListener("click", function () {
-    var cards = document.querySelectorAll(".service-card");
-    var cx = window.innerWidth / 2, cy = window.innerHeight / 2;
-    for (var i = 0; i < cards.length; i++) {
-        var b = cards[i].getBoundingClientRect();
-        gsap.to(cards[i], { x: cx - b.left - b.width/2, y: cy - b.top - b.height/2,
-                            scale: 0.05, opacity: 0, duration: 0.7, delay: i * 0.06, ease: "power3.in" });
-    }
-    gsap.delayedCall(1.2, goBuild);
-});
 function goBuild() {
     blackhole.scale.set(0.3, 0.3, 0.3);
     gsap.to(blackhole.scale, { x: 1, y: 1, z: 1, duration: 1.6, ease: "power2.out" });
@@ -742,8 +692,8 @@ function goBuild() {
 
 /* ---------------- Frame 11: building ---------------- */
 var BUILD_TASKS = [
-    "Importing bookmarks", "Restoring passwords", "Syncing data",
-    "Installing extensions", "Optimizing performance", "Almost done..."
+    "Preparing local profile", "Indexing bookmarks", "Securing passwords",
+    "Optimizing performance", "Polishing your start page", "Almost done..."
 ];
 function renderTasks(containerId, tasks) {
     var el = document.getElementById(containerId);
