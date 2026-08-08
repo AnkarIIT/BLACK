@@ -1,10 +1,6 @@
 #ifndef BROWSERWINDOW_H
 #define BROWSERWINDOW_H
 
-// Safari-style User-Agent shared by the main and private-window profiles so
-// both present an identical fingerprint to sites.
-QString getSafariUserAgent();
-
 #include <QMainWindow>
 #include <QWebEngineView>
 #include <QWebEngineHistory>
@@ -23,6 +19,10 @@ QString getSafariUserAgent();
 #include <QStackedWidget>
 #include <QList>
 #include <QUrl>
+
+// Safari-style User-Agent shared by the main and private-window profiles so
+// both present an identical fingerprint to sites.
+QString getSafariUserAgent();
 #include <QLabel>
 #include <QScrollArea>
 #include <QFrame>
@@ -78,6 +78,7 @@ public:
 
     // Public methods for tab management
     void loadStartPage();
+    void addNewTab(const QUrl &url);
 
     // Current active tab URL (used by Settings > "Set to Current Page").
     QString currentPageUrl() const;
@@ -132,13 +133,13 @@ private:
     void setupTabOverlay();
     void setupKeyboardShortcuts();
     void applyTheme();
+    void applyUiLayout();
     void updateUrlContainerStyle();
     void updateWebViewBackgrounds();
 
     QIcon createSvgIcon(const QString &svgData, int size = 18, const QString &color = "#1d1d1f");
     QToolButton* createTrafficLight(const QString &color, const QString &hoverColor);
 
-    void addNewTab(const QUrl &url);
     SafariWebView* addTabView(const QUrl &url, QWebEngineNewWindowRequest *request);
     // activateOverride: -1 = follow activateNewTabs setting, 0 = background tab, 1 = force activate
     SafariWebView* addTabView(const QUrl &url, QWebEngineNewWindowRequest *request, int activateOverride);

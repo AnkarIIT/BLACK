@@ -12,6 +12,7 @@ class QJsonObject;
 class BrowserSettings : public QObject
 {
     Q_OBJECT
+    Q_PROPERTY(UiLayout uiLayout READ uiLayout WRITE setUiLayout NOTIFY settingsChanged)
     Q_PROPERTY(QString searchEngine READ searchEngine NOTIFY settingsChanged)
     Q_PROPERTY(QString opensWith READ opensWith NOTIFY settingsChanged)
     Q_PROPERTY(QString newWindowsWith READ newWindowsWith NOTIFY settingsChanged)
@@ -28,8 +29,12 @@ class BrowserSettings : public QObject
     Q_PROPERTY(bool activateNewTabs READ activateNewTabs NOTIFY settingsChanged)
 
 public:
+    enum UiLayout { SafariModern = 0, ClassicChrome = 1 };
+    Q_ENUM(UiLayout)
+
     static BrowserSettings &instance();
 
+    UiLayout uiLayout() const { return m_uiLayout; }
     QString searchEngine() const { return m_searchEngine; }
     QString opensWith() const { return m_opensWith; }
     QString newWindowsWith() const { return m_newWindowsWith; }
@@ -47,6 +52,7 @@ public:
 
     Q_INVOKABLE void setValue(const QString &key, const QString &value);
     Q_INVOKABLE void setBool(const QString &key, bool value);
+    Q_INVOKABLE void setUiLayout(UiLayout mode);
     Q_INVOKABLE void openDefaultBrowserSettings();
 
     static QString settingsFilePath();
@@ -74,6 +80,7 @@ private:
     bool m_openSafeFiles;
     QString m_homepage;
     QString m_downloadLocation;
+    UiLayout m_uiLayout = SafariModern;
     QString m_tabLayout;
     bool m_showTabTitles;
     QString m_openPagesInTabs;

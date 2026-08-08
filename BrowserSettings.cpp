@@ -86,6 +86,9 @@ void BrowserSettings::load()
     m_homepage                = general.value(QStringLiteral("homepage")).toString(m_homepage);
     m_downloadLocation        = general.value(QStringLiteral("downloadLocation")).toString(m_downloadLocation);
 
+    const QJsonObject appearance = obj.value(QStringLiteral("appearance")).toObject();
+    m_uiLayout = static_cast<UiLayout>(appearance.value(QStringLiteral("uiLayout")).toInt(m_uiLayout));
+
     const QJsonObject tabs = obj.value(kTabsKey).toObject();
     m_tabLayout             = tabs.value(QStringLiteral("tabLayout")).toString(m_tabLayout);
     m_showTabTitles         = tabs.value(QStringLiteral("showTabTitles")).toBool(m_showTabTitles);
@@ -108,6 +111,10 @@ void BrowserSettings::save()
     general.insert(QStringLiteral("homepage"), m_homepage);
     general.insert(QStringLiteral("downloadLocation"), m_downloadLocation);
     obj.insert(kGeneralKey, general);
+
+    QJsonObject appearance;
+    appearance.insert(QStringLiteral("uiLayout"), static_cast<int>(m_uiLayout));
+    obj.insert(QStringLiteral("appearance"), appearance);
 
     QJsonObject tabs;
     tabs.insert(QStringLiteral("tabLayout"), m_tabLayout);
@@ -175,6 +182,15 @@ void BrowserSettings::setBool(const QString &key, bool value)
         emit settingsChanged();
     } else if (key == QLatin1String("activateNewTabs") && m_activateNewTabs != value) {
         m_activateNewTabs = value;
+        save();
+        emit settingsChanged();
+    }
+}
+
+void BrowserSettings::setUiLayout(UiLayout mode)
+{
+    if (m_uiLayout != mode) {
+        m_uiLayout = mode;
         save();
         emit settingsChanged();
     }

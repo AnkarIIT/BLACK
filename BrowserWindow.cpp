@@ -8,6 +8,7 @@
 #include "PasswordStore.h"
 #include "ExtensionManager.h"
 #include "Account.h"
+#include "AppearanceManager.h"
 #include "SafeBrowsing.h"
 #include "OSPaths.h"
 #include "BookmarkImporter.h"
@@ -502,6 +503,7 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     m_webChannel->registerObject(QStringLiteral("privacy"), &TrackerBlocker::instance());
     m_webChannel->registerObject(QStringLiteral("theme"), &SafariTheme::instance());
     m_webChannel->registerObject(QStringLiteral("browserSettings"), &BrowserSettings::instance());
+    m_webChannel->registerObject(QStringLiteral("appearance"), new AppearanceManager(this));
     m_webChannel->registerObject(QStringLiteral("bookmarks"), m_bookmarks);
     m_webChannel->registerObject(QStringLiteral("history"), m_history);
     m_passwords = new PasswordStore(this);
@@ -601,6 +603,7 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     connect(&BrowserSettings::instance(), &BrowserSettings::settingsChanged, this, [this]() {
         m_history->setRetentionDays(retentionDaysFor(BrowserSettings::instance().removeHistoryItems()));
         rebuildTabBar();
+        applyUiLayout();
     });
 
     connect(&SafariTheme::instance(), &SafariTheme::schemeChanged, this, [this]() {
@@ -2882,6 +2885,41 @@ void BrowserWindow::applyTheme()
 
     updateWebViewBackgrounds();
     updateWebViewTheme();
+    applyUiLayout();
+}
+
+void BrowserWindow::applyUiLayout()
+{
+    const BrowserSettings::UiLayout mode = BrowserSettings::instance().uiLayout();
+    const bool chrome = (mode == BrowserSettings::ClassicChrome);
+    const QString layoutValue = chrome ? QStringLiteral("chrome") : QStringLiteral("safari");
+
+    // Drive both internal pages and external web content from the same root mode.
+    const QString js = QStringLiteral(
+        "(function(mode){"
+        "var el=document.documentElement;"
+        "if(!el)return;"
+        "el.setAttribute('data-ui-layout', mode);"
+        "})('%1');"
+    ).arg(layoutValue);
+    for (const TabInfo &tab : m_tabs) {
+        if (!tab.view)
+            continue;
+        tab.view->page()->runJavaScript(js);
+    }
+
+#if defined(Q_OS_MAC)
+    // In Chrome mode leave a wider left gutter so traffic lights sit inside the
+    // dedicated top tab strip; in Safari mode they stay alongside back/forward.
+    if (m_closeButton)
+        m_closeButton->setContentsMargins(chrome ? 12 : 8, 0, chrome ? 12 : 8, 0);
+#endif
+
+    if (m_tabBar)
+        m_tabBar->setVisible(!chrome);
+
+    if (m_urlContainer)
+        m_urlContainer->setMaximumWidth(chrome ? 720 : 520);
 }
 
 void BrowserWindow::updateWebViewBackgrounds()

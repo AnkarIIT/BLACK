@@ -575,12 +575,16 @@
                         &ldquo;Safe&rdquo; files include movies, pictures, sounds, PDF and text documents, and archives.
                     </div>
 
-                    <div class="label">Appearance Mode:</div>
+                    <div class="label">Appearance</div>
                     <div class="value">
                         <div class="segmented" id="themeSeg" style="display: flex; gap: 4px; background: rgba(0,0,0,0.05); padding: 2px; border-radius: 6px;">
                             <button data-theme="0" class="mac-btn" style="padding: 3px 8px; font-size: 11px;">System</button>
                             <button data-theme="1" class="mac-btn" style="padding: 3px 8px; font-size: 11px;">Light</button>
                             <button data-theme="2" class="mac-btn" style="padding: 3px 8px; font-size: 11px;">Dark</button>
+                        </div>
+                        <div class="segmented" id="uiLayoutSeg" style="display: flex; gap: 4px; background: rgba(0,0,0,0.05); padding: 2px; border-radius: 6px; margin-top: 8px;">
+                            <button data-layout="0" class="mac-btn" style="padding: 3px 8px; font-size: 11px;">Safari Modern</button>
+                            <button data-layout="1" class="mac-btn" style="padding: 3px 8px; font-size: 11px;">Classic Chrome</button>
                         </div>
                     </div>
                 </div>
@@ -916,6 +920,25 @@
                 document.querySelectorAll('#themeSeg button').forEach(function (b) {
                     b.addEventListener('click', function () {
                         theme.setThemePreference(parseInt(b.dataset.theme, 10));
+                    });
+                });
+
+                const appearance = channel.objects.appearance;
+                const updateLayoutSeg = function () {
+                    const buttons = document.querySelectorAll('#uiLayoutSeg button');
+                    buttons.forEach(function (b) {
+                        b.classList.toggle('active', parseInt(b.dataset.layout, 10) === (appearance.uiLayout || 0));
+                    });
+                };
+                if (appearance.uiLayoutChanged) {
+                    appearance.uiLayoutChanged.connect(updateLayoutSeg);
+                }
+                updateLayoutSeg();
+
+                document.querySelectorAll('#uiLayoutSeg button').forEach(function (b) {
+                    b.addEventListener('click', function () {
+                        appearance.setUiLayout(parseInt(b.dataset.layout, 10));
+                        updateLayoutSeg();
                     });
                 });
 

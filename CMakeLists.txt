@@ -37,6 +37,8 @@ qt_add_executable(BLACK
     OSPaths.cpp
     OSPaths.h
     OnboardingBridge.h
+    AppearanceManager.h
+    AppearanceManager.cpp
     BookmarkImporter.cpp
     BookmarkImporter.h
 )
