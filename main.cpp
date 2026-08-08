@@ -76,14 +76,11 @@ int main(int argc, char *argv[])
         "--enable-gpu-rasterization "
         "--enable-zero-copy "
         "--enable-gpu-compositing "
-        "--enable-features=VizDisplayCompositor "
-        "--enable-features=Accelerated2dCanvas "
-        "--enable-features=NativeGpuMemoryBuffers "
+        "--enable-features=VizDisplayCompositor,Accelerated2dCanvas,NativeGpuMemoryBuffers "
         "--enable-quic "
         "--dns-prefetch-disable=false "
         "--disk-cache-size=104857600 "
         "--enable-smooth-scrolling "
-        "--enable-precise-memory-info "
         "--enable-webgl-developer-extensions "
     );
 
