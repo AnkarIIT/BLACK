@@ -109,14 +109,14 @@ int main(int argc, char *argv[])
     settings->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, true);
     settings->setAttribute(QWebEngineSettings::PluginsEnabled, false);
     settings->setAttribute(QWebEngineSettings::JavascriptEnabled, true);
-    settings->setAttribute(QWebEngineSettings::JavascriptCanAccessClipboard, true);
+    settings->setAttribute(QWebEngineSettings::JavascriptCanAccessClipboard, false);
     settings->setAttribute(QWebEngineSettings::LocalStorageEnabled, true);
     settings->setAttribute(QWebEngineSettings::WebGLEnabled, true);
     settings->setAttribute(QWebEngineSettings::Accelerated2dCanvasEnabled, true);
     
     // Rendering optimizations
     settings->setAttribute(QWebEngineSettings::SpatialNavigationEnabled, true);
-    settings->setAttribute(QWebEngineSettings::ScreenCaptureEnabled, true);
+    settings->setAttribute(QWebEngineSettings::ScreenCaptureEnabled, false);
     settings->setAttribute(QWebEngineSettings::FocusOnNavigationEnabled, true);
     settings->setAttribute(QWebEngineSettings::PrintElementBackgrounds, true);
     settings->setAttribute(QWebEngineSettings::AutoLoadIconsForPage, true);
