@@ -138,6 +138,52 @@ const char *const kBlockedHosts[] = {
 
 const int kMaxSitesPerDay = 200;
 
+// True for "localhost"/*.localhost/*.local hosts and IPv4/IPv6 literals.
+// These are exempted from the HTTPS-First upgrade because local and raw-IP
+// endpoints are usually self-hosted and often serve plain HTTP.
+bool isIpv4Literal(const QString &host)
+{
+    const QStringList parts = host.split(QLatin1Char('.'));
+    if (parts.size() != 4)
+        return false;
+    for (const QString &p : parts) {
+        bool ok = false;
+        const int v = p.toInt(&ok);
+        if (!ok || v < 0 || v > 255 || QString::number(v) != p)
+            return false;
+    }
+    return true;
+}
+
+bool isIpv6Literal(const QString &host)
+{
+    if (!host.contains(QLatin1Char(':')))
+        return false;
+    for (const QChar c : host) {
+        const ushort u = c.unicode();
+        const bool hexDigit = (u >= '0' && u <= '9')
+                              || (u >= 'a' && u <= 'f')
+                              || (u >= 'A' && u <= 'F')
+                              || c == QLatin1Char(':')
+                              || c == QLatin1Char('.')
+                              || c == QLatin1Char('%');
+        if (!hexDigit)
+            return false;
+    }
+    return true;
+}
+
+bool isLocalOrIpAddress(const QString &host)
+{
+    if (host.isEmpty())
+        return false;
+    if (host.compare(QLatin1String("localhost"), Qt::CaseInsensitive) == 0
+        || host.endsWith(QLatin1String(".localhost"), Qt::CaseInsensitive)
+        || host.endsWith(QLatin1String(".local"), Qt::CaseInsensitive))
+        return true;
+    return isIpv4Literal(host) || isIpv6Literal(host);
+}
+
 } // namespace
 
 TrackerBlocker &TrackerBlocker::instance()
@@ -149,6 +195,7 @@ TrackerBlocker &TrackerBlocker::instance()
 TrackerBlocker::TrackerBlocker()
     : QWebEngineUrlRequestInterceptor(nullptr)
     , m_today(0)
+    , m_lastDate(QDate::currentDate())
 {
     for (const char *host : kBlockedHosts)
         m_blockedHosts.insert(QString::fromLatin1(host));
@@ -163,12 +210,40 @@ bool TrackerBlocker::isBlockedHost(const QString &host) const
     return false;
 }
 
+void TrackerBlocker::rollDayIfNeeded() const
+{
+    // m_today is a cumulative counter, so roll it over the first time it is
+    // touched after midnight. Otherwise a multi-day session would carry
+    // yesterday's total into today and inflate the 7/30-day stats.
+    const QDate today = QDate::currentDate();
+    if (today != m_lastDate) {
+        m_today = 0;
+        m_lastDate = today;
+    }
+}
+
 void TrackerBlocker::interceptRequest(QWebEngineUrlRequestInfo &info)
 {
     // Record every distinct site visited so the Privacy Report can show the
     // percentage of websites that contacted trackers.
     if (info.resourceType() == QWebEngineUrlRequestInfo::ResourceTypeMainFrame) {
-        const QString host = info.requestUrl().host().toLower();
+        // HTTPS-First: auto-upgrade insecure http:// main-frame loads to
+        // https://, except for local hosts and IP literals (typically
+        // self-hosted dev/test servers that do not speak TLS). The redirected
+        // https request is re-intercepted, so it still gets recorded and
+        // Safe-Browsing checked below.
+        const QUrl requestUrl = info.requestUrl();
+        if (requestUrl.scheme().compare(QLatin1String("http"), Qt::CaseInsensitive) == 0
+            && !isLocalOrIpAddress(requestUrl.host())) {
+            QUrl upgraded = requestUrl;
+            upgraded.setScheme(QStringLiteral("https"));
+            if (upgraded.port() == 80)
+                upgraded.setPort(-1); // drop the explicit :80 port
+            info.redirect(upgraded);
+            return;
+        }
+
+        const QString host = requestUrl.host().toLower();
         if (!host.isEmpty()) {
             QMetaObject::invokeMethod(this, [this, host]() {
                 const QString day = QDate::currentDate().toString(Qt::ISODate);
@@ -180,8 +255,8 @@ void TrackerBlocker::interceptRequest(QWebEngineUrlRequestInfo &info)
         }
 
         // Offline Safe Browsing: redirect known phishing hosts to a warning page.
-        if (SafeBrowsing::instance().isBlocked(info.requestUrl())) {
-            info.redirect(SafeBrowsing::warningUrl(info.requestUrl()));
+        if (SafeBrowsing::instance().isBlocked(requestUrl)) {
+            info.redirect(SafeBrowsing::warningUrl(requestUrl));
         }
         return;
     }
@@ -191,6 +266,7 @@ void TrackerBlocker::interceptRequest(QWebEngineUrlRequestInfo &info)
         const QString firstPartyHost = info.firstPartyUrl().host().toLower();
         info.block(true);
         QMetaObject::invokeMethod(this, [this, host, firstPartyHost]() {
+            rollDayIfNeeded();
             const QString day = QDate::currentDate().toString(Qt::ISODate);
             ++m_today;
             m_daily[day] = m_today;
@@ -366,10 +442,12 @@ void TrackerBlocker::loadData()
         }
     }
     m_today = m_daily.value(QDate::currentDate().toString(Qt::ISODate), 0);
+    m_lastDate = QDate::currentDate();
 }
 
 void TrackerBlocker::saveData()
 {
+    rollDayIfNeeded();
     const QString today = QDate::currentDate().toString(Qt::ISODate);
     m_daily[today] = m_today;
 

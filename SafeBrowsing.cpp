@@ -59,6 +59,7 @@ void SafeBrowsing::loadExtraList()
         return;
     const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
     if (doc.isArray()) {
+        QWriteLocker locker(&m_lock);
         for (const QJsonValue &v : doc.array()) {
             const QString host = v.toString().trimmed().toLower();
             if (!host.isEmpty())
@@ -70,7 +71,10 @@ void SafeBrowsing::loadExtraList()
 
 void SafeBrowsing::allow(const QString &host)
 {
-    m_allowed.insert(host.trimmed().toLower());
+    {
+        QWriteLocker locker(&m_lock);
+        m_allowed.insert(host.trimmed().toLower());
+    }
     emit changed();
 }
 
@@ -91,6 +95,7 @@ bool SafeBrowsing::isBlocked(const QUrl &url) const
     if (scheme != QLatin1String("http") && scheme != QLatin1String("https"))
         return false;
     const QString host = url.host().toLower();
+    QReadLocker locker(&m_lock);
     if (m_allowed.contains(host))
         return false;
     return hostMatches(host);

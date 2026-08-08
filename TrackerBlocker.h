@@ -24,7 +24,7 @@ public:
 
     void interceptRequest(QWebEngineUrlRequestInfo &info) override;
 
-    int trackersBlockedToday() const { return m_today; }
+    int trackersBlockedToday() const { rollDayIfNeeded(); return m_today; }
     int trackersBlockedThisWeek() const { return blockedLastNDays(7); }
     int trackersBlockedLast30Days() const { return blockedLastNDays(30); }
     QString mostContactedTracker() const;
@@ -47,10 +47,12 @@ private:
     bool isBlockedHost(const QString &host) const;
     int blockedLastNDays(int days) const;
     QList<QDate> daysInWindow(int days) const;
+    void rollDayIfNeeded() const;
 
     QSet<QString> m_blockedHosts;
-    int m_today;
-    QMap<QString, int> m_daily;                        // day (ISO) -> total blocked
+    mutable int m_today;
+    mutable QDate m_lastDate;                          // last day m_today was rolled
+    QMap<QString, int> m_daily;                        // day (ISO) -> blocked that day
     QMap<QString, QMap<QString, int>> m_hostCounts;    // day -> host -> blocked count
     QMap<QString, QMap<QString, QSet<QString>>> m_hostSites; // day -> host -> distinct sites
     QMap<QString, QSet<QString>> m_sitesByDay;         // day -> distinct visited sites

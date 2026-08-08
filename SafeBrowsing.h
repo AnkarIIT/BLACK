@@ -5,6 +5,7 @@
 #include <QString>
 #include <QUrl>
 #include <QSet>
+#include <QReadWriteLock>
 
 // Offline Safe Browsing: blocks navigation to hosts on an embedded list plus
 // any extra domains in <AppDataLocation>/safebrowsing.json. No cloud Google
@@ -35,6 +36,9 @@ private:
 
     QSet<QString> m_blocked;
     QSet<QString> m_allowed;
+    // Guarded: allow() runs on the GUI thread while interceptRequest() reads
+    // isBlocked() from Chromium's IO thread.
+    mutable QReadWriteLock m_lock;
 };
 
 #endif
