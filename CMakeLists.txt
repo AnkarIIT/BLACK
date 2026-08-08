@@ -26,13 +26,19 @@ qt_add_executable(BLACK
     ShelfStore.h
     PasswordStore.cpp
     PasswordStore.h
+    VaultCrypto.cpp
+    VaultCrypto.h
     ExtensionManager.cpp
     ExtensionManager.h
     Account.cpp
     Account.h
     SafeBrowsing.cpp
     SafeBrowsing.h
+    OSPaths.cpp
+    OSPaths.h
     OnboardingBridge.h
+    BookmarkImporter.cpp
+    BookmarkImporter.h
     resources.rc
 )
 
