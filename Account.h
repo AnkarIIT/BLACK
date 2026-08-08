@@ -24,6 +24,11 @@ public:
     Q_INVOKABLE void signIn(const QString &name);
     Q_INVOKABLE void signOut();
 
+    // Marks first-run onboarding as finished once the user actually completes
+    // the login page (create profile / continue as guest), instead of when the
+    // login page is merely shown. Writes <AppDataLocation>/.first_run_done.
+    Q_INVOKABLE void completeOnboarding();
+
 signals:
     void changed();
 

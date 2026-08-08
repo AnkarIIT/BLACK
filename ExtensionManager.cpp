@@ -6,6 +6,7 @@
 #include <QStandardPaths>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QStringList>
 #include <QRegularExpression>
 
@@ -16,6 +17,24 @@ QString extRoot()
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir().mkpath(dir);
     return dir + QLatin1Char('/') + QStringLiteral("extensions");
+}
+
+// Accept only safe relative paths from a manifest "js" entry: no absolute
+// paths, no drive/colon references, no backslashes, no ".." traversal. The
+// result is further verified by a canonical containment check in
+// buildScripts() so even symlinked or cleaned paths cannot escape the
+// extension directory.
+bool isSafeRelativePath(const QString &p)
+{
+    if (p.isEmpty())
+        return false;
+    if (p.startsWith(QLatin1Char('/')) || p.startsWith(QLatin1Char('\\')))
+        return false;                 // absolute path
+    if (p.contains(QLatin1Char('\\')) || p.contains(QLatin1Char(':')))
+        return false;                 // Windows separators / drive letters
+    if (p.contains(QStringLiteral("..")))
+        return false;                 // parent traversal (also covers "a/../b")
+    return true;
 }
 
 // Turn a glob-like token into regex source: '*' -> '.*', everything else escaped.
@@ -131,11 +150,19 @@ QList<QWebEngineScript> ExtensionManager::buildScripts() const
     QList<QWebEngineScript> scripts;
     const QString root = extRoot();
     for (const ExtensionInfo &e : m_extensions) {
+        const QString extDir = QDir::cleanPath(root + QLatin1Char('/') + e.id);
+        const QString extCanonical = QFileInfo(extDir).canonicalFilePath();
+        int entryIndex = 0;
         for (const QJsonValue &csVal : e.contentScripts) {
             const QJsonObject cs = csVal.toObject();
             const QJsonArray matches = cs.value(QStringLiteral("matches")).toArray();
             const QJsonArray js = cs.value(QStringLiteral("js")).toArray();
             if (js.isEmpty())
+                continue;
+            // A content script without at least one explicit match pattern
+            // would run on every page, so it is skipped (Chrome requires
+            // "matches" for the same reason).
+            if (matches.isEmpty())
                 continue;
 
             QStringList matchers;
@@ -144,21 +171,50 @@ QList<QWebEngineScript> ExtensionManager::buildScripts() const
                 if (!rx.isEmpty())
                     matchers.append(QStringLiteral("/(?:%1)/.test(location.href)").arg(rx));
             }
-            const QString guard = matchers.isEmpty()
-                ? QStringLiteral("true")
-                : QStringLiteral("(%1)").arg(matchers.join(QStringLiteral("||")));
+            if (matchers.isEmpty())
+                continue;
+            const QString guard = QStringLiteral("(%1)").arg(matchers.join(QStringLiteral("||")));
 
+            // Load only manifest entries that resolve inside the extension's
+            // own directory (blocks "../..", absolute paths and symlink
+            // escapes from being read).
             QString body;
+            bool ok = true;
             for (const QJsonValue &jv : js) {
-                QFile f(root + QLatin1Char('/') + e.id + QLatin1Char('/') + jv.toString());
+                const QString rel = jv.toString();
+                if (!isSafeRelativePath(rel)) {
+                    ok = false;
+                    break;
+                }
+                const QString file = QDir::cleanPath(extDir + QLatin1Char('/') + rel);
+                if (!file.startsWith(extDir + QLatin1Char('/'))) {
+                    ok = false;
+                    break;
+                }
+                const QString canonical = QFileInfo(file).canonicalFilePath();
+                if (!canonical.isEmpty()
+                    && (extCanonical.isEmpty()
+                        || !canonical.startsWith(extCanonical + QLatin1Char('/')))) {
+                    ok = false;
+                    break;
+                }
+                QFile f(file);
                 if (f.open(QIODevice::ReadOnly))
                     body += QString::fromUtf8(f.readAll()) + QLatin1Char('\n');
             }
+            if (!ok)
+                continue;
 
             QWebEngineScript script;
-            script.setName(QStringLiteral("black-ext:%1").arg(e.id));
+            // Unique per-entry name so an extension with several content
+            // scripts does not have later entries silently overwrite earlier
+            // ones in the profile's script collection.
+            script.setName(QStringLiteral("black-ext:%1:%2").arg(e.id).arg(entryIndex++));
             script.setInjectionPoint(QWebEngineScript::DocumentReady);
-            script.setWorldId(QWebEngineScript::MainWorld);
+            // Isolated ApplicationWorld: the page's own JavaScript and the
+            // extension script cannot read each other's variables, so a site
+            // cannot inspect or tamper with what an extension does.
+            script.setWorldId(QWebEngineScript::ApplicationWorld);
             script.setRunsOnSubFrames(cs.value(QStringLiteral("all_frames")).toBool(false));
             script.setSourceCode(QStringLiteral("(function(){if(!(%1))return;\n%2})();")
                                      .arg(guard, body));

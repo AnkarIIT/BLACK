@@ -12,6 +12,13 @@ QString accountFile()
     QDir().mkpath(dir);
     return dir + QLatin1Char('/') + QStringLiteral("account.json");
 }
+
+QString firstRunMarker()
+{
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(dir);
+    return dir + QLatin1Char('/') + QStringLiteral(".first_run_done");
+}
 }
 
 Account::Account(QObject *parent)
@@ -39,6 +46,13 @@ void Account::signOut()
     m_authMethod = QStringLiteral("none");
     save();
     emit changed();
+}
+
+void Account::completeOnboarding()
+{
+    QFile marker(firstRunMarker());
+    if (marker.open(QIODevice::WriteOnly))
+        marker.write("1");
 }
 
 void Account::load()

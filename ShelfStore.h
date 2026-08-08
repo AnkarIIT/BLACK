@@ -23,6 +23,12 @@ public:
     Q_INVOKABLE void remove(const QString &url);
     Q_INVOKABLE void clearAll();
 
+    // Bulk-imports a batch of { "title", "url" } entries (e.g. from another
+    // browser). URLs are normalized, the batch is deduplicated against itself
+    // and against existing entries, and everything is persisted with a single
+    // disk write. Returns the number of items actually imported.
+    Q_INVOKABLE int importBookmarks(const QJsonArray &items);
+
     // Entries older than this many days are dropped on read (0 = keep all).
     void setRetentionDays(int days);
 

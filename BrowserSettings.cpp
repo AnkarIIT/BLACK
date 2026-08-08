@@ -1,11 +1,10 @@
 #include "BrowserSettings.h"
+#include "OSPaths.h"
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStandardPaths>
 #include <QDir>
-#include <QDesktopServices>
-#include <QUrl>
 
 namespace {
 const QLatin1String kGeneralKey("general");
@@ -36,7 +35,7 @@ BrowserSettings::BrowserSettings(QObject *parent)
     , m_newTabsWith(QStringLiteral("Start Page"))
     , m_removeHistoryItems(QStringLiteral("After one year"))
     , m_removeDownloadListItems(QStringLiteral("After one day"))
-    , m_openSafeFiles(true)
+    , m_openSafeFiles(false)
     , m_homepage(QString())
     , m_downloadLocation(QStringLiteral("Downloads"))
     , m_tabLayout(QStringLiteral("Separate"))
@@ -183,5 +182,5 @@ void BrowserSettings::setBool(const QString &key, bool value)
 
 void BrowserSettings::openDefaultBrowserSettings()
 {
-    QDesktopServices::openUrl(QUrl(QStringLiteral("ms-settings:defaultapps")));
+    OSPaths::openDefaultBrowserSettings();
 }
