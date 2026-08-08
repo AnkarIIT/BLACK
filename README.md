@@ -19,7 +19,7 @@ A high-performance, Safari-inspired browser for Windows, built with **Qt 6.8.0**
 - **Hardened WebEngine**: clipboard and screen-capture access are disabled in the page settings.
 
 ### Onboarding
-- A frameless, **15-frame WebGL cinematic** first-run experience built with **Three.js & GSAP**, covering profile creation, import, personalization, and privacy level — all local, no account required.
+- A frameless, **16-frame WebGL cinematic** first-run experience built with **Three.js & GSAP**, covering profile creation, import, personalization, and privacy level — all local, no account required.
 
 ## First-Time Login Flow
 
@@ -122,7 +122,7 @@ BLACK/
 ├── ExtensionManager.cpp/.h       # Internal extension pages
 ├── Account.cpp/.h                # Local profile + first-run marker
 ├── login.html                    # First-run login (local profile / guest)
-├── onboarding_experience.html    # 15-frame WebGL cinematic onboarding
+├── onboarding_experience.html    # 16-frame WebGL cinematic onboarding
 ├── startpage_enhanced.html       # Start page
 ├── settings.html, bookmarks.html # Settings & bookmarks UI
 ├── history.html, extensions.html # History & extensions UI

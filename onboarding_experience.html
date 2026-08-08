@@ -181,10 +181,24 @@
         opacity: 0; pointer-events: none;
     }
 
-    /* Hero (Frame 14) */
+    /* Hero / final frame */
     #frame-14 { background: transparent; border: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
     #frame-14 h1 { letter-spacing: 4px; }
     #frame-14 .emoji-msg { color: var(--text); }
+
+    /* Frame 15 dashboard-like hero */
+    #frame-15 { display: grid; grid-template-columns: 1fr; gap: 16px; pointer-events: auto; }
+    .dash-grid {
+        display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
+        margin-top: 14px; opacity: 0; transform: translateY(12px);
+    }
+    .dash-tile {
+        border: 1px solid rgba(255,255,255,0.10); background: rgba(255,255,255,0.03);
+        border-radius: 14px; padding: 18px 16px; text-align: left; min-height: 100px;
+    }
+    .dash-tile .t { font-size: 11px; letter-spacing: 3px; color: var(--muted); text-transform: uppercase; }
+    .dash-tile .v { font-size: 22px; letter-spacing: 2px; margin-top: 8px; color: var(--text); }
+    .dash-tile .c { font-size: 11px; color: var(--accent); margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -268,6 +282,13 @@
         <button class="btn-orange" id="btn-privacy" style="opacity:0.45; pointer-events:none;">Next &rarr;</button>
     </div>
 
+    <div id="frame-10" class="frame-card">
+        <div class="kicker">Local</div>
+        <h2>Local-first storage</h2>
+        <p class="sub">Your choices stay on this device.</p>
+        <div class="task-panel" id="local-tasks"></div>
+    </div>
+
     <div id="frame-11" class="frame-card">
         <div class="kicker">Build</div>
         <h2>Building your Blackhole</h2>
@@ -284,6 +305,14 @@
         <div class="task-panel" id="opt-tasks"></div>
     </div>
 
+    <div id="frame-13" class="frame-card">
+        <div class="kicker">Finalizing</div>
+        <h2>Finalizing setup</h2>
+        <p class="sub">Applying your preferences.</p>
+        <div class="progress-track"><div class="progress-fill" id="final-fill"></div></div>
+        <div class="progress-pct" id="final-pct">0%</div>
+    </div>
+
     <div id="reveal-pct">100%</div>
 
     <div id="frame-14" class="frame-card">
@@ -292,6 +321,19 @@
         <p class="sub">Your browser is ready to take you anywhere.</p>
         <button class="btn-orange" id="btn-launch">Launch Blackhole</button>
         <div><button class="btn-ghost" id="btn-skip">Skip Tour</button></div>
+    </div>
+
+    <div id="frame-15" class="frame-card">
+        <div class="kicker">Dashboard</div>
+        <h2>Your space</h2>
+        <p class="sub">Built from your local preferences.</p>
+        <div class="dash-grid">
+            <div class="dash-tile"><div class="t">Profile</div><div class="v" id="dash-name">Local</div><div class="c">Local profile</div></div>
+            <div class="dash-tile"><div class="t">Privacy</div><div class="v" id="dash-privacy">-</div><div class="c">Applied locally</div></div>
+            <div class="dash-tile"><div class="t">Usage</div><div class="v" id="dash-usage">-</div><div class="c">Local preference</div></div>
+            <div class="dash-tile"><div class="t">Storage</div><div class="v">On device</div><div class="c">No cloud sync</div></div>
+        </div>
+        <button class="btn-orange" id="btn-launch-final" style="margin-top:18px;">Launch &rarr;</button>
     </div>
 
     <div id="flash"></div>
@@ -316,7 +358,15 @@ function callBridge(method, arg) {
     }
 }
 
-var state = { frame: 1, name: "Explorer" };
+/* ============================ State ============================ */
+var state = {
+    frame: 1,
+    name: "Explorer",
+    usage: "",
+    priority: "",
+    privacy: "",
+    importLocal: true,
+};
 
 /* ============================ Scene ============================ */
 var canvas = document.getElementById("webgl-canvas");
@@ -327,7 +377,7 @@ scene.fog = new THREE.FogExp2(0x030303, 0.004);
 var camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 400);
 camera.position.set(0, 0, 14);
 
-var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, powerPreference: "high-performance" });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 
@@ -343,8 +393,7 @@ scene.add(rimLight);
 function makePoints(count, spreadMin, spreadMax, ySpread, colorFn, size) {
     var pos = new Float32Array(count * 3);
     var col = new Float32Array(count * 3);
-    var i;
-    for (i = 0; i < count; i++) {
+    for (var i = 0; i < count; i++) {
         var r = spreadMin + Math.random() * (spreadMax - spreadMin);
         var th = Math.random() * Math.PI * 2;
         pos[i*3] = Math.cos(th) * r;
@@ -376,7 +425,7 @@ function makeBlackholeTexture() {
     return tex;
 }
 
-/* Blackhole group: core shadow + accretion rings + particle disk + dust */
+/* Blackhole group */
 var blackhole = new THREE.Group();
 scene.add(blackhole);
 
@@ -414,7 +463,7 @@ blackhole.add(dust);
 var stars = makePoints(1100, 40, 120, 70, function () { var t = 0.5 + Math.random() * 0.5; return [t, t, t]; }, 0.16);
 scene.add(stars);
 
-/* Planet (frames 05-09): sits low in the frame */
+/* Planet anchor */
 var planet = new THREE.Group();
 var planetMesh = new THREE.Mesh(
     new THREE.SphereGeometry(11, 48, 48),
@@ -431,7 +480,7 @@ planet.position.set(0, -15, 4);
 planet.visible = false;
 scene.add(planet);
 
-/* Frame 14: alien surface + astronaut */
+/* Frame 13-15: surface + astronaut + dashboard anchor */
 var surfaceGroup = new THREE.Group();
 scene.add(surfaceGroup);
 var ground = new THREE.Mesh(
@@ -487,7 +536,7 @@ surfaceGroup.add(astronaut);
 
 surfaceGroup.visible = false;
 
-/* ============================ Animation loop ============================ */
+/* ============================ Render loop ============================ */
 var clock = new THREE.Clock();
 var ring2Pulse = true;
 function animate() {
@@ -512,7 +561,7 @@ window.addEventListener("resize", function () {
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-/* ============================ Frame controller ============================ */
+/* ============================ UI helpers ============================ */
 function showCard(id) {
     var cards = document.querySelectorAll(".frame-card");
     for (var i = 0; i < cards.length; i++) cards[i].classList.remove("active");
@@ -536,13 +585,23 @@ function resetCamera() {
     camera.lookAt(0, 0, 0);
 }
 
-/* ---------------- Frames 01-05: auto opening ---------------- */
+/* ============================ Frame controller ============================ */
+function onFrameStart(n) {
+    state.frame = n;
+    if (bridge && typeof bridge.onFrameChanged === "function") {
+        callBridge("onFrameChanged", String(n));
+    }
+}
+
+/* ---------------- Frames 01-05: opening ---------------- */
 function frame2() {
+    onFrameStart(2);
     gsap.to(camera.position, { z: 1.35, duration: 2.6, ease: "power3.inOut" });
     gsap.to(blackhole.rotation, { y: "+=1.6", duration: 2.6, ease: "power3.inOut" });
     gsap.delayedCall(2.6, frame3);
 }
 function frame3() {
+    onFrameStart(3);
     ring2Pulse = false;
     var tl = gsap.timeline();
     tl.to([disk.material, ring.material, ring2.material, dust.material], { opacity: 0, duration: 1.3, ease: "power2.in" }, 0)
@@ -551,6 +610,7 @@ function frame3() {
     tl.call(frame4, null, 1.6);
 }
 function frame4() {
+    onFrameStart(4);
     var text = "welcome";
     var el = document.getElementById("typing-text");
     var wrap = document.getElementById("frame-04");
@@ -566,6 +626,7 @@ function frame4() {
     }, 150);
 }
 function frame5() {
+    onFrameStart(5);
     var wrap = document.getElementById("frame-04");
     gsap.to(wrap, { opacity: 0, scale: 0.35, letterSpacing: "0px", duration: 0.9, ease: "power2.in", onComplete: function () {
         wrap.style.transform = "";
@@ -579,14 +640,15 @@ function frame5() {
     gsap.to(stars.material, { opacity: 0.85, duration: 1.2 });
     gsap.to(core.scale, { x: 3.2, y: 3.2, duration: 1.2 });
     gsap.to(blackhole.scale, { x: 0.5, y: 0.5, z: 0.5, duration: 1.6, ease: "power2.out" });
-    gsap.delayedCall(0.5, function () { showCard("frame-05"); });
+    gsap.delayedCall(0.5, function () { _showCard("frame-05"); });
 }
 
 /* ---------------- Frame 05 -> 06 ---------------- */
 document.getElementById("btn-getstarted").addEventListener("click", function () {
+    onFrameStart(6);
     gsap.to("#frame-05", { scale: 0.96, duration: 0.16, yoyo: true, repeat: 1 });
     gsap.delayedCall(0.32, function () {
-        showCard("frame-06");
+        _showCard("frame-06");
         gsap.fromTo("#frame-06 .provider-btn", { opacity: 0, x: 24 }, { opacity: 1, x: 0, duration: 0.6, stagger: 0.08, ease: "power2.out" });
     });
 });
@@ -595,9 +657,10 @@ document.getElementById("btn-getstarted").addEventListener("click", function () 
 var contButtons = document.querySelectorAll("[data-continue]");
 for (var ci = 0; ci < contButtons.length; ci++) {
     contButtons[ci].addEventListener("click", function () {
+        onFrameStart(7);
         var n = document.getElementById("profile-name").value.trim();
         if (n) state.name = n;
-        showCard("frame-07");
+        _showCard("frame-07");
         var items = document.querySelectorAll("#import-list .import-item");
         gsap.fromTo(items, { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.5, stagger: 0.09, ease: "power2.out" });
     });
@@ -606,6 +669,7 @@ for (var ci = 0; ci < contButtons.length; ci++) {
 /* ---------------- Frame 07 -> 08 ---------------- */
 document.getElementById("btn-skip-import").addEventListener("click", function () { goPersonalize(); });
 document.getElementById("btn-import").addEventListener("click", function () {
+    onFrameStart(8);
     var items = document.querySelectorAll("#import-list .import-item");
     var btn = this;
     btn.style.pointerEvents = "none"; btn.style.opacity = "0.5";
@@ -622,7 +686,8 @@ document.getElementById("btn-import").addEventListener("click", function () {
     }, 420);
 });
 function goPersonalize() {
-    showCard("frame-08");
+    onFrameStart(8);
+    _showCard("frame-08");
     var q = document.getElementById("question");
     q.classList.remove("step2");
     document.getElementById("pill-grid-2").style.display = "none";
@@ -653,7 +718,6 @@ document.getElementById("pill-grid-2").addEventListener("click", function (ev) {
 });
 document.getElementById("btn-personalize").addEventListener("click", function () {
     var sel = document.querySelectorAll(".pill.selected");
-    var bounds = sel.length ? sel[0].getBoundingClientRect() : null;
     var cx = window.innerWidth / 2, cy = window.innerHeight / 2;
     for (var i = 0; i < sel.length; i++) {
         var b = sel[i].getBoundingClientRect();
@@ -663,40 +727,47 @@ document.getElementById("btn-personalize").addEventListener("click", function ()
     gsap.delayedCall(0.8, goPrivacy);
 });
 function goPrivacy() {
-    showCard("frame-09");
+    onFrameStart(9);
+    _showCard("frame-09");
     gsap.fromTo(".privacy-card", { opacity: 0, y: 18 },
                 { opacity: 1, y: 0, duration: 0.6, stagger: 0.1, ease: "power2.out" });
     gsap.to("#btn-privacy", { opacity: 0.45 });
     document.getElementById("btn-privacy").style.pointerEvents = "none";
 }
 
-/* ---------------- Frame 09: privacy ---------------- */
+/* ---------------- Frame 09: privacy -> frame 10 local confirmation ---------------- */
 document.querySelectorAll(".privacy-card").forEach(function (c) {
     c.addEventListener("click", function () {
         document.querySelectorAll(".privacy-card").forEach(function (o) { o.classList.remove("selected"); });
         c.classList.add("selected");
+        state.privacy = (c.querySelector(".lv") || {}).textContent || "";
         enableNext("btn-privacy");
     });
 });
 document.getElementById("btn-privacy").addEventListener("click", function () {
-    setPlanet(false);
-    goBuild();
+    goLocalConfirmation();
 });
 
-function goBuild() {
-    blackhole.scale.set(0.3, 0.3, 0.3);
-    gsap.to(blackhole.scale, { x: 1, y: 1, z: 1, duration: 1.6, ease: "power2.out" });
-    gsap.to(camera.position, { z: 16, duration: 1.6, ease: "power2.out" });
-    gsap.delayedCall(0.7, function () { showCard("frame-11"); runBuild(); });
+function goLocalConfirmation() {
+    onFrameStart(10);
+    setPlanet(false);
+    renderTasks("local-tasks", [
+        "Saving preferences locally",
+        "Keeping data on device",
+        "No cloud services used",
+    ]);
+    _showCard("frame-10");
+    gsap.delayedCall(0.9, goBuild);
 }
 
 /* ---------------- Frame 11: building ---------------- */
 var BUILD_TASKS = [
     "Preparing local profile", "Indexing bookmarks", "Securing passwords",
-    "Optimizing performance", "Polishing your start page", "Almost done..."
+    "Optimizing performance", "Polishing start page", "Almost done..."
 ];
 function renderTasks(containerId, tasks) {
     var el = document.getElementById(containerId);
+    if (!el) return;
     el.innerHTML = "";
     tasks.forEach(function (label) {
         var row = document.createElement("div");
@@ -704,6 +775,11 @@ function renderTasks(containerId, tasks) {
         row.innerHTML = '<span class="mark">&#10003;</span><span class="lbl">' + label + "</span>";
         el.appendChild(row);
     });
+}
+function goBuild() {
+    onFrameStart(11);
+    _showCard("frame-11");
+    runBuild();
 }
 function runBuild() {
     renderTasks("build-tasks", BUILD_TASKS);
@@ -733,9 +809,10 @@ function runBuild() {
     });
 }
 function goOptimize() {
+    onFrameStart(12);
     gsap.to("#frame-11", { scale: 0.9, opacity: 0, duration: 0.5, ease: "power2.in" });
     gsap.delayedCall(0.55, function () {
-        showCard("frame-12");
+        _showCard("frame-12");
         runOptimize();
     });
 }
@@ -754,7 +831,7 @@ function runOptimize() {
     var iv = setInterval(function () {
         if (idx >= OPT_TASKS.length) {
             clearInterval(iv);
-            gsap.delayedCall(0.8, runReveal);
+            gsap.delayedCall(0.8, runFinalize);
             return;
         }
         rows[idx].classList.add("done");
@@ -763,8 +840,30 @@ function runOptimize() {
         if (idx < OPT_TASKS.length) rows[idx].classList.add("active");
     }, 1500);
 }
-function runReveal() {
+function runFinalize() {
+    onFrameStart(13);
     gsap.to("#frame-12", { scale: 0.9, opacity: 0, duration: 0.6, ease: "power2.in" });
+    gsap.delayedCall(0.55, function () {
+        _showCard("frame-13");
+        var fill = document.getElementById("final-fill");
+        var txt = document.getElementById("final-pct");
+        var prog = { v: 0 };
+        gsap.to(prog, {
+            v: 100, duration: 1.6, ease: "power2.inOut",
+            onUpdate: function () {
+                var v = Math.floor(prog.v);
+                fill.style.width = v + "%";
+                txt.textContent = v + "%";
+            },
+            onComplete: function () { gsap.delayedCall(0.55, runReveal); }
+        });
+    });
+}
+
+/* ---------------- Frames 13 -> reveal -> hero -> dashboard ---------------- */
+function runReveal() {
+    onFrameStart(14);
+    gsap.to("#frame-13", { scale: 0.9, opacity: 0, duration: 0.6, ease: "power2.in" });
     gsap.to(blackhole.scale, { x: 1.15, y: 1.15, z: 1.15, duration: 0.8, ease: "power2.in" });
     gsap.delayedCall(0.7, function () {
         var pct = document.getElementById("reveal-pct");
@@ -791,14 +890,13 @@ function goHero() {
     gsap.to("#reveal-pct", { opacity: 0 });
     gsap.delayedCall(0.4, function () {
         document.getElementById("ready-greeting").textContent = "You're all set, " + (state.name || "Explorer") + "!";
-        showCard("frame-14");
+        onFrameStart(14);
+        _showCard("frame-14");
         gsap.fromTo("#frame-14 h1, #frame-14 .sub", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.8, stagger: 0.18, ease: "power2.out" });
         gsap.fromTo("#btn-launch", { opacity: 0, scale: 0.94 }, { opacity: 1, scale: 1, duration: 0.6, delay: 0.5, ease: "power2.out" });
         startWalk();
     });
 }
-
-/* ---------------- Astronaut walk cycle ---------------- */
 function startWalk() {
     var ud = astronaut.userData;
     var cycle = gsap.timeline({ repeat: -1, yoyo: true, ease: "sine.inOut", duration: 0.55 });
@@ -812,17 +910,20 @@ function startWalk() {
     };
 }
 
-/* ---------------- Launch / Skip ---------------- */
-document.getElementById("btn-launch").addEventListener("click", function () {
+/* ---------------- Launch / Skip / Dashboard continue ---------------- */
+function finishOnboarding() {
     gsap.to(camera.position, { z: 34, y: 6, duration: 1.5, ease: "power2.inOut" });
     gsap.to("#frame-14", { opacity: 0, duration: 0.6, delay: 0.3 });
     gsap.delayedCall(1.6, function () {
         callBridge("completeOnboarding", state.name);
     });
-});
-document.getElementById("btn-skip").addEventListener("click", function () {
+}
+function finishAsGuest() {
     callBridge("finishAsGuest");
-});
+}
+document.getElementById("btn-launch").addEventListener("click", finishOnboarding);
+document.getElementById("btn-skip").addEventListener("click", finishAsGuest);
+document.getElementById("btn-launch-final").addEventListener("click", finishOnboarding);
 
 document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") callBridge("cancel");
@@ -841,7 +942,6 @@ function disableNext(id) {
 }
 
 /* ============================ Boot sequence ============================ */
-// Frame 01 - BLACKHOLE origin: pure scene, no UI card yet.
 gsap.fromTo("#frame-01-wordmark", { opacity: 0, scale: 0.85 }, { opacity: 1, scale: 1, duration: 1.5, ease: "power2.out" });
 gsap.to("#frame-01-wordmark", { opacity: 0, scale: 0.9, duration: 1.2, delay: 3.2, ease: "power2.in" });
 gsap.delayedCall(4.6, frame2);
