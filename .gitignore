@@ -17,5 +17,8 @@ build-linux/
 aqtinstall.log
 *.log
 
+# Visual reference mockups
+welcome_flow.png
+
 # Git state
 .git/
