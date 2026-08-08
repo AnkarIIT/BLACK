@@ -12,6 +12,15 @@
 #include "BrowserWindow.h"
 #include "BrowserSettings.h"
 #include "TrackerBlocker.h"
+#include <QDialog>
+#include <QVBoxLayout>
+#include <QWebEngineView>
+#include <QWebEnginePage>
+#include <QWebChannel>
+#include <QWebEngineScript>
+#include <QUrl>
+#include "Account.h"
+#include "OnboardingBridge.h"
 
 // Platform detection for User-Agent
 #ifdef Q_OS_WIN
@@ -138,6 +147,46 @@ int main(int argc, char *argv[])
     QObject::connect(&app, &QCoreApplication::aboutToQuit, []() {
         TrackerBlocker::instance().saveData();
     });
+
+    // First run: cinematic BLACKHOLE setup window (frameless fullscreen modal)
+    // BEFORE any browser UI exists. Finishing it writes .first_run_done (via
+    // Account::completeOnboarding) and accepts the modal; we then fall through
+    // to the real browser which honors the "Safari opens with" setting.
+    // Closing/cancelling the setup window exits the app.
+    if (isFirstRun()) {
+        Account account;
+        QDialog onboarding;
+        onboarding.setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+        onboarding.setAttribute(Qt::WA_TranslucentBackground);
+        onboarding.showFullScreen();
+
+        QVBoxLayout *layout = new QVBoxLayout(&onboarding);
+        layout->setContentsMargins(0, 0, 0, 0);
+
+        QWebEngineView *view = new QWebEngineView(&onboarding);
+        OnboardingWebPage *page = new OnboardingWebPage(view);
+        view->setPage(page);
+        QWebChannel *channel = new QWebChannel(page);
+        OnboardingBridge bridge(&account, &onboarding);
+        channel->registerObject(QStringLiteral("onboardingBridge"), &bridge);
+        page->setWebChannel(channel, QWebEngineScript::MainWorld);
+        layout->addWidget(view);
+
+        // Diagnostics so first-run problems surface in the log on any platform.
+        QObject::connect(page, &QWebEnginePage::loadFinished, [](bool ok) {
+            qInfo() << "[onboarding] load finished:" << ok;
+        });
+        QObject::connect(page, &OnboardingWebPage::consoleMessage,
+                         [](const QString &message, int lineNumber) {
+            qWarning() << "[onboarding js]" << message << "line" << lineNumber;
+        });
+
+        view->setUrl(QUrl(QStringLiteral("qrc:/onboarding_experience.html")));
+
+        if (onboarding.exec() != QDialog::Accepted) {
+            return 0; // Setup window closed without finishing
+        }
+    }
 
     BrowserWindow window;
 

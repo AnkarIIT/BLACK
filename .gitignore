@@ -1,6 +1,7 @@
 # Build & Framework binaries (TOO LARGE FOR GITHUB)
 Qt/
 build/
+build-linux/
 .vscode/
 
 # Build artifacts

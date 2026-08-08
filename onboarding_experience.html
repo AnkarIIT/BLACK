@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BLACKHOLE</title>
+<script src="vendor/three.min.js"></script>
+<script src="vendor/gsap.min.js"></script>
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<style>
+    :root {
+        --bg: #030303;
+        --accent: #ff6400;
+        --text: #f5f5f7;
+        --muted: #8a8a8f;
+        --line: rgba(255, 100, 0, 0.18);
+        --glass: rgba(15, 15, 17, 0.72);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+        width: 100%; height: 100%; overflow: hidden;
+        background: var(--bg); color: var(--text);
+        font-family: "JetBrains Mono", "IBM Plex Mono", "Space Mono", monospace;
+        -webkit-user-select: none; user-select: none;
+        cursor: default;
+    }
+    canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+    .ui-layer {
+        position: absolute; inset: 0; z-index: 10; pointer-events: none;
+        display: flex; align-items: center; justify-content: center;
+    }
+
+    /* ---- Typing line (Frame 04) ---- */
+    #frame-04 {
+        font-size: 30px; letter-spacing: 6px; color: var(--accent);
+        text-shadow: 0 0 24px rgba(255,100,0,0.5);
+        opacity: 0;
+    }
+    #frame-04 .cursor { animation: blink 0.9s steps(1) infinite; color: var(--accent); }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* ---- Glass cards ---- */
+    .frame-card {
+        position: absolute; text-align: center;
+        background: var(--glass);
+        -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 44px 52px;
+        min-width: min(620px, 88vw);
+        opacity: 0; transform: scale(0.96) translateY(10px);
+        pointer-events: none;
+        transition: opacity 0.6s cubic-bezier(.22,.61,.36,1), transform 0.6s cubic-bezier(.22,.61,.36,1);
+        box-shadow: 0 24px 80px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05);
+    }
+    .frame-card.active { opacity: 1; transform: scale(1) translateY(0); pointer-events: auto; }
+
+    .frame-card h1 { font-size: 34px; letter-spacing: 10px; font-weight: 400; color: var(--text); }
+    .frame-card h2 { font-size: 26px; letter-spacing: 3px; font-weight: 400; }
+    .frame-card .sub { color: var(--muted); font-size: 14px; margin: 10px 0 30px; letter-spacing: 1px; }
+    .frame-card .kicker { color: var(--accent); font-size: 12px; letter-spacing: 4px; text-transform: uppercase; margin-bottom: 12px; }
+
+    .btn-orange {
+        display: inline-block; background: transparent;
+        border: 1px solid var(--accent); color: var(--text);
+        padding: 14px 34px; border-radius: 10px; cursor: pointer;
+        font: 600 13px "JetBrains Mono", monospace; letter-spacing: 3px; text-transform: uppercase;
+        transition: background 0.35s ease, box-shadow 0.35s ease, transform 0.15s ease;
+        box-shadow: 0 0 18px rgba(255,100,0,0.12);
+    }
+    .btn-orange:hover { background: var(--accent); box-shadow: 0 0 38px rgba(255,100,0,0.55); color: #fff; }
+    .btn-orange:active { transform: scale(0.96); }
+
+    .btn-ghost {
+        display: inline-block; background: transparent; border: none;
+        color: var(--muted); cursor: pointer; font: 400 12px "JetBrains Mono", monospace;
+        letter-spacing: 2px; text-transform: uppercase; margin-top: 18px;
+        text-decoration: underline; text-underline-offset: 4px;
+        transition: color 0.3s ease;
+    }
+    .btn-ghost:hover { color: var(--text); }
+
+    .row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+
+    .provider-btn {
+        width: min(420px, 74vw); margin: 8px auto; display: flex; align-items: center; justify-content: center; gap: 12px;
+        background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.10);
+        color: var(--text); padding: 14px 22px; border-radius: 10px; cursor: pointer;
+        font: 500 14px "JetBrains Mono", monospace; letter-spacing: 1px;
+        transition: border-color 0.3s ease, background 0.3s ease, transform 0.15s ease;
+    }
+    .provider-btn:hover { border-color: var(--accent); background: rgba(255,100,0,0.06); transform: translateY(-2px); }
+    .provider-btn .ic { font-size: 18px; color: var(--accent); }
+    .name-field {
+        width: min(420px, 74vw); margin: 14px auto 4px; display: block;
+        background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12);
+        color: var(--text); padding: 13px 16px; border-radius: 10px;
+        font: 400 14px "JetBrains Mono", monospace; outline: none;
+        text-align: center; transition: border-color 0.3s ease;
+    }
+    .name-field:focus { border-color: var(--accent); }
+
+    /* Import checklist */
+    .import-list { width: min(460px, 80vw); margin: 8px auto 26px; text-align: left; }
+    .import-item {
+        display: flex; align-items: center; gap: 14px;
+        padding: 12px 6px; border-bottom: 1px solid rgba(255,255,255,0.05);
+        font-size: 14px; letter-spacing: 1px; color: var(--muted);
+        opacity: 0; transform: translateY(12px);
+    }
+    .import-item .dot {
+        width: 22px; height: 22px; border-radius: 50%; flex: 0 0 22px;
+        border: 1px solid rgba(255,255,255,0.18); display: flex; align-items: center; justify-content: center;
+        font-size: 12px; color: transparent; transition: all 0.35s ease;
+    }
+    .import-item.checked { color: var(--text); }
+    .import-item.checked .dot { border-color: var(--accent); box-shadow: 0 0 12px rgba(255,100,0,0.5); color: var(--accent); }
+
+    /* Preference pills */
+    .pills-grid { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin: 24px auto 30px; max-width: 560px; }
+    .pill {
+        padding: 12px 22px; border: 1px solid rgba(255,255,255,0.12); border-radius: 22px;
+        background: rgba(255,255,255,0.03); cursor: pointer;
+        font: 400 13px "JetBrains Mono", monospace; letter-spacing: 1px; color: var(--text);
+        transition: border-color 0.3s ease, background 0.3s ease, box-shadow 0.3s ease;
+        opacity: 0; transform: translateY(10px) scale(0.95);
+    }
+    .pill:hover { border-color: rgba(255,100,0,0.5); }
+    .pill.selected { border-color: var(--accent); background: rgba(255,100,0,0.08); box-shadow: 0 0 14px rgba(255,100,0,0.25); }
+    .question { min-height: 30px; }
+    .question .q { font-size: 18px; letter-spacing: 2px; }
+    .question .q2 { display: none; }
+    .question.step2 .q1 { display: none; }
+    .question.step2 .q2 { display: block; }
+
+    /* Privacy cards */
+    .privacy-cards { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin: 26px auto 32px; }
+    .privacy-card {
+        width: 170px; padding: 26px 18px; border-radius: 14px; cursor: pointer;
+        border: 1px solid rgba(255,255,255,0.10); background: rgba(255,255,255,0.02);
+        transition: all 0.3s ease; text-align: center; opacity: 0; transform: translateY(16px);
+    }
+    .privacy-card:hover { border-color: rgba(255,100,0,0.45); transform: translateY(-3px); }
+    .privacy-card .lv { font-size: 14px; letter-spacing: 2px; margin-bottom: 8px; }
+    .privacy-card .desc { font-size: 11px; color: var(--muted); line-height: 1.5; }
+    .privacy-card.selected { border-color: var(--accent); background: rgba(255,100,0,0.08); box-shadow: 0 0 24px rgba(255,100,0,0.25); }
+    .privacy-card.selected .orb {
+        width: 14px; height: 14px; margin: 0 auto 14px; border-radius: 50%;
+        border: 2px solid var(--accent); box-shadow: 0 0 12px rgba(255,100,0,0.7);
+        animation: orbitPulse 2.4s ease-in-out infinite;
+    }
+    @keyframes orbitPulse { 0%,100% { box-shadow: 0 0 8px rgba(255,100,0,0.4);} 50% { box-shadow: 0 0 18px rgba(255,100,0,0.9);} }
+    .privacy-card .orb { width: 14px; height: 14px; margin: 0 auto 14px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); }
+
+    /* Connect services */
+    .service-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 26px auto 30px; max-width: 560px; }
+    .service-card {
+        padding: 18px 8px; border-radius: 12px; text-align: center; cursor: pointer;
+        border: 1px solid rgba(255,255,255,0.10); background: rgba(255,255,255,0.02);
+        transition: all 0.3s ease; opacity: 0; transform: translateY(12px) scale(0.94);
+    }
+    .service-card:hover { border-color: rgba(255,100,0,0.5); transform: translateY(-3px); }
+    .service-card .sc-ic { font-size: 22px; color: var(--accent); margin-bottom: 8px; transition: transform 0.3s ease; }
+    .service-card .sc-name { font-size: 11px; letter-spacing: 1px; color: var(--muted); }
+    .service-card.connected { border-color: var(--accent); background: rgba(255,100,0,0.07); }
+    .service-card.connected .sc-name::after { content: "  ✓ Connected"; color: var(--accent); }
+
+    /* Build / Optimize panels */
+    .task-panel { text-align: left; width: min(500px, 86vw); margin: 22px auto 6px; }
+    .task-row {
+        display: flex; align-items: center; gap: 14px; padding: 10px 2px;
+        font-size: 14px; letter-spacing: 1px; color: var(--muted);
+        opacity: 0; transform: translateX(-10px);
+    }
+    .task-row .mark { width: 20px; height: 20px; border-radius: 50%; flex: 0 0 20px; border: 1px solid rgba(255,255,255,0.16); display: flex; align-items: center; justify-content: center; font-size: 11px; color: transparent; transition: all 0.3s ease; }
+    .task-row.done { color: var(--text); }
+    .task-row.done .mark { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 10px rgba(255,100,0,0.4); }
+    .task-row.active { color: var(--text); }
+    .task-row.active .mark { border-color: var(--accent); animation: orbitPulse 1.6s ease-in-out infinite; }
+    .progress-track { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.08); margin: 22px 0 10px; overflow: hidden; position: relative; }
+    .progress-fill { height: 100%; width: 0%; border-radius: 2px; background: linear-gradient(90deg, #b34700, var(--accent)); box-shadow: 0 0 14px rgba(255,100,0,0.7); }
+    .progress-pct { font-size: 13px; letter-spacing: 2px; color: var(--accent); text-align: right; }
+
+    /* Final reveal */
+    #reveal-pct { position: absolute; z-index: 20; font-size: 44px; letter-spacing: 8px; color: var(--accent); text-shadow: 0 0 40px rgba(255,100,0,0.8); opacity: 0; }
+    #flash { position: absolute; inset: 0; z-index: 30; background: radial-gradient(circle at 50% 50%, #fff6ec 0%, #ffb066 40%, transparent 75%); opacity: 0; pointer-events: none; }
+
+    /* Frame 01 wordmark */
+    #frame-01-wordmark {
+        position: absolute; z-index: 5; text-align: center;
+        font-size: 18px; letter-spacing: 14px; color: var(--accent);
+        text-shadow: 0 0 34px rgba(255,100,0,0.5);
+        opacity: 0; pointer-events: none;
+    }
+
+    /* Hero (Frame 14) */
+    #frame-14 { background: transparent; border: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+    #frame-14 h1 { letter-spacing: 4px; }
+    #frame-14 .emoji-msg { color: var(--text); }
+</style>
+</head>
+<body>
+
+<canvas id="webgl-canvas"></canvas>
+
+<div class="ui-layer" id="uiLayer">
+
+    <div id="frame-01-wordmark">BLACKHOLE</div>
+
+    <div id="frame-04"><span id="typing-text"></span><span class="cursor">_</span></div>
+
+    <div id="frame-05" class="frame-card">
+        <div class="kicker">Blackhole</div>
+        <h1>BLACKHOLE</h1>
+        <p class="sub">A browser beyond gravity.</p>
+        <button class="btn-orange" id="btn-getstarted">Get Started &rarr;</button>
+    </div>
+
+    <div id="frame-06" class="frame-card">
+        <div class="kicker">Welcome</div>
+        <h2>Welcome back</h2>
+        <p class="sub">Sync your universe.</p>
+        <input class="name-field" id="profile-name" type="text" maxlength="24"
+               placeholder="Your name (optional)">
+        <button class="provider-btn" data-continue><span class="ic">G</span> Continue with Google</button>
+        <button class="provider-btn" data-continue><span class="ic">&#63743;</span> Continue with Apple</button>
+        <button class="provider-btn" data-continue><span class="ic">&#8862;</span> Continue with Microsoft</button>
+        <div><button class="btn-ghost" data-continue>Continue without account</button></div>
+    </div>
+
+    <div id="frame-07" class="frame-card">
+        <div class="kicker">Import</div>
+        <h2>Import your data</h2>
+        <div class="import-list" id="import-list">
+            <div class="import-item"><span class="dot">&#10003;</span><span>Bookmarks</span></div>
+            <div class="import-item"><span class="dot">&#10003;</span><span>Passwords</span></div>
+            <div class="import-item"><span class="dot">&#10003;</span><span>Extensions</span></div>
+            <div class="import-item"><span class="dot">&#10003;</span><span>History</span></div>
+            <div class="import-item"><span class="dot">&#10003;</span><span>Open Tabs</span></div>
+            <div class="import-item"><span class="dot">&#10003;</span><span>Settings</span></div>
+        </div>
+        <div class="row">
+            <button class="btn-ghost" id="btn-skip-import">Skip</button>
+            <button class="btn-orange" id="btn-import">Import &rarr;</button>
+        </div>
+    </div>
+
+    <div id="frame-08" class="frame-card">
+        <div class="kicker">Personalize</div>
+        <div class="question" id="question">
+            <div class="q q1">What brings you online most?</div>
+            <div class="q q2">What matters most to you?</div>
+        </div>
+        <div class="pills-grid" id="pill-grid-1">
+            <button class="pill" data-pill>Study</button>
+            <button class="pill" data-pill>Work</button>
+            <button class="pill" data-pill>Coding</button>
+            <button class="pill" data-pill>Research</button>
+            <button class="pill" data-pill>Entertainment</button>
+            <button class="pill" data-pill>Shopping</button>
+            <button class="pill" data-pill>Other</button>
+        </div>
+        <div class="pills-grid" id="pill-grid-2" style="display:none;">
+            <button class="pill" data-pill>Speed</button>
+            <button class="pill" data-pill>Privacy</button>
+            <button class="pill" data-pill>Simplicity</button>
+            <button class="pill" data-pill>AI Features</button>
+            <button class="pill" data-pill>Customization</button>
+        </div>
+        <button class="btn-orange" id="btn-personalize" style="opacity:0.45; pointer-events:none;">Next &rarr;</button>
+    </div>
+
+    <div id="frame-09" class="frame-card">
+        <div class="kicker">Privacy</div>
+        <h2>Choose your privacy level</h2>
+        <p class="sub">You're in control.</p>
+        <div class="privacy-cards">
+            <div class="privacy-card" data-privacy><div class="orb"></div><div class="lv">Standard</div><div class="desc">Balanced tracking &amp; personalisation.</div></div>
+            <div class="privacy-card" data-privacy><div class="orb"></div><div class="lv">Balanced</div><div class="desc">Smart protection, minimal tracking.</div></div>
+            <div class="privacy-card" data-privacy><div class="orb"></div><div class="lv">Maximum</div><div class="desc">Block trackers everywhere.</div></div>
+        </div>
+        <button class="btn-orange" id="btn-privacy" style="opacity:0.45; pointer-events:none;">Next &rarr;</button>
+    </div>
+
+    <div id="frame-10" class="frame-card">
+        <div class="kicker">Connect</div>
+        <h2>Connect your services</h2>
+        <p class="sub">Optional &mdash; always under your control.</p>
+        <div class="service-grid">
+            <div class="service-card" data-service><div class="sc-ic">G</div><div class="sc-name">Google</div></div>
+            <div class="service-card" data-service><div class="sc-ic">&#9760;</div><div class="sc-name">GitHub</div></div>
+            <div class="service-card" data-service><div class="sc-ic">N</div><div class="sc-name">Notion</div></div>
+            <div class="service-card" data-service><div class="sc-ic">&#9873;</div><div class="sc-name">Slack</div></div>
+            <div class="service-card" data-service><div class="sc-ic">&#128196;</div><div class="sc-name">Drive</div></div>
+            <div class="service-card" data-service><div class="sc-ic">&#128229;</div><div class="sc-name">Dropbox</div></div>
+            <div class="service-card" data-service><div class="sc-ic">&#128197;</div><div class="sc-name">Calendar</div></div>
+            <div class="service-card" data-service><div class="sc-ic">+</div><div class="sc-name">More</div></div>
+        </div>
+        <button class="btn-orange" id="btn-connect">Continue &rarr;</button>
+    </div>
+
+    <div id="frame-11" class="frame-card">
+        <div class="kicker">Build</div>
+        <h2>Building your Blackhole</h2>
+        <p class="sub">Setting up everything for you.</p>
+        <div class="task-panel" id="build-tasks"></div>
+        <div class="progress-track"><div class="progress-fill" id="build-fill"></div></div>
+        <div class="progress-pct" id="build-pct">0%</div>
+    </div>
+
+    <div id="frame-12" class="frame-card">
+        <div class="kicker">Optimize</div>
+        <h2>Optimizing your experience</h2>
+        <p class="sub">Making it fast, smart and secure.</p>
+        <div class="task-panel" id="opt-tasks"></div>
+    </div>
+
+    <div id="reveal-pct">100%</div>
+
+    <div id="frame-14" class="frame-card">
+        <div class="kicker">Ready</div>
+        <h1 class="emoji-msg" id="ready-greeting">You're all set.</h1>
+        <p class="sub">Your browser is ready to take you anywhere.</p>
+        <button class="btn-orange" id="btn-launch">Launch Blackhole</button>
+        <div><button class="btn-ghost" id="btn-skip">Skip Tour</button></div>
+    </div>
+
+    <div id="flash"></div>
+</div>
+
+<script>
+"use strict";
+
+/* ============================ Bridge ============================ */
+var bridge = null;
+var bridgeReady = false;
+if (typeof QWebChannel !== "undefined") {
+    new QWebChannel(qt.webChannelTransport, function (ch) {
+        bridge = ch.objects.onboardingBridge;
+        bridgeReady = true;
+        console.log("[onboarding] bridge registered:", !!bridge);
+    });
+}
+function callBridge(method, arg) {
+    if (bridge && bridge[method]) {
+        bridge[method](arg || "");
+    }
+}
+
+var state = { frame: 1, name: "Explorer" };
+
+/* ============================ Scene ============================ */
+var canvas = document.getElementById("webgl-canvas");
+var scene = new THREE.Scene();
+scene.background = new THREE.Color(0x030303);
+scene.fog = new THREE.FogExp2(0x030303, 0.004);
+
+var camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 400);
+camera.position.set(0, 0, 14);
+
+var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+
+var lights = new THREE.AmbientLight(0x383842, 0.7);
+scene.add(lights);
+var dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
+dirLight.position.set(6, 10, 8);
+scene.add(dirLight);
+var rimLight = new THREE.PointLight(0xff6400, 1.2, 60);
+rimLight.position.set(0, 6, 10);
+scene.add(rimLight);
+
+function makePoints(count, spreadMin, spreadMax, ySpread, colorFn, size) {
+    var pos = new Float32Array(count * 3);
+    var col = new Float32Array(count * 3);
+    var i;
+    for (i = 0; i < count; i++) {
+        var r = spreadMin + Math.random() * (spreadMax - spreadMin);
+        var th = Math.random() * Math.PI * 2;
+        pos[i*3] = Math.cos(th) * r;
+        pos[i*3+1] = (Math.random() - 0.5) * ySpread;
+        pos[i*3+2] = Math.sin(th) * r;
+        var c = colorFn ? colorFn() : [1, 1, 1];
+        col[i*3] = c[0]; col[i*3+1] = c[1]; col[i*3+2] = c[2];
+    }
+    var g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    var m = new THREE.PointsMaterial({ size: size, vertexColors: true, transparent: true,
+                                       opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
+    return new THREE.Points(g, m);
+}
+
+function makeBlackholeTexture() {
+    var c = document.createElement("canvas");
+    c.width = c.height = 256;
+    var ctx = c.getContext("2d");
+    var g = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    g.addColorStop(0, "rgba(0,0,0,1)");
+    g.addColorStop(0.42, "rgba(0,0,0,0.95)");
+    g.addColorStop(0.72, "rgba(10,6,2,0.35)");
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 256, 256);
+    var tex = new THREE.CanvasTexture(c);
+    return tex;
+}
+
+/* Blackhole group: core shadow + accretion rings + particle disk + dust */
+var blackhole = new THREE.Group();
+scene.add(blackhole);
+
+var coreTex = makeBlackholeTexture();
+var core = new THREE.Sprite(new THREE.SpriteMaterial({ map: coreTex, transparent: true,
+                                                       depthWrite: false, blending: THREE.NormalBlending }));
+core.scale.set(5.6, 5.6, 1);
+blackhole.add(core);
+
+var ringGeo = new THREE.RingGeometry(2.0, 2.55, 128);
+var ringMat = new THREE.MeshBasicMaterial({ color: 0xff6400, transparent: true, opacity: 0.9,
+                                            side: THREE.DoubleSide, depthWrite: false });
+var ring = new THREE.Mesh(ringGeo, ringMat);
+ring.rotation.x = 1.28;
+blackhole.add(ring);
+
+var ringGeo2 = new THREE.RingGeometry(2.9, 3.4, 128);
+var ringMat2 = new THREE.MeshBasicMaterial({ color: 0xff8833, transparent: true, opacity: 0.22,
+                                             side: THREE.DoubleSide, depthWrite: false });
+var ring2 = new THREE.Mesh(ringGeo2, ringMat2);
+ring2.rotation.x = 1.18;
+blackhole.add(ring2);
+
+var disk = makePoints(3600, 2.7, 11, 0.22, function () {
+    var t = Math.random();
+    var r = 0.55 + 0.45 * t;
+    return [1, 0.35 + 0.55 * r, 0];
+}, 0.09);
+disk.rotation.x = 1.28;
+blackhole.add(disk);
+
+var dust = makePoints(500, 12, 26, 14, function () { return [0.85, 0.82, 0.78]; }, 0.06);
+blackhole.add(dust);
+
+var stars = makePoints(1100, 40, 120, 70, function () { var t = 0.5 + Math.random() * 0.5; return [t, t, t]; }, 0.16);
+scene.add(stars);
+
+/* Planet (frames 05-09): sits low in the frame */
+var planet = new THREE.Group();
+var planetMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(11, 48, 48),
+    new THREE.MeshStandardMaterial({ color: 0x141821, roughness: 0.92, metalness: 0.05 })
+);
+planet.add(planetMesh);
+var atmosphere = new THREE.Mesh(
+    new THREE.SphereGeometry(11.5, 48, 48),
+    new THREE.MeshBasicMaterial({ color: 0xff6400, transparent: true, opacity: 0.10,
+                                  side: THREE.BackSide, depthWrite: false })
+);
+planet.add(atmosphere);
+planet.position.set(0, -15, 4);
+planet.visible = false;
+scene.add(planet);
+
+/* Frame 14: alien surface + astronaut */
+var surfaceGroup = new THREE.Group();
+scene.add(surfaceGroup);
+var ground = new THREE.Mesh(
+    new THREE.SphereGeometry(48, 56, 56),
+    new THREE.MeshStandardMaterial({ color: 0x241a12, roughness: 1.0, metalness: 0 })
+);
+ground.position.set(0, -48, -6);
+surfaceGroup.add(ground);
+var groundAtmo = new THREE.Mesh(
+    new THREE.SphereGeometry(49, 56, 56),
+    new THREE.MeshBasicMaterial({ color: 0xff8a2a, transparent: true, opacity: 0.05,
+                                  side: THREE.BackSide, depthWrite: false })
+);
+groundAtmo.position.set(0, -48, -6);
+surfaceGroup.add(groundAtmo);
+
+function makeAstronaut() {
+    var g = new THREE.Group();
+    var white = new THREE.MeshStandardMaterial({ color: 0xe8e8ef, roughness: 0.55 });
+    var dark = new THREE.MeshStandardMaterial({ color: 0x101014, roughness: 0.3, metalness: 0.6 });
+    var accent = new THREE.MeshStandardMaterial({ color: 0xff6400, emissive: 0xff6400, emissiveIntensity: 0.8 });
+
+    var torso = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.44, 0.72, 20), white);
+    torso.position.y = 0.78; g.add(torso);
+
+    var pack = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.8, 0.26), new THREE.MeshStandardMaterial({ color: 0xcfd4dd, roughness: 0.7 }));
+    pack.position.set(0, 0.72, -0.4); g.add(pack);
+    var blinker = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 12), accent);
+    blinker.position.set(0, 1.02, -0.52); g.add(blinker);
+
+    var helmet = new THREE.Mesh(new THREE.SphereGeometry(0.44, 24, 24), white);
+    helmet.position.y = 1.42; g.add(helmet);
+    var visor = new THREE.Mesh(new THREE.SphereGeometry(0.32, 24, 24), dark);
+    visor.position.set(0, 1.44, 0.16); g.add(visor);
+
+    var legL = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.6, 12), white);
+    legL.position.set(-0.16, 0.28, 0); legL.geometry.translate(0, -0.3, 0);
+    var legR = legL.clone(); legR.position.x = 0.16;
+
+    var armL = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 0.6, 12), white);
+    armL.position.set(-0.5, 1.06, 0); armL.geometry.translate(0, -0.3, 0);
+    var armR = armL.clone(); armR.position.x = 0.5;
+
+    g.add(legL); g.add(legR); g.add(armL); g.add(armR);
+    g.userData = { legL: legL, legR: legR, armL: armL, armR: armR, blinker: blinker };
+    return g;
+}
+var astronaut = makeAstronaut();
+astronaut.position.set(0, 0, -7);
+astronaut.rotation.y = Math.PI * 0.25;
+astronaut.visible = false;
+surfaceGroup.add(astronaut);
+
+surfaceGroup.visible = false;
+
+/* ============================ Animation loop ============================ */
+var clock = new THREE.Clock();
+var ring2Pulse = true;
+function animate() {
+    requestAnimationFrame(animate);
+    var t = clock.getElapsedTime();
+    disk.rotation.y += 0.012;
+    ring.rotation.y += 0.008;
+    ring2.rotation.y -= 0.005;
+    dust.rotation.y += 0.002;
+    stars.rotation.y += 0.0004;
+    if (ring2Pulse) ring2.material.opacity = 0.18 + 0.10 * Math.sin(t * 1.4);
+    if (blinkerAnim) blinkerAnim(t);
+    renderer.render(scene, camera);
+}
+function noop() {}
+var blinkerAnim = noop;
+animate();
+
+window.addEventListener("resize", function () {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+/* ============================ Frame controller ============================ */
+function showCard(id) {
+    var cards = document.querySelectorAll(".frame-card");
+    for (var i = 0; i < cards.length; i++) cards[i].classList.remove("active");
+    var el = document.getElementById(id);
+    if (el) el.classList.add("active");
+}
+
+function setPlanet(visible) {
+    planet.visible = visible;
+    gsap.to(planet.position, { y: visible ? -14.5 : -40, duration: 2.2, ease: "power3.inOut" });
+}
+
+function setSurface(visible) {
+    surfaceGroup.visible = visible;
+    astronaut.visible = visible;
+}
+
+function resetCamera() {
+    gsap.killTweensOf(camera.position);
+    camera.position.set(0, 0, 14);
+    camera.lookAt(0, 0, 0);
+}
+
+/* ---------------- Frames 01-05: auto opening ---------------- */
+function frame2() {
+    gsap.to(camera.position, { z: 1.35, duration: 2.6, ease: "power3.inOut" });
+    gsap.to(blackhole.rotation, { y: "+=1.6", duration: 2.6, ease: "power3.inOut" });
+    gsap.delayedCall(2.6, frame3);
+}
+function frame3() {
+    ring2Pulse = false;
+    var tl = gsap.timeline();
+    tl.to([disk.material, ring.material, ring2.material, dust.material], { opacity: 0, duration: 1.3, ease: "power2.in" }, 0)
+      .to(stars.material, { opacity: 0.15, duration: 1.3, ease: "power2.in" }, 0)
+      .to(core.scale, { x: 7, y: 7, duration: 1.3, ease: "power2.in" }, 0);
+    tl.call(frame4, null, 1.6);
+}
+function frame4() {
+    var text = "welcome";
+    var el = document.getElementById("typing-text");
+    var wrap = document.getElementById("frame-04");
+    el.textContent = "";
+    wrap.style.opacity = "1";
+    var i = 0;
+    var iv = setInterval(function () {
+        if (i < text.length) { el.textContent += text.charAt(i); i++; }
+        else {
+            clearInterval(iv);
+            gsap.delayedCall(0.7, frame5);
+        }
+    }, 150);
+}
+function frame5() {
+    var wrap = document.getElementById("frame-04");
+    gsap.to(wrap, { opacity: 0, scale: 0.35, letterSpacing: "0px", duration: 0.9, ease: "power2.in", onComplete: function () {
+        wrap.style.transform = "";
+        wrap.style.letterSpacing = "";
+    }});
+    gsap.to(camera.position, { z: 12.5, duration: 2.0, ease: "power3.inOut" });
+    gsap.to(rimLight.position, { z: 6, duration: 2.0 });
+    setPlanet(true);
+    gsap.to([disk.material, ring.material, dust.material], { opacity: 1, duration: 1.2 });
+    gsap.to(ring2.material, { opacity: 0.3, duration: 1.2 });
+    gsap.to(stars.material, { opacity: 0.85, duration: 1.2 });
+    gsap.to(core.scale, { x: 3.2, y: 3.2, duration: 1.2 });
+    gsap.to(blackhole.scale, { x: 0.5, y: 0.5, z: 0.5, duration: 1.6, ease: "power2.out" });
+    gsap.delayedCall(0.5, function () { showCard("frame-05"); });
+}
+
+/* ---------------- Frame 05 -> 06 ---------------- */
+document.getElementById("btn-getstarted").addEventListener("click", function () {
+    gsap.to("#frame-05", { scale: 0.96, duration: 0.16, yoyo: true, repeat: 1 });
+    gsap.delayedCall(0.32, function () {
+        showCard("frame-06");
+        gsap.fromTo("#frame-06 .provider-btn", { opacity: 0, x: 24 }, { opacity: 1, x: 0, duration: 0.6, stagger: 0.08, ease: "power2.out" });
+    });
+});
+
+/* ---------------- Frame 06 -> 07 ---------------- */
+var contButtons = document.querySelectorAll("[data-continue]");
+for (var ci = 0; ci < contButtons.length; ci++) {
+    contButtons[ci].addEventListener("click", function () {
+        var n = document.getElementById("profile-name").value.trim();
+        if (n) state.name = n;
+        showCard("frame-07");
+        var items = document.querySelectorAll("#import-list .import-item");
+        gsap.fromTo(items, { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.5, stagger: 0.09, ease: "power2.out" });
+    });
+}
+
+/* ---------------- Frame 07 -> 08 ---------------- */
+document.getElementById("btn-skip-import").addEventListener("click", function () { goPersonalize(); });
+document.getElementById("btn-import").addEventListener("click", function () {
+    var items = document.querySelectorAll("#import-list .import-item");
+    var btn = this;
+    btn.style.pointerEvents = "none"; btn.style.opacity = "0.5";
+    var idx = 0;
+    var iv = setInterval(function () {
+        if (idx >= items.length) {
+            clearInterval(iv);
+            gsap.to("#import-list", { scale: 0.5, opacity: 0, duration: 0.7, ease: "power2.in" });
+            gsap.delayedCall(0.75, goPersonalize);
+            return;
+        }
+        items[idx].classList.add("checked");
+        idx++;
+    }, 420);
+});
+function goPersonalize() {
+    showCard("frame-08");
+    var q = document.getElementById("question");
+    q.classList.remove("step2");
+    document.getElementById("pill-grid-2").style.display = "none";
+    document.getElementById("pill-grid-1").style.display = "";
+    gsap.fromTo("#pill-grid-1 .pill", { opacity: 0, y: 12, scale: 0.94 },
+                { opacity: 1, y: 0, scale: 1, duration: 0.5, stagger: 0.07, ease: "power2.out" });
+    gsap.to("#btn-personalize", { opacity: 0.45 });
+    document.getElementById("btn-personalize").style.pointerEvents = "none";
+}
+
+/* ---------------- Frame 08: personalization ---------------- */
+document.getElementById("pill-grid-1").addEventListener("click", function (ev) {
+    var pill = ev.target.closest(".pill");
+    if (!pill) return;
+    pill.classList.add("selected");
+    var q = document.getElementById("question");
+    q.classList.add("step2");
+    var g2 = document.getElementById("pill-grid-2");
+    g2.style.display = "";
+    gsap.fromTo("#pill-grid-2 .pill", { opacity: 0, y: 12, scale: 0.94 },
+                { opacity: 1, y: 0, scale: 1, duration: 0.45, stagger: 0.06, ease: "power2.out" });
+    enableNext("btn-personalize");
+});
+document.getElementById("pill-grid-2").addEventListener("click", function (ev) {
+    var pill = ev.target.closest(".pill");
+    if (!pill) return;
+    pill.classList.add("selected");
+});
+document.getElementById("btn-personalize").addEventListener("click", function () {
+    var sel = document.querySelectorAll(".pill.selected");
+    var bounds = sel.length ? sel[0].getBoundingClientRect() : null;
+    var cx = window.innerWidth / 2, cy = window.innerHeight / 2;
+    for (var i = 0; i < sel.length; i++) {
+        var b = sel[i].getBoundingClientRect();
+        gsap.to(sel[i], { x: cx - b.left - b.width/2, y: cy - b.top - b.height/2,
+                          scale: 0.05, opacity: 0, duration: 0.8, ease: "power2.in" });
+    }
+    gsap.delayedCall(0.8, goPrivacy);
+});
+function goPrivacy() {
+    showCard("frame-09");
+    gsap.fromTo(".privacy-card", { opacity: 0, y: 18 },
+                { opacity: 1, y: 0, duration: 0.6, stagger: 0.1, ease: "power2.out" });
+    gsap.to("#btn-privacy", { opacity: 0.45 });
+    document.getElementById("btn-privacy").style.pointerEvents = "none";
+}
+
+/* ---------------- Frame 09: privacy ---------------- */
+document.querySelectorAll(".privacy-card").forEach(function (c) {
+    c.addEventListener("click", function () {
+        document.querySelectorAll(".privacy-card").forEach(function (o) { o.classList.remove("selected"); });
+        c.classList.add("selected");
+        enableNext("btn-privacy");
+    });
+});
+document.getElementById("btn-privacy").addEventListener("click", function () {
+    setPlanet(false);
+    showCard("frame-10");
+    gsap.fromTo(".service-card", { opacity: 0, y: 14, scale: 0.94 },
+                { opacity: 1, y: 0, scale: 1, duration: 0.5, stagger: 0.06, ease: "power2.out" });
+});
+
+/* ---------------- Frame 10: connect ---------------- */
+document.querySelectorAll(".service-card").forEach(function (c) {
+    c.addEventListener("click", function () {
+        c.classList.toggle("connected");
+    });
+});
+document.getElementById("btn-connect").addEventListener("click", function () {
+    var cards = document.querySelectorAll(".service-card");
+    var cx = window.innerWidth / 2, cy = window.innerHeight / 2;
+    for (var i = 0; i < cards.length; i++) {
+        var b = cards[i].getBoundingClientRect();
+        gsap.to(cards[i], { x: cx - b.left - b.width/2, y: cy - b.top - b.height/2,
+                            scale: 0.05, opacity: 0, duration: 0.7, delay: i * 0.06, ease: "power3.in" });
+    }
+    gsap.delayedCall(1.2, goBuild);
+});
+function goBuild() {
+    blackhole.scale.set(0.3, 0.3, 0.3);
+    gsap.to(blackhole.scale, { x: 1, y: 1, z: 1, duration: 1.6, ease: "power2.out" });
+    gsap.to(camera.position, { z: 16, duration: 1.6, ease: "power2.out" });
+    gsap.delayedCall(0.7, function () { showCard("frame-11"); runBuild(); });
+}
+
+/* ---------------- Frame 11: building ---------------- */
+var BUILD_TASKS = [
+    "Importing bookmarks", "Restoring passwords", "Syncing data",
+    "Installing extensions", "Optimizing performance", "Almost done..."
+];
+function renderTasks(containerId, tasks) {
+    var el = document.getElementById(containerId);
+    el.innerHTML = "";
+    tasks.forEach(function (label) {
+        var row = document.createElement("div");
+        row.className = "task-row";
+        row.innerHTML = '<span class="mark">&#10003;</span><span class="lbl">' + label + "</span>";
+        el.appendChild(row);
+    });
+}
+function runBuild() {
+    renderTasks("build-tasks", BUILD_TASKS);
+    var rows = document.querySelectorAll("#build-tasks .task-row");
+    gsap.fromTo(rows, { opacity: 0, x: -12 }, { opacity: 1, x: 0, duration: 0.4, stagger: 0.1 });
+    var fill = document.getElementById("build-fill");
+    var pct = document.getElementById("build-pct");
+    var prog = { v: 0 };
+    gsap.to(prog, {
+        v: 100, duration: 7.5, ease: "none",
+        onUpdate: function () {
+            var v = Math.floor(prog.v);
+            fill.style.width = v + "%";
+            pct.textContent = v + "%";
+            var idx = Math.min(BUILD_TASKS.length - 1, Math.floor(v / (100 / BUILD_TASKS.length)));
+            for (var i = 0; i < rows.length; i++) {
+                if (i < idx) rows[i].classList.add("done");
+                else if (i === idx) { rows[i].classList.add("active"); rows[i].classList.remove("done"); }
+                else rows[i].classList.remove("active", "done");
+            }
+        },
+        onComplete: function () {
+            var last = rows[rows.length - 1];
+            last.classList.add("done"); last.classList.remove("active");
+            gsap.delayedCall(0.6, goOptimize);
+        }
+    });
+}
+function goOptimize() {
+    gsap.to("#frame-11", { scale: 0.9, opacity: 0, duration: 0.5, ease: "power2.in" });
+    gsap.delayedCall(0.55, function () {
+        showCard("frame-12");
+        runOptimize();
+    });
+}
+
+/* ---------------- Frame 12: optimizing ---------------- */
+var OPT_TASKS = [
+    "Learning your workflow", "Finding useful shortcuts",
+    "Blocking distractions", "Enhancing performance", "Finalizing setup"
+];
+function runOptimize() {
+    renderTasks("opt-tasks", OPT_TASKS);
+    var rows = document.querySelectorAll("#opt-tasks .task-row");
+    var idx = 0;
+    rows[0].classList.add("active");
+    gsap.fromTo(rows, { opacity: 0, x: -12 }, { opacity: 1, x: 0, duration: 0.4, stagger: 0.12 });
+    var iv = setInterval(function () {
+        if (idx >= OPT_TASKS.length) {
+            clearInterval(iv);
+            gsap.delayedCall(0.8, runReveal);
+            return;
+        }
+        rows[idx].classList.add("done");
+        rows[idx].classList.remove("active");
+        idx++;
+        if (idx < OPT_TASKS.length) rows[idx].classList.add("active");
+    }, 1500);
+}
+function runReveal() {
+    gsap.to("#frame-12", { scale: 0.9, opacity: 0, duration: 0.6, ease: "power2.in" });
+    gsap.to(blackhole.scale, { x: 1.15, y: 1.15, z: 1.15, duration: 0.8, ease: "power2.in" });
+    gsap.delayedCall(0.7, function () {
+        var pct = document.getElementById("reveal-pct");
+        gsap.to(pct, { opacity: 1, duration: 0.8, ease: "power2.out" });
+        gsap.delayedCall(1.4, pulse);
+    });
+}
+function pulse() {
+    var pct = document.getElementById("reveal-pct");
+    gsap.to(pct, { opacity: 0, scale: 2.4, duration: 0.7, ease: "power2.in" });
+    gsap.to(blackhole.scale, { x: 3.4, y: 3.4, z: 3.4, duration: 0.8, ease: "power2.in" });
+    gsap.to(camera.position, { z: 2.5, duration: 0.8, ease: "power2.in" });
+    gsap.to("#flash", { opacity: 0.85, duration: 0.45, ease: "power2.in", onComplete: function () {
+        gsap.to("#flash", { opacity: 0, duration: 0.7, delay: 0.15 });
+    }});
+    gsap.delayedCall(1.15, goHero);
+}
+function goHero() {
+    blackhole.visible = false;
+    setSurface(true);
+    setPlanet(false);
+    camera.position.set(0, 2.4, 9);
+    camera.lookAt(0, 1.6, -8);
+    gsap.to("#reveal-pct", { opacity: 0 });
+    gsap.delayedCall(0.4, function () {
+        document.getElementById("ready-greeting").textContent = "You're all set, " + (state.name || "Explorer") + "!";
+        showCard("frame-14");
+        gsap.fromTo("#frame-14 h1, #frame-14 .sub", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.8, stagger: 0.18, ease: "power2.out" });
+        gsap.fromTo("#btn-launch", { opacity: 0, scale: 0.94 }, { opacity: 1, scale: 1, duration: 0.6, delay: 0.5, ease: "power2.out" });
+        startWalk();
+    });
+}
+
+/* ---------------- Astronaut walk cycle ---------------- */
+function startWalk() {
+    var ud = astronaut.userData;
+    var cycle = gsap.timeline({ repeat: -1, yoyo: true, ease: "sine.inOut", duration: 0.55 });
+    cycle.to(ud.legL.rotation, { x: -0.65 }, 0)
+          .to(ud.legR.rotation, { x: 0.65 }, 0)
+          .to(ud.armL.rotation, { x: 0.5 }, 0)
+          .to(ud.armR.rotation, { x: -0.5 }, 0)
+          .to(astronaut.position, { y: 0.12 }, 0);
+    blinkerAnim = function () {
+        ud.blinker.material.emissiveIntensity = 0.4 + 0.6 * Math.abs(Math.sin(clock.getElapsedTime() * 2));
+    };
+}
+
+/* ---------------- Launch / Skip ---------------- */
+document.getElementById("btn-launch").addEventListener("click", function () {
+    gsap.to(camera.position, { z: 34, y: 6, duration: 1.5, ease: "power2.inOut" });
+    gsap.to("#frame-14", { opacity: 0, duration: 0.6, delay: 0.3 });
+    gsap.delayedCall(1.6, function () {
+        callBridge("completeOnboarding", state.name);
+    });
+});
+document.getElementById("btn-skip").addEventListener("click", function () {
+    callBridge("finishAsGuest");
+});
+
+document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") callBridge("cancel");
+});
+
+/* ============================ Helpers ============================ */
+function enableNext(id) {
+    var b = document.getElementById(id);
+    b.style.pointerEvents = "auto";
+    gsap.to(b, { opacity: 1 });
+}
+function disableNext(id) {
+    var b = document.getElementById(id);
+    b.style.pointerEvents = "none";
+    gsap.to(b, { opacity: 0.45 });
+}
+
+/* ============================ Boot sequence ============================ */
+// Frame 01 - BLACKHOLE origin: pure scene, no UI card yet.
+gsap.fromTo("#frame-01-wordmark", { opacity: 0, scale: 0.85 }, { opacity: 1, scale: 1, duration: 1.5, ease: "power2.out" });
+gsap.to("#frame-01-wordmark", { opacity: 0, scale: 0.9, duration: 1.2, delay: 3.2, ease: "power2.in" });
+gsap.delayedCall(4.6, frame2);
+</script>
+</body>
+</html>

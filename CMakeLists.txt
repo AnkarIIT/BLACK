@@ -32,12 +32,16 @@ qt_add_executable(BLACK
     Account.h
     SafeBrowsing.cpp
     SafeBrowsing.h
+    OnboardingBridge.h
     resources.rc
 )
 
 qt_add_resources(BLACK "resources" PREFIX "/" BASE "${CMAKE_CURRENT_SOURCE_DIR}"
     FILES
         login.html
+        onboarding_experience.html
+        vendor/three.min.js
+        vendor/gsap.min.js
         startpage_enhanced.html
         bookmarks.html
         history.html
