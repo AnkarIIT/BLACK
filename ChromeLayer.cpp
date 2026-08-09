@@ -151,7 +151,7 @@ void ChromeLayer::setChromeMode(bool chrome)
             srcLayout->removeWidget(btn);
         btn->setParent(destParent);
         if (destLayout)
-            destLayout->addWidget(btn);
+            destLayout->addWidget(btn, 0);
     }
 
 #if !defined(Q_OS_MAC)
@@ -203,9 +203,11 @@ void ChromeLayer::setChromeMode(bool chrome)
                 m_window->m_settingsButton->setParent(m_window->m_toolbar);
                 m_window->m_toolbarLayout->addWidget(m_window->m_settingsButton);
             }
+            m_window->m_settingsButton->show();
         } else {
             m_window->m_toolbarLayout->removeWidget(m_window->m_settingsButton);
             m_window->m_settingsButton->setParent(m_window);
+            m_window->m_settingsButton->hide();
         }
     }
 

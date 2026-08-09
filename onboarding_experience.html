@@ -1797,11 +1797,22 @@ function finishOnboardingReal() {
 }
 
 function finishAsGuest() {
+    if (state.selectedAccountId && bridge && bridge.selectAccount) {
+        bridge.selectAccount(state.selectedAccountId);
+    }
     callBridge("finishAsGuest");
 }
 
 document.getElementById("btn-launch").addEventListener("click", startCinematicHomeLaunch);
-document.getElementById("btn-skip").addEventListener("click", finishAsGuest);
+document.getElementById("btn-skip").addEventListener("click", function () {
+    // If the user connected an OAuth profile before skipping the tour, keep it
+    // instead of falling back to a bare guest session.
+    if (oauthProfile && bridge && bridge.completeOnboardingWithProfile) {
+        bridge.completeOnboardingWithProfile(oauthProfile.provider, state.name, oauthProfile.email);
+    } else {
+        finishAsGuest();
+    }
+});
 
 document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") callBridge("cancel");

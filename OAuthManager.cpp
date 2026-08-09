@@ -17,6 +17,7 @@
 #include <QDateTime>
 
 #include "VaultCrypto.h"
+#include "OSPaths.h"
 
 namespace {
 
@@ -200,7 +201,7 @@ QString OAuthManager::generatePKCEVerifier() const
 {
     QByteArray bytes;
     bytes.resize(32);
-    QRandomGenerator::global()->fillRange(reinterpret_cast<quint32 *>(bytes.data()),
+    QRandomGenerator::system()->fillRange(reinterpret_cast<quint32 *>(bytes.data()),
                                           bytes.size() / int(sizeof(quint32)));
     return QString::fromLatin1(bytes.toBase64(QByteArray::Base64UrlEncoding
                                               | QByteArray::OmitTrailingEquals));
@@ -289,34 +290,44 @@ void OAuthManager::setupLocalListener()
 
                     QString authCode;
                     QString state;
+                    QString requestPath;
                     const QList<QByteArray> lines = head.split('\n');
                     if (!lines.isEmpty()) {
                         const QByteArray requestLine = lines.first().trimmed();
                         const QList<QByteArray> parts = requestLine.split(' ');
-                        if (parts.size() >= 2 && parts[0] == "GET") {
-                            QUrl url(QString::fromLatin1("http://127.0.0.1")
-                                     + QString::fromLatin1(parts[1]));
-                            QUrlQuery query(url);
-                            authCode = query.queryItemValue(QStringLiteral("code"));
-                            state = query.queryItemValue(QStringLiteral("state"));
-                        } else if (parts.size() >= 2 && parts[0] == "POST") {
-                            QUrlQuery query(QString::fromUtf8(body));
-                            authCode = query.queryItemValue(QStringLiteral("code"));
-                            state = query.queryItemValue(QStringLiteral("state"));
-                            const QString userJson = query.queryItemValue(QStringLiteral("user"));
-                            if (!userJson.isEmpty()) {
-                                const QJsonObject user = QJsonDocument::fromJson(userJson.toUtf8()).object();
-                                if (!user.isEmpty())
-                                    m_formPostUser = user;
+                        if (parts.size() >= 2) {
+                            const QUrl url(QString::fromLatin1("http://127.0.0.1")
+                                           + QString::fromLatin1(parts[1]));
+                            requestPath = url.path();
+                            if (parts[0] == "GET") {
+                                const QUrlQuery query(url);
+                                authCode = query.queryItemValue(QStringLiteral("code"));
+                                state = query.queryItemValue(QStringLiteral("state"));
+                            } else if (parts[0] == "POST") {
+                                const QUrlQuery query(QString::fromUtf8(body));
+                                authCode = query.queryItemValue(QStringLiteral("code"));
+                                state = query.queryItemValue(QStringLiteral("state"));
+                                const QString userJson = query.queryItemValue(QStringLiteral("user"));
+                                if (!userJson.isEmpty()) {
+                                    const QJsonObject user = QJsonDocument::fromJson(userJson.toUtf8()).object();
+                                    if (!user.isEmpty())
+                                        m_formPostUser = user;
+                                }
                             }
                         }
                     }
 
-                    if (!state.isEmpty() && state != m_state) {
-                        socket->write(errorPageHtml(QStringLiteral("State mismatch.")));
+                    // M13: the loopback port is shared and predictable, so a
+                    // callback is only accepted when it targets the exact
+                    // /callback path AND carries a state token that matches the
+                    // active flow. Missing, wrong-path, or stale callbacks are
+                    // rejected without tearing the active flow down.
+                    if (requestPath != QStringLiteral("/callback")
+                        || state.isEmpty()
+                        || state != m_state) {
+                        socket->write(errorPageHtml(QStringLiteral("Invalid OAuth callback.")));
                         socket->flush();
                         socket->disconnectFromHost();
-                        fail(QStringLiteral("OAuth state mismatch. The flow was restarted."));
                         delete buffer;
                         return;
                     }
@@ -342,7 +353,11 @@ void OAuthManager::setupLocalListener()
     }
     if (m_server->isListening()) {
         m_server->close();
-        m_server->disconnect(); // drop queued sockets from a previous flow
+        // Never call m_server->disconnect() here: it severs the newConnection
+        // handler installed above, so the NEXT startAuth() re-entry finds a
+        // listener that accepts connections but never processes them. close()
+        // already clears the pending-connection queue, and any in-flight
+        // socket from a previous flow is gated by the path + state check.
     }
     if (!m_server->listen(QHostAddress::LocalHost, port)) {
         fail(QStringLiteral("Could not start the local OAuth callback listener on port %1 (is it already in use?)")
@@ -399,7 +414,7 @@ void OAuthManager::startAuth(int providerEnum)
         m_codeVerifier.clear();
         m_codeChallenge.clear();
     }
-    m_state = QString::number(QRandomGenerator::global()->generate64(), 16);
+    m_state = QString::number(QRandomGenerator::system()->generate64(), 16);
 
     setupLocalListener();
     if (!m_server || !m_server->isListening()) {
@@ -734,7 +749,8 @@ void OAuthManager::loadConnected()
 void OAuthManager::saveConnected() const
 {
     const QByteArray plain = QJsonDocument(m_connected).toJson(QJsonDocument::Compact);
-    QFile file(connectedFilePath());
-    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        file.write(VaultCrypto::encrypt(plain));
+    const QByteArray blob = VaultCrypto::encrypt(plain);
+    if (blob.isEmpty())
+        return; // master key unavailable: never overwrite the vault with garbage
+    OSPaths::writeFileAtomic(connectedFilePath(), blob);
 }

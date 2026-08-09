@@ -1,6 +1,7 @@
 #ifndef OSPATHS_H
 #define OSPATHS_H
 
+#include <QByteArray>
 #include <QString>
 
 // Centralizes every OS-specific integration point so the rest of the app can
@@ -22,6 +23,12 @@ public:
 
     // Opens the operating system's default-apps / default browser settings.
     static void openDefaultBrowserSettings();
+
+    // Crash-safe write: writes to a temp file in the same directory, fsyncs the
+    // data, then atomically renames it over the destination (fsyncing the parent
+    // directory on POSIX). A crash mid-write leaves either the old or the new
+    // file, never a truncated/partial one. Returns false on any failure.
+    static bool writeFileAtomic(const QString &filePath, const QByteArray &data);
 };
 
 #endif // OSPATHS_H

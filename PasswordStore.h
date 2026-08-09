@@ -23,11 +23,18 @@ class PasswordStore : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QString neverSaveJson READ neverSaveJson NOTIFY changed)
+    Q_PROPERTY(bool decryptFailed READ decryptFailed NOTIFY changed)
 
 public:
     explicit PasswordStore(QObject *parent = nullptr);
 
     QString neverSaveJson() const;
+
+    // True when the vault file exists but failed authentication (tampered, or
+    // the master key no longer matches). Distinct from an empty/nonexistent
+    // vault: while true, save/remove/clearAll refuse to write so a "failed to
+    // decrypt" is never mistaken for "empty vault" and overwritten.
+    bool decryptFailed() const { return m_authFailed; }
 
     Q_INVOKABLE QVariantList hosts() const;
     Q_INVOKABLE QString passwordFor(const QString &host, const QString &username) const;
@@ -44,6 +51,8 @@ signals:
 private:
     QJsonArray loadArray() const;
     void saveArray(const QJsonArray &array) const;
+
+    mutable bool m_authFailed = false;
 };
 
 #endif

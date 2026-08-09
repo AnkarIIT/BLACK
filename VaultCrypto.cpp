@@ -1,10 +1,12 @@
 #include "VaultCrypto.h"
+#include "OSPaths.h"
 #include <QCryptographicHash>
 #include <QMessageAuthenticationCode>
 #include <QRandomGenerator>
 #include <QStandardPaths>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QString>
@@ -56,8 +58,16 @@ void appendUint32Be(QByteArray &out, quint32 value)
 
 // PBKDF2-HMAC-SHA256 (RFC 2898). The Qt 6.8 baseline used here does not ship
 // QKeyDerivation, so the standard construction is implemented directly.
+//
+// rfc2898Message selects the U_1 input ordering:
+//   - true  (default, standard): S || INT_32_BE(i)
+//   - false (legacy):            P || S || INT_32_BE(i)
+// Early builds prepended the password into the HMAC message. That deviation
+// was self-consistent but non-standard, so new vaults use the RFC 2898 layout
+// (kdf "pbkdf2-hmac-sha256-rfc2898") while decrypt() still understands the
+// legacy ordering to keep existing vaults readable.
 QByteArray pbkdf2HmacSha256(const QByteArray &password, const QByteArray &salt,
-                            int iterations, int dkLen)
+                            int iterations, int dkLen, bool rfc2898Message)
 {
     const int hLen = 32; // SHA-256 digest length
     QByteArray out;
@@ -69,8 +79,12 @@ QByteArray pbkdf2HmacSha256(const QByteArray &password, const QByteArray &salt,
         QByteArray u;
         {
             QByteArray block;
-            block.append(password);
-            block.append(salt);
+            if (rfc2898Message) {
+                block.append(salt);
+            } else {
+                block.append(password); // legacy pre-RFC ordering, read-compat only
+                block.append(salt);
+            }
             appendUint32Be(block, blockIndex);
             u = QMessageAuthenticationCode::hash(block, password, QCryptographicHash::Sha256);
         }
@@ -80,7 +94,7 @@ QByteArray pbkdf2HmacSha256(const QByteArray &password, const QByteArray &salt,
             for (int j = 0; j < hLen; ++j)
                 t[j] ^= u[j];
         }
-        const int copySize = qMin(hLen, dLen - written);
+        const int copySize = qMin(hLen, dkLen - written);
         memcpy(out.data() + written, t.constData(), copySize);
         written += copySize;
         ++blockIndex;
@@ -126,6 +140,11 @@ QByteArray hmacTag(const QByteArray &key, const QByteArray &iv, const QByteArray
 // Non-Windows key source: a random 256-bit master key stored with owner-only
 // permissions. Not a hardware-backed secret store, but combined with PBKDF2 it
 // is still a very large improvement over the previous hardcoded XOR key.
+//
+// Fail-safe: if the key file exists but is unreadable, empty, or the wrong
+// size, we REFUSE to generate a replacement. Silently rotating the master key
+// would orphan every vault already encrypted with the old key; returning an
+// empty key makes callers abort the operation instead of destroying data.
 QByteArray loadOrCreateMasterKey()
 {
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
@@ -133,28 +152,24 @@ QByteArray loadOrCreateMasterKey()
     QDir().mkpath(dir);
     const QString path = dir + QLatin1String("/black_vault.key");
 
-    QFile in(path);
-    if (in.open(QIODevice::ReadOnly)) {
+    if (QFileInfo::exists(path)) {
+        QFile in(path);
+        if (!in.open(QIODevice::ReadOnly))
+            return {};          // exists but unreadable: never rotate silently
         const QByteArray key = in.readAll();
         if (key.size() == kKeySize)
             return key;
+        return {};              // corrupt/partial key: fail safe, no rotation
     }
+
     const QByteArray key = randomBytes(kKeySize);
+    if (OSPaths::writeFileAtomic(path, key)) {
 #if !defined(Q_OS_WIN)
-    int fd = open(path.toUtf8().constData(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-    if (fd >= 0) {
-        ssize_t written = write(fd, key.constData(), key.size());
-        (void)written;
-        close(fd);
-    }
+        (void)::chmod(path.toUtf8().constData(), S_IRUSR | S_IWUSR);
 #else
-    QFile out(path);
-    if (out.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        out.write(key);
-        out.flush();
         QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner);
-    }
 #endif
+    }
     return key;
 }
 
@@ -165,12 +180,12 @@ QByteArray hmacCtrEncryptBlob(const QByteArray &plain)
         return {};
     const QByteArray salt = randomBytes(kSaltSize);
     const QByteArray iv = randomBytes(kIvSize);
-    const QByteArray key = pbkdf2HmacSha256(master, salt, kPbkdf2Iterations, kKeySize);
+    const QByteArray key = pbkdf2HmacSha256(master, salt, kPbkdf2Iterations, kKeySize, true);
     const QByteArray cipher = hmacCtrXor(key, iv, plain);
     const QByteArray tag = hmacTag(key, iv, cipher);
 
     QJsonObject obj;
-    obj.insert(QStringLiteral("kdf"), QStringLiteral("pbkdf2-hmac-sha256"));
+    obj.insert(QStringLiteral("kdf"), QStringLiteral("pbkdf2-hmac-sha256-rfc2898"));
     obj.insert(QStringLiteral("iter"), kPbkdf2Iterations);
     obj.insert(QStringLiteral("salt"), QString::fromLatin1(salt.toBase64()));
     obj.insert(QStringLiteral("iv"), QString::fromLatin1(iv.toBase64()));
@@ -195,7 +210,21 @@ QByteArray hmacCtrDecryptBlob(const QByteArray &envelope)
     const QByteArray master = loadOrCreateMasterKey();
     if (master.isEmpty())
         return {};
-    const QByteArray key = pbkdf2HmacSha256(master, salt, kPbkdf2Iterations, kKeySize);
+
+    // Versioned key derivation: RFC 2898 ordering for new vaults, the legacy
+    // (password-prepended) ordering for vaults written by earlier builds.
+    // An unknown kdf name is never guessed at; it fails authentication.
+    const QString kdf = obj.value(QStringLiteral("kdf")).toString();
+    bool rfc2898Message;
+    if (kdf == QStringLiteral("pbkdf2-hmac-sha256-rfc2898")) {
+        rfc2898Message = true;
+    } else if (kdf.isEmpty() || kdf == QStringLiteral("pbkdf2-hmac-sha256")) {
+        rfc2898Message = false;
+    } else {
+        return {};
+    }
+
+    const QByteArray key = pbkdf2HmacSha256(master, salt, kPbkdf2Iterations, kKeySize, rfc2898Message);
     if (hmacTag(key, iv, cipher) != tag)
         return {}; // authentication failed: tampered or wrong key
     return hmacCtrXor(key, iv, cipher);

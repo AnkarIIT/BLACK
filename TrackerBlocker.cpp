@@ -1,5 +1,6 @@
 #include "TrackerBlocker.h"
 #include "SafeBrowsing.h"
+#include "OSPaths.h"
 #include <QWebEngineUrlRequestInfo>
 #include <QUrlQuery>
 #include <QStandardPaths>
@@ -511,7 +512,6 @@ void TrackerBlocker::saveData()
         root.insert(day, dayObj);
     }
 
-    QFile file(dataFile(QStringLiteral("privacy.json")));
-    if (file.open(QIODevice::WriteOnly))
-        file.write(QJsonDocument(root).toJson());
+    OSPaths::writeFileAtomic(dataFile(QStringLiteral("privacy.json")),
+                             QJsonDocument(root).toJson());
 }

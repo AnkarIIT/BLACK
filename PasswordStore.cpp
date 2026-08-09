@@ -1,5 +1,6 @@
 #include "PasswordStore.h"
 #include "VaultCrypto.h"
+#include "OSPaths.h"
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -199,9 +200,7 @@ void PasswordStore::setNeverSave(const QString &host, bool neverSave)
                 array.removeAt(i);
         }
     }
-    QFile out(neverSaveFile());
-    if (out.open(QIODevice::WriteOnly))
-        out.write(QJsonDocument(array).toJson());
+    OSPaths::writeFileAtomic(neverSaveFile(), QJsonDocument(array).toJson());
     emit changed();
 }
 
@@ -212,8 +211,15 @@ QJsonArray PasswordStore::loadArray() const
         const QByteArray data = file.readAll();
         if (VaultCrypto::isEnvelope(data)) {
             const QByteArray plain = VaultCrypto::decrypt(data);
-            if (plain.isEmpty())
-                return QJsonArray(); // failed authentication: treat as empty
+            if (plain.isEmpty()) {
+                // The vault exists but failed authentication (tampered, or the
+                // master key changed). Never collapse this into an "empty
+                // vault": saveArray() refuses to write while this flag is set,
+                // so a subsequent save cannot overwrite real encrypted data.
+                m_authFailed = true;
+                return QJsonArray();
+            }
+            m_authFailed = false;
             const QJsonDocument doc = QJsonDocument::fromJson(plain);
             if (doc.isArray())
                 return doc.array();
@@ -222,21 +228,23 @@ QJsonArray PasswordStore::loadArray() const
             // Load it so existing data is not silently lost; it is re-encrypted
             // on the next save. Entries written with the old XOR cipher will
             // read back as garbage and need re-entering.
+            m_authFailed = false;
             const QJsonDocument doc = QJsonDocument::fromJson(data);
             if (doc.isArray())
                 return doc.array();
         }
     }
+    m_authFailed = false;
     return QJsonArray();
 }
 
 void PasswordStore::saveArray(const QJsonArray &array) const
 {
+    if (m_authFailed)
+        return; // never overwrite a vault we failed to authenticate
     const QByteArray plain = QJsonDocument(array).toJson();
     const QByteArray envelope = VaultCrypto::encrypt(plain);
     if (envelope.isEmpty())
         return;
-    QFile file(pwdFile());
-    if (file.open(QIODevice::WriteOnly))
-        file.write(envelope);
+    OSPaths::writeFileAtomic(pwdFile(), envelope);
 }

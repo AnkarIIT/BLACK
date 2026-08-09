@@ -1,4 +1,5 @@
 #include "SafariTheme.h"
+#include "OSPaths.h"
 
 #include <QGuiApplication>
 #include <QStyleHints>
@@ -98,8 +99,7 @@ void SafariTheme::setPreference(Preference preference)
         file.close();
     }
     obj.insert(QStringLiteral("theme"), preferenceToString(preference));
-    if (file.open(QIODevice::WriteOnly))
-        file.write(QJsonDocument(obj).toJson());
+    OSPaths::writeFileAtomic(settingsFile(), QJsonDocument(obj).toJson());
 
     refreshScheme();
 }

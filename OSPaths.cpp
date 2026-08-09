@@ -1,6 +1,7 @@
 #include "OSPaths.h"
 
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QProcess>
 #include <QStandardPaths>
@@ -8,6 +9,13 @@
 #include <QUrl>
 #include <QByteArray>
 #include <QtGlobal>
+
+#if defined(Q_OS_WIN)
+#include <windows.h>
+#else
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 QString OSPaths::browserProfilePath(const QString &browserName)
 {
@@ -88,4 +96,63 @@ void OSPaths::openDefaultBrowserSettings()
 #else
     QDesktopServices::openUrl(QUrl(QStringLiteral("ms-settings:defaultapps")));
 #endif
+}
+
+bool OSPaths::writeFileAtomic(const QString &filePath, const QByteArray &data)
+{
+    const QFileInfo info(filePath);
+    if (!QDir().mkpath(info.absolutePath()))
+        return false;
+
+    const QString tmpPath = info.absolutePath()
+                            + QLatin1Char('/')
+                            + info.fileName()
+                            + QStringLiteral(".tmp");
+    QFile tmp(tmpPath);
+    if (!tmp.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        return false;
+    if (tmp.write(data) != data.size()) {
+        tmp.close();
+        QFile::remove(tmpPath);
+        return false;
+    }
+    if (!tmp.flush()) {
+        tmp.close();
+        QFile::remove(tmpPath);
+        return false;
+    }
+
+#if defined(Q_OS_WIN)
+    if (!FlushFileBuffers(reinterpret_cast<HANDLE>(tmp.handle()))) {
+        tmp.close();
+        QFile::remove(tmpPath);
+        return false;
+    }
+    tmp.close();
+    if (!MoveFileExW(reinterpret_cast<LPCWSTR>(tmpPath.utf16()),
+                     reinterpret_cast<LPCWSTR>(filePath.utf16()),
+                     MOVEFILE_REPLACE_EXISTING)) {
+        QFile::remove(tmpPath);
+        return false;
+    }
+#else
+    if (fsync(tmp.handle()) != 0) {
+        tmp.close();
+        QFile::remove(tmpPath);
+        return false;
+    }
+    tmp.close();
+    if (::rename(tmpPath.toUtf8().constData(), filePath.toUtf8().constData()) != 0) {
+        QFile::remove(tmpPath);
+        return false;
+    }
+    // Best-effort: persist the rename itself so a crash right after it cannot
+    // resurrect the old (possibly corrupted) file.
+    const int dirFd = ::open(info.absolutePath().toUtf8().constData(), O_RDONLY);
+    if (dirFd >= 0) {
+        (void)::fsync(dirFd);
+        ::close(dirFd);
+    }
+#endif
+    return true;
 }

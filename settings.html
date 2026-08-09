@@ -736,6 +736,9 @@
                     <div class="pane-title">Saved Logins</div>
                     <button class="mac-btn" id="pwClearBtn">Remove All</button>
                 </div>
+                <div id="pwWarn" style="display:none; margin-bottom: 12px; padding: 10px 12px; border-radius: 10px; font-size: 13px; line-height: 1.5; color: #d70015; background: rgba(215,0,21,0.08); border: 1px solid rgba(215,0,21,0.25);">
+                    Your saved passwords could not be decrypted on this device (the vault key no longer matches or the file was tampered with). To protect your data, BLACK has paused saving, editing and removal until this is resolved.
+                </div>
                 <div class="list-card" id="pwList">
                     <div class="list-empty">No saved passwords yet. Log in on any site and BLACK offers to remember the login.</div>
                 </div>
@@ -1021,6 +1024,12 @@
                     try { return JSON.parse(json || '[]'); } catch (e) { return []; }
                 };
                 const renderPasswords = function () {
+                    const warn = document.getElementById('pwWarn');
+                    const clearBtn = document.getElementById('pwClearBtn');
+                    passwords.decryptFailed(function (failed) {
+                        if (warn) warn.style.display = failed ? 'block' : 'none';
+                        if (clearBtn) clearBtn.disabled = !!failed;
+                    });
                     passwords.hosts(function (list) {
                         list = list || [];
                         const el = document.getElementById('pwList');

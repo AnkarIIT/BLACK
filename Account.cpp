@@ -1,4 +1,5 @@
 #include "Account.h"
+#include "OSPaths.h"
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -127,9 +128,7 @@ void Account::signOut()
 
 void Account::completeOnboarding()
 {
-    QFile marker(firstRunMarker());
-    if (marker.open(QIODevice::WriteOnly))
-        marker.write("1");
+    OSPaths::writeFileAtomic(firstRunMarker(), QByteArrayLiteral("1"));
 }
 
 void Account::load()
@@ -156,9 +155,7 @@ void Account::save()
     o[QStringLiteral("email")] = m_email;
     o[QStringLiteral("avatar")] = m_avatar;
     o[QStringLiteral("authMethod")] = m_authMethod;
-    QFile file(accountFile());
-    if (file.open(QIODevice::WriteOnly))
-        file.write(QJsonDocument(o).toJson());
+    OSPaths::writeFileAtomic(accountFile(), QJsonDocument(o).toJson());
 }
 
 QJsonObject Account::accountObject(const QString &id, const QString &provider,
@@ -186,7 +183,5 @@ void Account::loadAccounts()
 
 void Account::saveAccounts() const
 {
-    QFile file(accountsFile());
-    if (file.open(QIODevice::WriteOnly))
-        file.write(QJsonDocument(m_accounts).toJson());
+    OSPaths::writeFileAtomic(accountsFile(), QJsonDocument(m_accounts).toJson());
 }

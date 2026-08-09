@@ -1,4 +1,5 @@
 #include "ShelfStore.h"
+#include "OSPaths.h"
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -187,7 +188,6 @@ void ShelfStore::saveArray(const QJsonArray &array) const
 {
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir().mkpath(dir);
-    QFile file(dir + QLatin1Char('/') + m_fileName);
-    if (file.open(QIODevice::WriteOnly))
-        file.write(QJsonDocument(array).toJson());
+    OSPaths::writeFileAtomic(dir + QLatin1Char('/') + m_fileName,
+                             QJsonDocument(array).toJson());
 }

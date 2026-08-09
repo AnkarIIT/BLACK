@@ -67,9 +67,7 @@ QJsonObject BrowserSettings::readSettingsObject()
 
 void BrowserSettings::writeSettingsObject(const QJsonObject &obj)
 {
-    QFile file(settingsFilePath());
-    if (file.open(QIODevice::WriteOnly))
-        file.write(QJsonDocument(obj).toJson());
+    OSPaths::writeFileAtomic(settingsFilePath(), QJsonDocument(obj).toJson());
 }
 
 void BrowserSettings::load()

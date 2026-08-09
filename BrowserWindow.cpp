@@ -54,6 +54,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
+#include <QUrlQuery>
 #include <QDateTime>
 #include <QStandardPaths>
 #include <QFileDialog>
@@ -708,7 +709,7 @@ void BrowserWindow::loadStartPage() {
 }
 
 // ── Window Control ──────────────────────────────────────────────────────────
-void BrowserWindow::closeWindow()    { saveSession(); close(); }
+void BrowserWindow::closeWindow() { if (m_ownsSession) saveSession(); close(); }
 void BrowserWindow::minimizeWindow() { showMinimized(); }
 void BrowserWindow::maximizeWindow() {
     if (isMaximized()) showNormal(); else showMaximized();
@@ -1577,8 +1578,13 @@ SafariWebView* BrowserWindow::addTabView(const QUrl &url, QWebEngineNewWindowReq
             if (m_tabs[i].view == view) {
                 m_tabs[i].loading = false;
                 if (ok) {
-                    m_tabs[i].crashCount = 0;
-                    m_tabs[i].showingCrashPage = false;
+                    const QUrl loadedUrl = view->url();
+                    const bool onCrashPage = loadedUrl.scheme() == QStringLiteral("qrc")
+                                             && loadedUrl.path() == QStringLiteral("/crash.html");
+                    if (!onCrashPage) {
+                        m_tabs[i].crashCount = 0;
+                        m_tabs[i].showingCrashPage = false;
+                    }
                     saveHistoryItem(m_tabs[i].title, m_tabs[i].url);
                     // Refresh the visible tab's thumbnail so the overview stays fresh.
                     if (i == m_currentTabIndex && !m_overviewVisible) {
@@ -3120,6 +3126,7 @@ void BrowserWindow::applyTheme()
     m_downloadsButton->setIcon(createSvgIcon(svgDownloads, 18, navIconColor));
     m_tabOverviewButton->setIcon(createSvgIcon(svgTabOverview, 18, navIconColor));
     m_settingsButton->setIcon(createSvgIcon(svgSettings, 18, navIconColor));
+    connect(m_settingsButton, &QToolButton::clicked, this, &BrowserWindow::showSettingsMenu);
     m_extensionsButton->setIcon(createSvgIcon(svgExtensions, 18, navIconColor));
     updateProfileButton();
 
@@ -3748,28 +3755,37 @@ QWidget* BrowserWindow::buildDownloadRow(int index, const DownloadItemInfo &item
 }
 
 void BrowserWindow::saveSession() {
-    if (m_incognito) return;
-    QFile file(dataFile(QStringLiteral("session.json")));
-    if (file.open(QIODevice::WriteOnly)) {
-        QJsonArray array;
-        int currentSavedIndex = -1;
-        for (int i = 0; i < m_tabs.count(); ++i) {
-            const TabInfo &tab = m_tabs[i];
-            if (tab.url.isEmpty() || tab.url.startsWith(QStringLiteral("qrc:")))
+    if (m_incognito || !m_ownsSession)
+        return;
+    QJsonArray array;
+    int currentSavedIndex = -1;
+    for (int i = 0; i < m_tabs.count(); ++i) {
+        const TabInfo &tab = m_tabs[i];
+        QString url = tab.url;
+        if (tab.showingCrashPage) {
+            // A tab parked on the crash page is restored onto it after a
+            // restart (see restoreSession), so persist the ORIGINAL url it
+            // was showing instead of skipping the qrc: crash page.
+            url = QUrlQuery(QUrl(url)).queryItemValue(QStringLiteral("url"));
+            if (url.isEmpty())
                 continue;
-            if (i == m_currentTabIndex)
-                currentSavedIndex = array.size();
-            QJsonObject entry;
-            entry[QStringLiteral("url")] = tab.url;
-            entry[QStringLiteral("lastActive")] = tab.lastActive;
-            entry[QStringLiteral("crashed")] = tab.showingCrashPage;
-            array.append(entry);
+        } else if (url.isEmpty() || url.startsWith(QStringLiteral("qrc:"))) {
+            continue;
         }
-        QJsonObject obj;
-        obj[QStringLiteral("tabs")] = array;
-        obj[QStringLiteral("currentIndex")] = currentSavedIndex >= 0 ? currentSavedIndex : 0;
-        file.write(QJsonDocument(obj).toJson());
+        if (i == m_currentTabIndex)
+            currentSavedIndex = array.size();
+        QJsonObject entry;
+        entry[QStringLiteral("url")] = url;
+        entry[QStringLiteral("lastActive")] = tab.lastActive;
+        entry[QStringLiteral("crashed")] = tab.showingCrashPage;
+        array.append(entry);
     }
+
+    QJsonObject obj;
+    obj[QStringLiteral("tabs")] = array;
+    obj[QStringLiteral("currentIndex")] = currentSavedIndex >= 0 ? currentSavedIndex : 0;
+    OSPaths::writeFileAtomic(dataFile(QStringLiteral("session.json")),
+                             QJsonDocument(obj).toJson());
 }
 
 void BrowserWindow::restoreSession() {
@@ -3871,10 +3887,11 @@ void BrowserWindow::savePermissions()
     }
     const QByteArray payload = QJsonDocument(obj).toJson(QJsonDocument::Compact);
     const QByteArray blob = VaultCrypto::encrypt(payload);
-    const QString path = dataFile(QStringLiteral("permissions.json"));
-    QFile file(path);
-    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        file.write(blob.isEmpty() ? payload : blob);
+    // Fail safe: if encryption is unavailable, refuse to persist rather than
+    // silently writing the choices in plaintext.
+    if (blob.isEmpty())
+        return;
+    OSPaths::writeFileAtomic(dataFile(QStringLiteral("permissions.json")), blob);
 }
 
 #include "BrowserWindow.moc"
