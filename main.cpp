@@ -331,7 +331,6 @@ int main(int argc, char *argv[])
         channel->registerObject(QStringLiteral("bookmarkImporter"), &importer);
         channel->registerObject(QStringLiteral("appearance"), &appearance);
         channel->registerObject(QStringLiteral("theme"), &SafariTheme::instance());
-        channel->registerObject(QStringLiteral("bookmarks"), &bookmarksStore);
         page->setWebChannel(channel, QWebEngineScript::MainWorld);
         layout->addWidget(view);
 
