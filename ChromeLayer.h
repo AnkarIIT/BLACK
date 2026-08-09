@@ -55,7 +55,8 @@ private:
 
     QWidget     *m_tabStrip;
     QHBoxLayout *m_stripLayout;    // tab strip root: [traffic lights][tabs]
-    QHBoxLayout *m_trafficLayout;  // traffic-light container inside the strip
+    QHBoxLayout *m_trafficLayout;  // traffic-light container inside the strip (macOS)
+    QHBoxLayout *m_windowCtlLayout; // window-control container (Windows/Linux, right edge)
     QHBoxLayout *m_tabLayout;      // [tabs...][new-tab button]
     QToolButton *m_newTabButton;
 };

@@ -31,6 +31,37 @@ QString chromePlusIcon()
         "<line x1=\"5\" y1=\"12\" x2=\"19\" y2=\"12\"/></svg>");
 }
 
+QString svgWinMinimize()
+{
+    return QStringLiteral(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" "
+        "stroke=\"%1\" stroke-width=\"1.6\" stroke-linecap=\"round\">"
+        "<line x1=\"5\" y1=\"12\" x2=\"19\" y2=\"12\"/></svg>");
+}
+
+QString svgWinMaximize()
+{
+    return QStringLiteral(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" "
+        "stroke=\"%1\" stroke-width=\"1.6\" stroke-linecap=\"round\">"
+        "<rect x=\"5.5\" y=\"5.5\" width=\"13\" height=\"13\" rx=\"1.5\"/></svg>");
+}
+
+QString svgWinClose()
+{
+    return QStringLiteral(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" "
+        "stroke=\"%1\" stroke-width=\"1.6\" stroke-linecap=\"round\">"
+        "<path d=\"M6.5 6.5l11 11M17.5 6.5l-11 11\"/></svg>");
+}
+
+QString macTrafficStyle(const QString &color, const QString &hover)
+{
+    return QStringLiteral(
+        "QToolButton { background-color: %1; border-radius: 6px; border: 0.5px solid rgba(0,0,0,0.12); }"
+        "QToolButton:hover { background-color: %2; }").arg(color, hover);
+}
+
 } // namespace
 
 ChromeLayer::ChromeLayer(BrowserWindow *window, QObject *parent)
@@ -40,6 +71,7 @@ ChromeLayer::ChromeLayer(BrowserWindow *window, QObject *parent)
     , m_tabStrip(nullptr)
     , m_stripLayout(nullptr)
     , m_trafficLayout(nullptr)
+    , m_windowCtlLayout(nullptr)
     , m_tabLayout(nullptr)
     , m_newTabButton(nullptr)
 {
@@ -78,6 +110,14 @@ void ChromeLayer::setupUi(QWidget *central, QVBoxLayout *rootLayout)
     connect(m_newTabButton, &QToolButton::clicked, m_window, &BrowserWindow::addTabAction);
     m_tabLayout->addWidget(m_newTabButton);
 
+    // Windows/Linux window controls sit on the far right of the strip
+    // (Chrome titlebar geometry). Empty on macOS, where the traffic lights
+    // stay on the left via m_trafficLayout.
+    m_windowCtlLayout = new QHBoxLayout;
+    m_windowCtlLayout->setContentsMargins(0, 0, 0, 0);
+    m_windowCtlLayout->setSpacing(0);
+    m_stripLayout->addLayout(m_windowCtlLayout);
+
     // Chrome reuses the shared Safari toolbar; it is restyled, not rebuilt.
     // Insert the chrome tab strip at the very top of the window.
     rootLayout->insertWidget(0, m_tabStrip);
@@ -90,11 +130,18 @@ void ChromeLayer::setChromeMode(bool chrome)
         return;
     m_chrome = chrome;
 
-    // Move the traffic lights between the Safari toolbar and the chrome strip.
-    // They always sit inside one of the two traffic-light layouts.
-    QWidget *destParent = chrome ? static_cast<QWidget*>(m_tabStrip) : m_window->m_toolbar;
-    QHBoxLayout *srcLayout = chrome ? m_window->m_trafficLayout : m_trafficLayout;
+    // Move the window controls between the Safari toolbar and the chrome strip.
+    // They always sit inside exactly one traffic-light / window-control layout.
+    // macOS keeps the colored traffic lights on the left of the strip; on
+    // Windows/Linux they move to the far right as flat Chrome-style glyphs.
+#if defined(Q_OS_MAC)
+    QHBoxLayout *srcLayout  = chrome ? m_window->m_trafficLayout : m_trafficLayout;
     QHBoxLayout *destLayout = chrome ? m_trafficLayout : m_window->m_trafficLayout;
+#else
+    QHBoxLayout *srcLayout  = chrome ? m_window->m_trafficLayout : m_windowCtlLayout;
+    QHBoxLayout *destLayout = chrome ? m_windowCtlLayout : m_window->m_trafficLayout;
+#endif
+    QWidget *destParent = chrome ? static_cast<QWidget*>(m_tabStrip) : m_window->m_toolbar;
     for (QToolButton *btn : { m_window->m_closeButton,
                               m_window->m_minimizeButton,
                               m_window->m_maximizeButton }) {
@@ -106,6 +153,41 @@ void ChromeLayer::setChromeMode(bool chrome)
         if (destLayout)
             destLayout->addWidget(btn);
     }
+
+#if !defined(Q_OS_MAC)
+    if (chrome) {
+        // Flat Chrome titlebar controls: 46px-wide hit targets, glyph icons,
+        // hover highlight, red hover on close.
+        const QString &text = m_palette.textSecondary;
+        m_window->m_minimizeButton->setFixedSize(46, 38);
+        m_window->m_maximizeButton->setFixedSize(46, 38);
+        m_window->m_closeButton->setFixedSize(46, 38);
+        m_window->m_minimizeButton->setIcon(chromeSvgIcon(svgWinMinimize(), 12, text));
+        m_window->m_maximizeButton->setIcon(chromeSvgIcon(svgWinMaximize(), 12, text));
+        m_window->m_closeButton->setIcon(chromeSvgIcon(svgWinClose(), 12, text));
+        const QString hover = m_palette.inactiveTabHover;
+        m_window->m_minimizeButton->setStyleSheet(QString(
+            "QToolButton { border: none; background: transparent; border-radius: 0; }"
+            "QToolButton:hover { background-color: %1; }").arg(hover));
+        m_window->m_maximizeButton->setStyleSheet(QString(
+            "QToolButton { border: none; background: transparent; border-radius: 0; }"
+            "QToolButton:hover { background-color: %1; }").arg(hover));
+        m_window->m_closeButton->setStyleSheet(QString(
+            "QToolButton { border: none; background: transparent; border-radius: 0; }"
+            "QToolButton:hover { background-color: #e81123; }"));
+    } else {
+        // Restore the macOS-style circles for Safari mode.
+        m_window->m_closeButton->setFixedSize(12, 12);
+        m_window->m_minimizeButton->setFixedSize(12, 12);
+        m_window->m_maximizeButton->setFixedSize(12, 12);
+        m_window->m_closeButton->setIcon(QIcon());
+        m_window->m_minimizeButton->setIcon(QIcon());
+        m_window->m_maximizeButton->setIcon(QIcon());
+        m_window->m_closeButton->setStyleSheet(macTrafficStyle(QStringLiteral("#ff5f56"), QStringLiteral("#e0443e")));
+        m_window->m_minimizeButton->setStyleSheet(macTrafficStyle(QStringLiteral("#ffbd2e"), QStringLiteral("#dea124")));
+        m_window->m_maximizeButton->setStyleSheet(macTrafficStyle(QStringLiteral("#27c93f"), QStringLiteral("#1aab29")));
+    }
+#endif
 
     m_tabStrip->setVisible(chrome);
     if (m_window->m_tabBar)

@@ -127,6 +127,9 @@ private slots:
     void hideTabOverview();
     void showSettingsMenu();
     void openSettingsDialog();
+    void showProfileMenu();
+    void showConnectionInfo();
+    void updateProfileButton();
     void updateWebViewTheme();
     void installExtensionScripts();
 
@@ -147,6 +150,7 @@ private:
     friend class ChromeLayer;
 
     QIcon createSvgIcon(const QString &svgData, int size = 18, const QString &color = "#1d1d1f");
+    QIcon profileAvatarIcon(int size);
     QToolButton* createTrafficLight(const QString &color, const QString &hoverColor);
 
     SafariWebView* addTabView(const QUrl &url, QWebEngineNewWindowRequest *request);
@@ -188,6 +192,7 @@ private:
     QFrame         *m_urlContainer;
     QParallelAnimationGroup *m_urlAnim;
     QToolButton    *m_shieldInside;
+    QToolButton    *m_lockButton;
     QWidget        *m_central;
 
     QFrame         *m_urlSuggest;
@@ -224,6 +229,8 @@ private:
     QToolButton *m_minimizeButton;
     QToolButton *m_maximizeButton;
     QToolButton *m_settingsButton;
+    QToolButton *m_extensionsButton;
+    QToolButton *m_profileButton;
     QLabel      *m_privateBadge;
     QDialog      *m_settingsDialog;
     SafariWebView *m_settingsView;

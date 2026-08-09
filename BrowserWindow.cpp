@@ -256,6 +256,8 @@ static const QString svgExtensions  = "<svg xmlns=\"http://www.w3.org/2000/svg\"
 static const QString svgFlag        = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z\"/><line x1=\"4\" y1=\"22\" x2=\"4\" y2=\"15\"/></svg>";
 static const QString svgVolume2     = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"11 5 6 9 2 9 2 15 6 15 11 19 11 5\"/><path d=\"M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07\"/></svg>";
 static const QString svgVolumeMute = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"11 5 6 9 2 9 2 15 6 15 11 19 11 5\"/><line x1=\"23\" y1=\"9\" x2=\"17\" y2=\"15\"/><line x1=\"17\" y1=\"9\" x2=\"23\" y2=\"15\"/></svg>";
+static const QString svgPadlock     = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"4\" y=\"11\" width=\"16\" height=\"9\" rx=\"2\"/><path d=\"M8 11V7a4 4 0 0 1 8 0v4\"/></svg>";
+static const QString svgInfo        = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><line x1=\"12\" y1=\"8\" x2=\"12\" y2=\"13\"/><circle cx=\"12\" cy=\"16.2\" r=\"0.6\"/></svg>";
 
 // ── Page Theme (applied to web pages so they match the browser) ─────────────
 // Dark: colour-scheme signal + forced contrast so sites with hardcoded light
@@ -494,6 +496,7 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     , m_urlContainer(nullptr)
     , m_urlAnim(nullptr)
     , m_shieldInside(nullptr)
+    , m_lockButton(nullptr)
     , m_central(nullptr)
     , m_toolbarLayout(nullptr)
     , m_trafficLayout(nullptr)
@@ -511,6 +514,8 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     , m_maximizeButton(nullptr)
     , m_privateBadge(nullptr)
     , m_settingsButton(new QToolButton(this))
+    , m_extensionsButton(new QToolButton(this))
+    , m_profileButton(new QToolButton(this))
     , m_settingsDialog(nullptr)
     , m_settingsView(nullptr)
     , m_loadingBar(nullptr)
@@ -560,6 +565,7 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     m_passwords = new PasswordStore(this);
     m_extensions = new ExtensionManager(this);
     m_account = new Account(this);
+    connect(m_account, &Account::changed, this, [this]() { updateProfileButton(); });
     m_bookmarkImporter = new BookmarkImporter(this);
     m_webChannel->registerObject(QStringLiteral("passwords"), m_passwords);
     m_webChannel->registerObject(QStringLiteral("extensions"), m_extensions);
@@ -919,6 +925,15 @@ void BrowserWindow::setupUi()
     m_shieldInside->setToolTip(QStringLiteral("Privacy Report"));
     urlLayout->addWidget(m_shieldInside);
 
+    // Chrome padlock chip: hidden in Safari mode, shown in Chrome mode via
+    // applyUiLayout(). Clicking opens the connection info sheet.
+    m_lockButton = new QToolButton(m_urlContainer);
+    m_lockButton->setFixedSize(18, 18);
+    m_lockButton->setToolTip(QStringLiteral("Connection details"));
+    m_lockButton->setVisible(false);
+    connect(m_lockButton, &QToolButton::clicked, this, &BrowserWindow::showConnectionInfo);
+    urlLayout->addWidget(m_lockButton);
+
     urlLayout->addWidget(m_urlBar, 1);
 
     m_reloadButton->setFixedSize(22, 22);
@@ -942,6 +957,20 @@ void BrowserWindow::setupUi()
     m_tabOverviewButton->setToolTip(QStringLiteral("Tab Overview"));
     connect(m_tabOverviewButton, &QToolButton::clicked, this, &BrowserWindow::toggleTabOverview);
     toolbarLayout->addWidget(m_tabOverviewButton);
+
+    // Chrome-only right cluster: extensions + profile avatar. Hidden in Safari
+    // mode; applyUiLayout() toggles visibility. Settings joins after them.
+    m_extensionsButton->setToolTip(QStringLiteral("Extensions"));
+    m_extensionsButton->setVisible(false);
+    connect(m_extensionsButton, &QToolButton::clicked, this, [this]() {
+        navigateCurrentTo(QUrl(QStringLiteral("qrc:/extensions.html")));
+    });
+    toolbarLayout->addWidget(m_extensionsButton);
+
+    m_profileButton->setToolTip(QStringLiteral("Profile"));
+    m_profileButton->setVisible(false);
+    connect(m_profileButton, &QToolButton::clicked, this, &BrowserWindow::showProfileMenu);
+    toolbarLayout->addWidget(m_profileButton);
 
     // Native Safari keeps Settings out of the toolbar (Cmd/Ctrl+, instead).
 
@@ -1886,6 +1915,169 @@ void BrowserWindow::showSettingsMenu() {
     menu.exec(mapToGlobal(QPoint(width() - 250, m_toolbar->height())));
 }
 
+// Chrome-style profile popup: active account at the top, then saved profiles
+// for one-click switching, then a jump to the Profiles settings tab.
+void BrowserWindow::showProfileMenu()
+{
+    QMenu menu(this);
+    menu.setStyleSheet(QString(
+        "QMenu { background-color: %1; color: %2; border: 0.5px solid %3; "
+        "border-radius: 8px; padding: 4px; }"
+        "QMenu::item { padding: 6px 28px 6px 12px; border-radius: 5px; font-size: 13px; }"
+        "QMenu::item:selected { background-color: %4; }"
+        "QMenu::item:checked { color: %5; }"
+        "QMenu::separator { height: 1px; background: %6; margin: 4px 8px; }"
+    ).arg(bgUrlBar(), textPrimary(), border(), selectedBg(), accent(), border()));
+
+    const bool signedIn = m_account && m_account->signedIn();
+    if (signedIn) {
+        QString label = m_account->name();
+        if (!m_account->email().isEmpty())
+            label += QStringLiteral(" \u2014 ") + m_account->email();
+        QAction *me = menu.addAction(label);
+        me->setEnabled(false);
+    } else {
+        QAction *guest = menu.addAction(QStringLiteral("Signed in as Guest"));
+        guest->setEnabled(false);
+    }
+
+    menu.addSeparator();
+
+    if (m_account) {
+        const QJsonArray accounts = m_account->accountsJson();
+        for (const QJsonValue &v : accounts) {
+            const QJsonObject o = v.toObject();
+            const QString id = o.value(QStringLiteral("id")).toString();
+            QString name = o.value(QStringLiteral("name")).toString();
+            const QString email = o.value(QStringLiteral("email")).toString();
+            if (!email.isEmpty())
+                name += QStringLiteral(" \u2014 ") + email;
+            QAction *acc = menu.addAction(name);
+            acc->setCheckable(true);
+            acc->setChecked(signedIn && m_account->name() == o.value(QStringLiteral("name")).toString());
+            connect(acc, &QAction::triggered, this, [this, id]() {
+                if (m_account)
+                    m_account->selectAccount(id);
+            });
+        }
+        if (!accounts.isEmpty())
+            menu.addSeparator();
+    }
+
+    QAction *manage = menu.addAction(QStringLiteral("Manage profiles\u2026"));
+    connect(manage, &QAction::triggered, this, [this]() {
+        openSettingsDialog();
+        if (m_settingsView)
+            m_settingsView->setUrl(QUrl(QStringLiteral("qrc:/settings.html?tab=profiles")));
+    });
+
+    menu.exec(m_profileButton->mapToGlobal(QPoint(0, m_profileButton->height())));
+}
+
+// Connection info sheet, opened from the Chrome padlock chip.
+void BrowserWindow::showConnectionInfo()
+{
+    auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget());
+    const QUrl url = v ? v->url() : QUrl();
+    const QString scheme = url.scheme();
+
+    QDialog dlg(this);
+    dlg.setWindowTitle(QStringLiteral("Connection Info"));
+    dlg.setModal(true);
+    dlg.setFixedWidth(360);
+    dlg.setStyleSheet(QString(
+        "QDialog { background-color: %1; color: %2; border: 0.5px solid %3; border-radius: 12px; }"
+        "QLabel { color: %2; font-size: 12px; background: transparent; border: none; }"
+        "QLabel#connHost { color: %4; font-size: 11px; }"
+        "QLabel#connNote { color: %4; font-size: 11px; font-style: italic; }"
+    ).arg(bgUrlBar(), textPrimary(), border(), textSecondary()));
+
+    QVBoxLayout *lay = new QVBoxLayout(&dlg);
+    lay->setContentsMargins(20, 20, 20, 20);
+    lay->setSpacing(10);
+
+    auto *title = new QLabel(&dlg);
+    title->setStyleSheet(QStringLiteral("font-size: 15px; font-weight: 600;"));
+    auto *detail = new QLabel(&dlg);
+    detail->setWordWrap(true);
+
+    if (scheme == QStringLiteral("https")) {
+        title->setText(QStringLiteral("Connection is secure"));
+        title->setStyleSheet(QStringLiteral("color: #34c759; font-size: 15px; font-weight: 600;"));
+        detail->setText(QStringLiteral("This page is encrypted with HTTPS. Traffic to %1 is protected against tampering and eavesdropping.").arg(url.host()));
+    } else if (scheme == QStringLiteral("http")) {
+        title->setText(QStringLiteral("Connection is not secure"));
+        title->setStyleSheet(QStringLiteral("color: #ff9f0a; font-size: 15px; font-weight: 600;"));
+        detail->setText(QStringLiteral("This page is served over plain HTTP. Other people on the network could read or modify what you send."));
+    } else {
+        title->setText(QStringLiteral("BLACK internal page"));
+        title->setStyleSheet(QStringLiteral("color: %1; font-size: 15px; font-weight: 600;").arg(accent()));
+        detail->setText(QStringLiteral("This is a built-in BLACK page (%1). No network connection is used.").arg(url.toString(QUrl::RemoveQuery)));
+    }
+
+    auto *host = new QLabel(&dlg);
+    host->setObjectName(QStringLiteral("connHost"));
+    host->setText(url.host().isEmpty() ? url.toString(QUrl::RemoveQuery) : url.host());
+
+    auto *note = new QLabel(QStringLiteral("Certificates are validated by Qt WebEngine (Chromium). BLACK does not store connection data."), &dlg);
+    note->setObjectName(QStringLiteral("connNote"));
+    note->setWordWrap(true);
+
+    auto *ok = new QPushButton(QStringLiteral("Done"), &dlg);
+    ok->setCursor(Qt::PointingHandCursor);
+    ok->setStyleSheet(QString(
+        "QPushButton { background-color: %1; color: #ffffff; border: none; border-radius: 6px; "
+        "padding: 6px 18px; font-size: 12px; font-weight: 600; }"
+        "QPushButton:hover { background-color: %2; }"
+    ).arg(accent(), SafariTheme::instance().accentHover));
+    connect(ok, &QPushButton::clicked, &dlg, &QDialog::accept);
+
+    lay->addWidget(title);
+    lay->addWidget(host);
+    lay->addWidget(detail);
+    lay->addSpacing(4);
+    lay->addWidget(note);
+    lay->addWidget(ok, 0, Qt::AlignRight);
+
+    dlg.exec();
+}
+
+void BrowserWindow::updateProfileButton()
+{
+    if (!m_profileButton)
+        return;
+    m_profileButton->setIcon(profileAvatarIcon(20));
+    if (m_account && m_account->signedIn()) {
+        QString tip = m_account->name();
+        if (!m_account->email().isEmpty())
+            tip += QStringLiteral(" \u2014 ") + m_account->email();
+        m_profileButton->setToolTip(tip);
+    } else {
+        m_profileButton->setToolTip(QStringLiteral("Signed in as Guest"));
+    }
+}
+
+QIcon BrowserWindow::profileAvatarIcon(int size)
+{
+    if (m_account && m_account->signedIn()) {
+        const QString name = m_account->name();
+        const QString initial = name.isEmpty() ? QStringLiteral("?") : name.left(1).toUpper();
+        QPixmap pix(size, size);
+        pix.fill(Qt::transparent);
+        QPainter p(&pix);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(accent()));
+        p.drawEllipse(0, 0, size, size);
+        p.setPen(QColor(QStringLiteral("#ffffff")));
+        QFont f(QStringLiteral("Helvetica Neue"), size / 2, QFont::DemiBold);
+        p.setFont(f);
+        p.drawText(QRect(0, 0, size, size), Qt::AlignCenter, initial);
+        return QIcon(pix);
+    }
+    return createSvgIcon(svgUser, size, textSecondary());
+}
+
 void BrowserWindow::openSettingsForTesting()
 {
     openSettingsDialog();
@@ -2686,8 +2878,9 @@ void BrowserWindow::updateUrlBar(const QUrl &url) {
     if (m_currentTabIndex < 0 || m_currentTabIndex >= m_tabs.count()) return;
     m_urlBar->setText(shortUrl(url.toString()));
 
+    const bool secure = (url.scheme() == QStringLiteral("https"));
     if (m_shieldInside) {
-        if (url.scheme() == QStringLiteral("https")) {
+        if (secure) {
             m_shieldInside->setIcon(createSvgIcon(svgShield, 16, QStringLiteral("#34c759"))); // Green secure shield
             m_shieldInside->setToolTip(QStringLiteral("Connection is secure (HTTPS) — BLACK Protection Active"));
         } else if (url.scheme() == QStringLiteral("http")) {
@@ -2696,6 +2889,20 @@ void BrowserWindow::updateUrlBar(const QUrl &url) {
         } else {
             m_shieldInside->setIcon(createSvgIcon(svgShield, 16, textSecondary()));
             m_shieldInside->setToolTip(QStringLiteral("Privacy Report"));
+        }
+    }
+
+    if (m_lockButton) {
+        const QString scheme = url.scheme();
+        if (scheme == QStringLiteral("https")) {
+            m_lockButton->setIcon(createSvgIcon(svgPadlock, 16, QStringLiteral("#34c759")));
+            m_lockButton->setToolTip(QStringLiteral("Connection is secure (HTTPS)"));
+        } else if (scheme == QStringLiteral("http")) {
+            m_lockButton->setIcon(createSvgIcon(svgInfo, 16, QStringLiteral("#ff9f0a")));
+            m_lockButton->setToolTip(QStringLiteral("Connection is not secure (HTTP)"));
+        } else {
+            m_lockButton->setIcon(createSvgIcon(svgPadlock, 16, textSecondary()));
+            m_lockButton->setToolTip(QStringLiteral("BLACK internal page"));
         }
     }
 }
@@ -2913,9 +3120,12 @@ void BrowserWindow::applyTheme()
     m_downloadsButton->setIcon(createSvgIcon(svgDownloads, 18, navIconColor));
     m_tabOverviewButton->setIcon(createSvgIcon(svgTabOverview, 18, navIconColor));
     m_settingsButton->setIcon(createSvgIcon(svgSettings, 18, navIconColor));
+    m_extensionsButton->setIcon(createSvgIcon(svgExtensions, 18, navIconColor));
+    updateProfileButton();
 
     for (QToolButton *b : { m_sidebarButton, m_backButton, m_forwardButton, m_reloadButton,
-                            m_shareButton, m_downloadsButton, m_tabOverviewButton, m_settingsButton }) {
+                            m_shareButton, m_downloadsButton, m_tabOverviewButton, m_settingsButton,
+                            m_extensionsButton, m_profileButton }) {
         b->setStyleSheet(navBtnStyle);
     }
     // Reload sits inside the address bar, so it gets a tighter hit area.
@@ -3067,6 +3277,14 @@ void BrowserWindow::applyUiLayout()
     // setChromeMode bails out early when the mode is unchanged, so re-apply the
     // sidebar treatment here to cover first-run startup in Chrome mode.
     applySidebarLayout(chrome);
+
+    // Per-mode element set: the padlock chip and the extensions/profile cluster
+    // are Chrome-only; the Privacy Report shield belongs to Safari. Keeps each
+    // mode from bleeding widgets into the other.
+    if (m_lockButton)     m_lockButton->setVisible(chrome);
+    if (m_shieldInside)   m_shieldInside->setVisible(!chrome);
+    if (m_extensionsButton) m_extensionsButton->setVisible(chrome);
+    if (m_profileButton)  m_profileButton->setVisible(chrome);
 }
 
 // Sets data-ui-layout on a single view. Used for tabs and the settings dialog,
