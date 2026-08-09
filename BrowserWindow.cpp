@@ -545,7 +545,9 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     // Inject the class-based theme stylesheet into every page of this profile.
     // Native color-scheme signalling (no invert filter): sites like YouTube and
     // Google render their official dark/light themes via prefers-color-scheme.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
     m_profile->settings()->setAttribute(QWebEngineSettings::ForceDarkMode, false);
+#endif
 
     QWebEngineScript styleScript;
     styleScript.setName(QStringLiteral("black-page-theme"));
