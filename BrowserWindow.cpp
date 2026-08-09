@@ -490,6 +490,7 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     , m_sidebar(nullptr)
     , m_sidebarLayout(nullptr)
     , m_sidebarSearch(nullptr)
+    , m_sidebarShadow(nullptr)
     , m_sidebarVisible(false)
     , m_urlFocused(false)
     , m_urlMouseFocusPending(false)
@@ -932,6 +933,7 @@ void BrowserWindow::setupUi()
     sidebarShadow->setOffset(0, 4);
     sidebarShadow->setColor(QColor(0, 0, 0, 140));
     m_sidebar->setGraphicsEffect(sidebarShadow);
+    m_sidebarShadow = sidebarShadow;
 
     m_sidebarHost = new QWidget(m_central);
     m_sidebarHost->setObjectName(QStringLiteral("SidebarHost"));
@@ -2751,6 +2753,9 @@ void BrowserWindow::setupKeyboardShortcuts()
     addShortcut(QStringLiteral("Alt+Right"), [this]() {
         if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) v->forward();
     });
+    addShortcut(QStringLiteral("Alt+Home"), [this]() {
+        navigateCurrentTo(homepageUrl());
+    });
     addShortcut(QStringLiteral("Ctrl+Tab"), [this]() {
         if (m_tabs.count() > 1) {
             int next = (m_currentTabIndex + 1) % m_tabs.count();
@@ -2863,10 +2868,16 @@ void BrowserWindow::applyTheme()
         "QProgressBar::chunk { background-color: %1; }"
     ).arg(chrome ? cp.accent : accent()));
 
-    // Sidebar (floating card)
-    m_sidebar->setStyleSheet(QString(
-        "#Sidebar { background-color: %1; border: 1px solid %2; border-radius: 12px; }"
-    ).arg(cardBg(), border()));
+    // Sidebar (Safari: floating card; Chrome: docked panel)
+    if (chrome) {
+        m_sidebar->setStyleSheet(QString(
+            "#Sidebar { background-color: %1; border-right: 0.5px solid %2; border-radius: 0px; }"
+        ).arg(cp.toolbarBg, cp.border));
+    } else {
+        m_sidebar->setStyleSheet(QString(
+            "#Sidebar { background-color: %1; border: 1px solid %2; border-radius: 12px; }"
+        ).arg(cardBg(), border()));
+    }
     m_sidebarHost->setStyleSheet(QStringLiteral("#SidebarHost { background: transparent; }"));
     m_sidebarSearch->setStyleSheet(QString(
         "QLineEdit { background-color: %1; border: none; border-radius: 6px; "
@@ -2983,6 +2994,39 @@ void BrowserWindow::applyUiLayout()
     // No-op when the mode is already active, so theme refreshes stay cheap.
     if (m_chromeLayer)
         m_chromeLayer->setChromeMode(chrome);
+
+    // setChromeMode bails out early when the mode is unchanged, so re-apply the
+    // sidebar treatment here to cover first-run startup in Chrome mode.
+    applySidebarLayout(chrome);
+}
+
+// Safari keeps the sidebar as a floating rounded card with a soft shadow;
+// Chrome docks it flush to the edge like a panel.
+void BrowserWindow::applySidebarLayout(bool chrome)
+{
+    if (!m_sidebar || !m_sidebarHost)
+        return;
+
+    if (auto *host = qobject_cast<QHBoxLayout*>(m_sidebarHost->layout())) {
+        host->setContentsMargins(chrome ? 0 : 8, chrome ? 0 : 8,
+                                 chrome ? 0 : 8, chrome ? 0 : 8);
+    }
+    m_sidebarHost->setFixedWidth(chrome ? 260 : 276);
+
+    if (chrome) {
+        // setGraphicsEffect(nullptr) deletes the old effect.
+        if (m_sidebarShadow) {
+            m_sidebar->setGraphicsEffect(nullptr);
+            m_sidebarShadow = nullptr;
+        }
+    } else if (!m_sidebarShadow) {
+        auto *shadow = new QGraphicsDropShadowEffect(m_sidebar);
+        shadow->setBlurRadius(24);
+        shadow->setOffset(0, 4);
+        shadow->setColor(QColor(0, 0, 0, 140));
+        m_sidebar->setGraphicsEffect(shadow);
+        m_sidebarShadow = shadow;
+    }
 }
 
 void BrowserWindow::updateWebViewBackgrounds()

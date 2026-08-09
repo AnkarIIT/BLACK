@@ -111,6 +111,9 @@ void ChromeLayer::setChromeMode(bool chrome)
     if (m_window->m_tabBar)
         m_window->m_tabBar->setVisible(!chrome);
 
+    // Chrome docks the sidebar as a flush panel instead of a floating card.
+    m_window->applySidebarLayout(chrome);
+
     // Chrome surfaces Settings in the toolbar (Safari keeps it hidden).
     if (m_window->m_settingsButton) {
         if (chrome) {

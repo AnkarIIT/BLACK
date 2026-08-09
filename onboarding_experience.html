@@ -81,6 +81,24 @@
     }
     .btn-ghost:hover { color: var(--text); }
 
+    .segmented {
+        display: flex; gap: 6px; width: fit-content; margin: 0 auto;
+        background: rgba(0,0,0,0.28); padding: 4px; border-radius: 10px;
+        border: 1px solid var(--line);
+    }
+    .seg-btn {
+        flex: 1; min-width: 130px;
+        background: transparent; border: none; color: var(--muted);
+        padding: 9px 16px; border-radius: 7px; cursor: pointer;
+        font: 500 12px "JetBrains Mono", monospace; letter-spacing: 1px;
+        transition: background 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
+    }
+    .seg-btn:hover { color: var(--text); }
+    .seg-btn.active {
+        background: var(--accent); color: #fff;
+        box-shadow: 0 0 18px rgba(255,100,0,0.35);
+    }
+
     .row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
 
     .provider-btn {
@@ -294,6 +312,20 @@
             <div id="oauth-error" class="oauth-error" style="display:none"></div>
             <div><button class="btn-ghost" id="btn-guest">Continue without account</button></div>
         </div>
+        <div class="layout-picker" id="layout-picker" style="margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--line);">
+            <div style="font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: var(--muted); margin-bottom: 10px;">Your browser look</div>
+            <div class="segmented" id="onbLayoutSeg">
+                <button class="seg-btn" data-layout="0">Safari Modern</button>
+                <button class="seg-btn" data-layout="1">Classic Chrome</button>
+            </div>
+            <div id="layout-desc" style="font-size: 12px; color: var(--muted); margin-top: 10px;">Floating sidebar, translucent toolbar, Safari-style tabs.</div>
+            <div style="margin-top: 20px; font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: var(--muted); margin-bottom: 10px;">Theme</div>
+            <div class="segmented" id="onbThemeSeg">
+                <button class="seg-btn" data-theme="0">System</button>
+                <button class="seg-btn" data-theme="1">Light</button>
+                <button class="seg-btn" data-theme="2">Dark</button>
+            </div>
+        </div>
     </div>
 
     <div id="frame-07" class="frame-card">
@@ -474,10 +506,62 @@ if (typeof QWebChannel !== "undefined") {
             oauthManager.authSuccess.connect(onAuthSuccess);
             oauthManager.authFailed.connect(onAuthFailed);
         }
+        appearance = ch.objects.appearance;
+        if (appearance) {
+            updateLayoutSeg();
+            appearance.uiLayoutChanged.connect(updateLayoutSeg);
+        }
+        theme = ch.objects.theme;
+        if (theme) {
+            updateThemeSeg();
+            theme.themeSchemeChanged.connect(updateThemeSeg);
+        }
         updateOAuthVisibility();
         renderAccountList();
     });
 }
+
+/* Layout picker: mirror the Safari/Chrome choice onto the live window. */
+var appearance = null;
+var layoutDescs = [
+    "Floating sidebar, translucent toolbar, Safari-style tabs.",
+    "Docked sidebar, chrome-style tabs and flat panels.",
+];
+function updateLayoutSeg() {
+    if (!appearance) return;
+    var current = appearance.uiLayout || 0;
+    document.querySelectorAll("#onbLayoutSeg .seg-btn").forEach(function (b) {
+        b.classList.toggle("active", parseInt(b.dataset.layout, 10) === current);
+    });
+    var desc = document.getElementById("layout-desc");
+    if (desc) desc.textContent = layoutDescs[current] || "";
+}
+document.querySelectorAll("#onbLayoutSeg .seg-btn").forEach(function (b) {
+    b.addEventListener("click", function () {
+        if (appearance && appearance.setUiLayout) {
+            appearance.setUiLayout(parseInt(b.dataset.layout, 10));
+        }
+        updateLayoutSeg();
+    });
+});
+
+/* Theme picker: mirror the System/Light/Dark choice from settings.html. */
+var theme = null;
+function updateThemeSeg() {
+    if (!theme) return;
+    var current = theme.themePreference || 0;
+    document.querySelectorAll("#onbThemeSeg .seg-btn").forEach(function (b) {
+        b.classList.toggle("active", parseInt(b.dataset.theme, 10) === current);
+    });
+}
+document.querySelectorAll("#onbThemeSeg .seg-btn").forEach(function (b) {
+    b.addEventListener("click", function () {
+        if (theme && theme.setThemePreference) {
+            theme.setThemePreference(parseInt(b.dataset.theme, 10));
+        }
+        updateThemeSeg();
+    });
+});
 function callBridge(method, arg) {
     if (bridge && bridge[method]) {
         bridge[method](arg || "");

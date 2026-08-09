@@ -29,6 +29,7 @@
 #include "OAuthManager.h"
 #include "BookmarkImporter.h"
 #include "ShelfStore.h"
+#include "AppearanceManager.h"
 #include "SafariTheme.h"
 
 // Check if this is the first run
@@ -322,11 +323,14 @@ int main(int argc, char *argv[])
         QWebChannel *channel = new QWebChannel(page);
         OAuthManager oauthManager;
         BookmarkImporter importer;
+        AppearanceManager appearance;
         ShelfStore bookmarksStore(QStringLiteral("bookmarks.json"));
         OnboardingBridge bridge(&account, &bookmarksStore, &onboarding);
         channel->registerObject(QStringLiteral("onboardingBridge"), &bridge);
         channel->registerObject(QStringLiteral("oauthManager"), &oauthManager);
         channel->registerObject(QStringLiteral("bookmarkImporter"), &importer);
+        channel->registerObject(QStringLiteral("appearance"), &appearance);
+        channel->registerObject(QStringLiteral("theme"), &SafariTheme::instance());
         channel->registerObject(QStringLiteral("bookmarks"), &bookmarksStore);
         page->setWebChannel(channel, QWebEngineScript::MainWorld);
         layout->addWidget(view);

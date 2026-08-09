@@ -37,6 +37,7 @@ class QWebEngineNewWindowRequest;
 class QWebEngineDownloadRequest;
 class QWebEngineProfile;
 class QWebChannel;
+class QGraphicsDropShadowEffect;
 class ChromeLayer;
 class ShelfStore;
 class PasswordStore;
@@ -135,6 +136,7 @@ private:
     void setupKeyboardShortcuts();
     void applyTheme();
     void applyUiLayout();
+    void applySidebarLayout(bool chrome);
     void updateUrlContainerStyle();
     void updateWebViewBackgrounds();
 
@@ -239,6 +241,7 @@ private:
     QFrame       *m_sidebar;
     QVBoxLayout  *m_sidebarLayout;
     QLineEdit    *m_sidebarSearch;
+    QGraphicsDropShadowEffect *m_sidebarShadow;
     bool          m_sidebarVisible;
     QString       m_activeSidebarAction;
     QList<QFrame*> m_sidebarItems;
