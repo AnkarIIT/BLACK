@@ -282,6 +282,8 @@ private:
     void restoreSession();
     void saveHistoryItem(const QString &title, const QString &url);
     void saveBookmark(const QString &title, const QString &url);
+    void loadPermissions();
+    void savePermissions();
 
     QList<QWidget*> m_tabWidgets;
     QList<QLabel*> m_tabItemIcons;

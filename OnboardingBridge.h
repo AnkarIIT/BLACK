@@ -33,6 +33,20 @@ protected:
         emit consoleMessage(QStringLiteral("[%1] %2").arg(sourceID, message), lineNumber);
         QWebEnginePage::javaScriptConsoleMessage(level, message, lineNumber, sourceID);
     }
+
+    bool acceptNavigationRequest(const QUrl &url, NavigationType type, bool isMainFrame) override
+    {
+        if (isMainFrame) {
+            const QString scheme = url.scheme();
+            if (scheme != QLatin1String("qrc") && scheme != QLatin1String("http") && scheme != QLatin1String("https"))
+                return false;
+            if (scheme == QLatin1String("http") || scheme == QLatin1String("https")) {
+                if (url.host() != QLatin1String("localhost") && url.host() != QLatin1String("127.0.0.1"))
+                    return false;
+            }
+        }
+        return QWebEnginePage::acceptNavigationRequest(url, type, isMainFrame);
+    }
 };
 
 // Bridge between the cinematic first-run page (qrc:/onboarding_experience.html)

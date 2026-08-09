@@ -14,6 +14,10 @@
 #if defined(Q_OS_WIN)
 #include <windows.h>
 #include <wincrypt.h>
+#else
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 namespace {
@@ -130,12 +134,21 @@ QByteArray loadOrCreateMasterKey()
             return key;
     }
     const QByteArray key = randomBytes(kKeySize);
+#if !defined(Q_OS_WIN)
+    int fd = open(path.toUtf8().constData(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+    if (fd >= 0) {
+        ssize_t written = write(fd, key.constData(), key.size());
+        (void)written;
+        close(fd);
+    }
+#else
     QFile out(path);
     if (out.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         out.write(key);
         out.flush();
         QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner);
     }
+#endif
     return key;
 }
 
@@ -183,13 +196,20 @@ QByteArray hmacCtrDecryptBlob(const QByteArray &envelope)
 }
 
 #if defined(Q_OS_WIN)
+const char kDpapiEntropy[] = "BLACK_BROWSER_VAULT_ENTROPY_BLOCK_32";
+
 QByteArray dpapiEncrypt(const QByteArray &plain)
 {
     DATA_BLOB in;
     in.pbData = reinterpret_cast<BYTE *>(const_cast<char *>(plain.constData()));
     in.cbData = DWORD(plain.size());
+
+    DATA_BLOB entropy;
+    entropy.pbData = reinterpret_cast<BYTE *>(const_cast<char *>(kDpapiEntropy));
+    entropy.cbData = DWORD(sizeof(kDpapiEntropy) - 1);
+
     DATA_BLOB out = { nullptr, 0 };
-    if (!CryptProtectData(&in, L"BLACK password vault", nullptr, nullptr, nullptr,
+    if (!CryptProtectData(&in, L"BLACK password vault", &entropy, nullptr, nullptr,
                           CRYPTPROTECT_UI_FORBIDDEN, &out))
         return {};
     QByteArray result(reinterpret_cast<const char *>(out.pbData), int(out.cbData));
@@ -202,13 +222,29 @@ QByteArray dpapiDecrypt(const QByteArray &blob)
     DATA_BLOB in;
     in.pbData = reinterpret_cast<BYTE *>(const_cast<char *>(blob.constData()));
     in.cbData = DWORD(blob.size());
+
+    DATA_BLOB entropy;
+    entropy.pbData = reinterpret_cast<BYTE *>(const_cast<char *>(kDpapiEntropy));
+    entropy.cbData = DWORD(sizeof(kDpapiEntropy) - 1);
+
     DATA_BLOB out = { nullptr, 0 };
-    if (!CryptUnprotectData(&in, nullptr, nullptr, nullptr, nullptr,
-                            CRYPTPROTECT_UI_FORBIDDEN, &out))
-        return {};
-    QByteArray result(reinterpret_cast<const char *>(out.pbData), int(out.cbData));
-    LocalFree(out.pbData);
-    return result;
+    // Try first with custom entropy
+    if (CryptUnprotectData(&in, nullptr, &entropy, nullptr, nullptr,
+                            CRYPTPROTECT_UI_FORBIDDEN, &out)) {
+        QByteArray result(reinterpret_cast<const char *>(out.pbData), int(out.cbData));
+        LocalFree(out.pbData);
+        return result;
+    }
+
+    // Fallback to nullptr entropy for backward compatibility
+    if (CryptUnprotectData(&in, nullptr, nullptr, nullptr, nullptr,
+                            CRYPTPROTECT_UI_FORBIDDEN, &out)) {
+        QByteArray result(reinterpret_cast<const char *>(out.pbData), int(out.cbData));
+        LocalFree(out.pbData);
+        return result;
+    }
+
+    return {};
 }
 #endif
 
