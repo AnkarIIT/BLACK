@@ -56,6 +56,7 @@ class OAuthManager : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(bool isAuthenticating READ isAuthenticating NOTIFY authenticatingChanged)
+    Q_PROPERTY(bool decryptFailed READ decryptFailed NOTIFY decryptFailedChanged)
 
 public:
     enum Provider {
@@ -78,6 +79,12 @@ public:
     explicit OAuthManager(QObject *parent = nullptr);
 
     bool isAuthenticating() const { return m_isAuthenticating; }
+
+    // True when services.json exists but failed to decrypt/parse (tampered, or
+    // the master key no longer matches). Distinct from an empty/nonexistent
+    // token set: while true, saveConnected() refuses to write so a "failed to
+    // decrypt" is never mistaken for "no connections" and overwritten.
+    bool decryptFailed() const { return m_decryptFailed; }
 
     Q_INVOKABLE bool devMode() const { return m_devMode; }
 
@@ -109,6 +116,7 @@ signals:
     void authenticatingChanged();
     void authSuccess(const QJsonObject &userProfile);
     void authFailed(const QString &errorMessage);
+    void decryptFailedChanged();
 
 private:
     struct Config {
@@ -175,6 +183,7 @@ private:
     Provider m_activeProvider = Google;
     bool m_isAuthenticating = false;
     bool m_devMode = false;
+    bool m_decryptFailed = false;
 };
 
 #endif // OAUTHMANAGER_H

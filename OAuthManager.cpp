@@ -704,10 +704,20 @@ void OAuthManager::loadConnected()
         return;
     const QByteArray data = file.readAll();
     QByteArray plain;
-    if (VaultCrypto::isEnvelope(data))
+    if (VaultCrypto::isEnvelope(data)) {
         plain = VaultCrypto::decrypt(data);
-    else
+        if (plain.isEmpty()) {
+            // The services file exists but failed authentication (tampered, or
+            // the master key no longer matches). Fail closed: never let a later
+            // save mistake this for an empty connection set and overwrite the
+            // real encrypted tokens.
+            m_decryptFailed = true;
+            emit decryptFailedChanged();
+            return;
+        }
+    } else {
         plain = data; // legacy plaintext (nothing shipped, keep tolerant)
+    }
 
     const QJsonDocument doc = QJsonDocument::fromJson(plain);
     if (doc.isObject()) {
@@ -743,11 +753,18 @@ void OAuthManager::loadConnected()
         QJsonObject migrated;
         migrated.insert(QStringLiteral("default"), accountSet);
         m_connected = migrated;
+    } else {
+        // File exists but holds neither an object nor an array. Treat it as
+        // unreadable so a later save cannot clobber it with an empty set.
+        m_decryptFailed = true;
+        emit decryptFailedChanged();
     }
 }
 
 void OAuthManager::saveConnected() const
 {
+    if (m_decryptFailed)
+        return; // never overwrite a token set we failed to authenticate
     const QByteArray plain = QJsonDocument(m_connected).toJson(QJsonDocument::Compact);
     const QByteArray blob = VaultCrypto::encrypt(plain);
     if (blob.isEmpty())
