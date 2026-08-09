@@ -312,7 +312,7 @@ int main(int argc, char *argv[])
         Account account;
         QDialog onboarding;
         onboarding.setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
-        onboarding.setAttribute(Qt::WA_TranslucentBackground);
+        // onboarding.setAttribute(Qt::WA_TranslucentBackground);
 
         QVBoxLayout *layout = new QVBoxLayout(&onboarding);
         layout->setContentsMargins(0, 0, 0, 0);

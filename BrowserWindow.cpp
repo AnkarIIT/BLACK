@@ -604,6 +604,7 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     setupTabOverlay();
     setupKeyboardShortcuts();
     applyTheme();
+    loadPermissions();
 
     if (!m_incognito && !sessionRestoredFlag())
         m_ownsSession = true;
@@ -1266,8 +1267,17 @@ void BrowserWindow::showTabOverview()
     // Only capture the visible tab synchronously; hidden tabs keep their last
     // thumbnail (or show a favicon), so opening the overview never freezes.
     if (m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count() && m_tabs[m_currentTabIndex].view) {
-        m_tabs[m_currentTabIndex].thumbnail = m_tabs[m_currentTabIndex].view->grab()
-            .scaled(240, 150, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+        QPointer<QWebEngineView> safeView(m_tabs[m_currentTabIndex].view);
+        QTimer::singleShot(10, this, [this, safeView]() {
+            if (!safeView) return;
+            for (int i = 0; i < m_tabs.count(); ++i) {
+                if (m_tabs[i].view == safeView) {
+                    m_tabs[i].thumbnail = safeView->grab().scaled(240, 150, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+                    rebuildOverviewGrid();
+                    break;
+                }
+            }
+        });
     }
 
     m_overviewVisible = true;
@@ -1506,8 +1516,14 @@ SafariWebView* BrowserWindow::addTabView(const QUrl &url, QWebEngineNewWindowReq
                     saveHistoryItem(m_tabs[i].title, m_tabs[i].url);
                     // Refresh the visible tab's thumbnail so the overview stays fresh.
                     if (i == m_currentTabIndex && !m_overviewVisible) {
-                        m_tabs[i].thumbnail = view->grab().scaled(
-                            240, 150, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+                        QPointer<QWebEngineView> safeView(view);
+                        QTimer::singleShot(200, this, [this, safeView, i]() {
+                            if (!safeView) return;
+                            if (i < m_tabs.count() && m_tabs[i].view == safeView) {
+                                m_tabs[i].thumbnail = safeView->grab().scaled(
+                                    240, 150, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+                            }
+                        });
                     }
                 }
                 break;
@@ -1971,8 +1987,10 @@ void BrowserWindow::handlePermissionRequest(QWebEnginePermission permission) {
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
 
     const bool allowed = (dialog.exec() == QDialog::Accepted);
-    if (remember->isChecked())
+    if (remember->isChecked()) {
         m_permissionChoices.insert(key, allowed);
+        savePermissions();
+    }
 
     if (allowed)
         permission.grant();
@@ -2030,8 +2048,10 @@ void BrowserWindow::handlePermissionRequestOld(QWebEnginePage *page, const QUrl 
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
 
     const bool allowed = (dialog.exec() == QDialog::Accepted);
-    if (remember->isChecked())
+    if (remember->isChecked()) {
         m_permissionChoices.insert(key, allowed);
+        savePermissions();
+    }
 
     page->setFeaturePermission(securityOrigin, feature,
         allowed ? QWebEnginePage::PermissionGrantedByUser : QWebEnginePage::PermissionDeniedByUser);
@@ -3467,6 +3487,34 @@ void BrowserWindow::saveHistoryItem(const QString &title, const QString &url) {
 void BrowserWindow::saveBookmark(const QString &title, const QString &url) {
     if (url.isEmpty() || url.startsWith(QStringLiteral("qrc:"))) return;
     m_bookmarks->add(title, url);
+}
+
+
+void BrowserWindow::loadPermissions() {
+    m_permissionChoices.clear();
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QFile file(dir + QStringLiteral("/permissions.json"));
+    if (file.open(QIODevice::ReadOnly)) {
+        QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+        if (doc.isObject()) {
+            QJsonObject obj = doc.object();
+            for (auto it = obj.constBegin(); it != obj.constEnd(); ++it) {
+                m_permissionChoices.insert(it.key(), it.value().toBool());
+            }
+        }
+    }
+}
+
+void BrowserWindow::savePermissions() {
+    QJsonObject obj;
+    for (auto it = m_permissionChoices.constBegin(); it != m_permissionChoices.constEnd(); ++it) {
+        obj.insert(it.key(), it.value());
+    }
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QFile file(dir + QStringLiteral("/permissions.json"));
+    if (file.open(QIODevice::WriteOnly)) {
+        file.write(QJsonDocument(obj).toJson(QJsonDocument::Compact));
+    }
 }
 
 #include "BrowserWindow.moc"
