@@ -4,10 +4,12 @@
 #include <QObject>
 #include <QDialog>
 #include <QWebEnginePage>
+#include <QWebEngineScript>
 #include <QJsonArray>
 
 #include "Account.h"
 
+class QWebChannel;
 class ShelfStore;
 
 // QWebEnginePage::javaScriptConsoleMessage is a protected virtual, so surface
@@ -22,6 +24,15 @@ public:
         : QWebEnginePage(parent)
     {
     }
+
+    // The full onboarding bridge lives in the page's MAIN world (MainWorld),
+    // the same world the page's own scripts run in. This is acceptable only
+    // while the page itself is our qrc: asset; the moment navigation leaves it
+    // (e.g. an attacker-forced jump to http://127.0.0.1:PORT), the bridge must
+    // not follow into the new document. acceptNavigationRequest() uninstalls
+    // the channel on any non-qrc main-frame navigation and reinstalls it when
+    // a qrc: page loads again.
+    void setBridgeChannel(QWebChannel *channel) { m_bridgeChannel = channel; }
 
 signals:
     void consoleMessage(const QString &message, int lineNumber);
@@ -38,15 +49,34 @@ protected:
     {
         if (isMainFrame) {
             const QString scheme = url.scheme();
-            if (scheme != QLatin1String("qrc") && scheme != QLatin1String("http") && scheme != QLatin1String("https"))
-                return false;
+            if (scheme == QLatin1String("qrc")) {
+                // Back on our own page: restore the full bridge.
+                if (m_bridgeChannel)
+                    setWebChannel(m_bridgeChannel, QWebEngineScript::MainWorld);
+                return QWebEnginePage::acceptNavigationRequest(url, type, isMainFrame);
+            }
+
             if (scheme == QLatin1String("http") || scheme == QLatin1String("https")) {
+                // Only the loopback address is reachable at all (the OAuth
+                // callback listener), never arbitrary hosts. Reject userinfo so
+                // http://evil@127.0.0.1:PORT cannot smuggle an identity.
+                if (!url.userInfo().isEmpty())
+                    return false;
                 if (url.host() != QLatin1String("localhost") && url.host() != QLatin1String("127.0.0.1"))
                     return false;
+                // Strip the bridge: the loopback document must not inherit the
+                // full onboarding channel (loopback privilege escalation).
+                if (m_bridgeChannel)
+                    setWebChannel(nullptr, QWebEngineScript::MainWorld);
+                return QWebEnginePage::acceptNavigationRequest(url, type, isMainFrame);
             }
+            return false;
         }
         return QWebEnginePage::acceptNavigationRequest(url, type, isMainFrame);
     }
+
+private:
+    QWebChannel *m_bridgeChannel = nullptr;
 };
 
 // Bridge between the cinematic first-run page (qrc:/onboarding_experience.html)

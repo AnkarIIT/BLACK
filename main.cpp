@@ -332,6 +332,7 @@ int main(int argc, char *argv[])
         channel->registerObject(QStringLiteral("appearance"), &appearance);
         channel->registerObject(QStringLiteral("theme"), &SafariTheme::instance());
         page->setWebChannel(channel, QWebEngineScript::MainWorld);
+        page->setBridgeChannel(channel);
         layout->addWidget(view);
 
         // Diagnostics so first-run problems surface in the log on any platform.

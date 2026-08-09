@@ -98,7 +98,8 @@ void OSPaths::openDefaultBrowserSettings()
 #endif
 }
 
-bool OSPaths::writeFileAtomic(const QString &filePath, const QByteArray &data)
+bool OSPaths::writeFileAtomic(const QString &filePath, const QByteArray &data,
+                              QFileDevice::Permissions permissions)
 {
     const QFileInfo info(filePath);
     if (!QDir().mkpath(info.absolutePath()))
@@ -117,6 +118,14 @@ bool OSPaths::writeFileAtomic(const QString &filePath, const QByteArray &data)
         return false;
     }
     if (!tmp.flush()) {
+        tmp.close();
+        QFile::remove(tmpPath);
+        return false;
+    }
+    // Apply the requested mode to the temp file *before* the fsync below, so the
+    // persisted state (and therefore the post-rename destination file) carries
+    // the restrictive permissions instead of the default umask-created ones.
+    if (permissions && !tmp.setPermissions(permissions)) {
         tmp.close();
         QFile::remove(tmpPath);
         return false;

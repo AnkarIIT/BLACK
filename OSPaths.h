@@ -2,6 +2,7 @@
 #define OSPATHS_H
 
 #include <QByteArray>
+#include <QFileDevice>
 #include <QString>
 
 // Centralizes every OS-specific integration point so the rest of the app can
@@ -27,8 +28,12 @@ public:
     // Crash-safe write: writes to a temp file in the same directory, fsyncs the
     // data, then atomically renames it over the destination (fsyncing the parent
     // directory on POSIX). A crash mid-write leaves either the old or the new
-    // file, never a truncated/partial one. Returns false on any failure.
-    static bool writeFileAtomic(const QString &filePath, const QByteArray &data);
+    // file, never a truncated/partial one. If permissions is non-empty it is
+    // applied to the temp file before the fsync, so a restrictive mode (e.g.
+    // 0600 for a vault key) survives the atomic rename. Returns false on any
+    // failure.
+    static bool writeFileAtomic(const QString &filePath, const QByteArray &data,
+                                QFileDevice::Permissions permissions = QFileDevice::Permissions());
 };
 
 #endif // OSPATHS_H

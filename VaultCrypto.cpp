@@ -163,13 +163,13 @@ QByteArray loadOrCreateMasterKey()
     }
 
     const QByteArray key = randomBytes(kKeySize);
-    if (OSPaths::writeFileAtomic(path, key)) {
-#if !defined(Q_OS_WIN)
-        (void)::chmod(path.toUtf8().constData(), S_IRUSR | S_IWUSR);
-#else
-        QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner);
-#endif
-    }
+    // Persist with owner-only permissions (applied to the temp file before the
+    // atomic rename, so 0600 survives on disk). If the write fails we must not
+    // proceed: encrypting with a key that was never durably stored would leave
+    // vault data unrecoverable after a restart. (Distinct from the fail-safe
+    // above, which refuses to rotate an *existing* key file.)
+    if (!OSPaths::writeFileAtomic(path, key, QFile::ReadOwner | QFile::WriteOwner))
+        return {};
     return key;
 }
 
