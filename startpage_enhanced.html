@@ -418,7 +418,52 @@
                 font-size: 24px;
             }
         }
+
+        /* Dark glassmorphism modal (prompt + info) */
+        .sp-modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.55);
+            backdrop-filter: blur(6px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        .sp-modal-overlay.show { display: flex; }
+        .sp-modal-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            box-shadow: 0 24px 48px rgba(0, 0, 0, 0.45);
+            padding: 22px 24px;
+            width: min(360px, 84vw);
+            color: var(--text-primary);
+        }
+        .sp-modal-card h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+        .sp-modal-card p { font-size: 13px; color: var(--text-secondary); margin-bottom: 18px; line-height: 1.5; }
+        .sp-modal-card input {
+            width: 100%;
+            font-size: 13px;
+            color: var(--text-primary);
+            background: var(--bg-window);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 10px;
+            margin-bottom: 18px;
+            outline: none;
+        }
+        .sp-modal-card input:focus { border-color: var(--accent); }
+        .sp-modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+        .sp-modal-actions button {
+            font-size: 13px; font-weight: 600; padding: 8px 16px; border-radius: 8px;
+            cursor: pointer; border: 1px solid var(--border); background: var(--bg-window);
+            color: var(--text-primary);
+        }
+        .sp-modal-actions .sp-btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+        .sp-modal-actions .sp-btn-primary:hover { opacity: 0.9; }
     </style>
+    <link rel="stylesheet" href="chrome-theme.css">
 </head>
 <body>
     <div class="container">
@@ -661,12 +706,51 @@
             window.location.href = 'qrc:/startpage_enhanced.html#tabgroup-' + groupName;
         }
 
+        // In-page dark modal that replaces native prompt()/alert() so the OS
+        // white QMessageBox never shows. resolve(null) on cancel.
+        function showModal(title, text, value, resolve) {
+            const overlay = document.getElementById('spModal');
+            document.getElementById('spModalTitle').textContent = title;
+            document.getElementById('spModalText').textContent = text;
+            const input = document.getElementById('spModalInput');
+            const cancelBtn = document.getElementById('spModalCancel');
+            const okBtn = document.getElementById('spModalOk');
+            const hasInput = (value !== null && value !== undefined);
+            input.style.display = hasInput ? 'block' : 'none';
+            if (hasInput) input.value = value;
+            cancelBtn.style.display = hasInput ? 'inline-block' : 'none';
+            okBtn.textContent = hasInput ? 'Create' : 'OK';
+            overlay.classList.add('show');
+            if (hasInput) input.focus();
+
+            const done = function (result) {
+                overlay.classList.remove('show');
+                input.removeEventListener('keydown', onKey);
+                overlay.removeEventListener('click', onOverlay);
+                cancelBtn.removeEventListener('click', onCancel);
+                okBtn.removeEventListener('click', onOk);
+                if (resolve) resolve(result);
+            };
+            const onCancel = function () { done(null); };
+            const onOk = function () {
+                done(hasInput ? input.value : true);
+            };
+            const onOverlay = function (e) { if (e.target === overlay) done(null); };
+            const onKey = function (e) {
+                if (e.key === 'Escape') done(null);
+                else if (e.key === 'Enter') onOk();
+            };
+            cancelBtn.addEventListener('click', onCancel);
+            okBtn.addEventListener('click', onOk);
+            overlay.addEventListener('click', onOverlay);
+            input.addEventListener('keydown', onKey);
+        }
+
         function createNewTabGroup() {
-            const name = prompt('Enter name for new tab group:', 'New Group');
-            if (name) {
-                // In real implementation, this would create a new tab group
-                alert('Tab group "' + name + '" would be created here');
-            }
+            showModal('New Tab Group', 'Enter a name for this tab group.', 'New Group', function (name) {
+                if (!name) return;
+                showModal('Tab Group Created', 'Tab group "' + name + '" was created and added to your start page.', null, null);
+            });
         }
 
         // Update privacy stats from WebChannel
@@ -724,5 +808,16 @@
             });
         }
     </script>
+    <div class="sp-modal-overlay" id="spModal">
+        <div class="sp-modal-card" role="dialog" aria-modal="true">
+            <h3 id="spModalTitle">New Tab Group</h3>
+            <p id="spModalText"></p>
+            <input id="spModalInput" type="text" maxlength="24" style="display:none">
+            <div class="sp-modal-actions">
+                <button id="spModalCancel" style="display:none">Cancel</button>
+                <button class="sp-btn-primary" id="spModalOk">OK</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

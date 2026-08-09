@@ -91,7 +91,50 @@
         transition: border-color 0.3s ease, background 0.3s ease, transform 0.15s ease;
     }
     .provider-btn:hover { border-color: var(--accent); background: rgba(255,100,0,0.06); transform: translateY(-2px); }
-    .provider-btn .ic { font-size: 18px; color: var(--accent); }
+    .provider-btn .ic { font-size: 18px; color: var(--accent); display: inline-flex; align-items: center; justify-content: center; }
+    .provider-btn .ic svg { width: 18px; height: 18px; display: block; }
+    .provider-btn[disabled] { opacity: 0.45; pointer-events: none; }
+    .profile-chip {
+        width: min(420px, 74vw); margin: 6px auto 14px; display: flex; align-items: center; gap: 12px;
+        background: rgba(255,100,0,0.08); border: 1px solid rgba(255,100,0,0.35);
+        padding: 12px 18px; border-radius: 12px; text-align: left;
+    }
+    .profile-chip .avatar {
+        width: 38px; height: 38px; border-radius: 50%; flex: 0 0 38px;
+        background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center;
+        font: 600 15px "JetBrains Mono", monospace; letter-spacing: 0;
+    }
+    .profile-chip .meta { flex: 1; min-width: 0; }
+    .profile-chip .pname { font-size: 14px; color: var(--text); letter-spacing: 0.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .profile-chip .pemail { font-size: 11px; color: var(--muted); letter-spacing: 0.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .profile-chip .ptag { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); }
+    /* Saved-account picker (frame 06) */
+    .account-list { width: min(420px, 74vw); margin: 4px auto 6px; display: flex; flex-direction: column; gap: 8px; }
+    .account-row {
+        display: flex; align-items: center; gap: 12px; width: 100%;
+        background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.10);
+        padding: 11px 16px; border-radius: 12px; cursor: pointer; text-align: left;
+        transition: border-color 0.3s ease, background 0.3s ease, transform 0.15s ease;
+    }
+    .account-row:hover { border-color: rgba(255,100,0,0.5); background: rgba(255,100,0,0.06); transform: translateY(-1px); }
+    .account-row.selected { border-color: var(--accent); background: rgba(255,100,0,0.10); box-shadow: 0 0 14px rgba(255,100,0,0.25); }
+    .account-row .avatar {
+        width: 34px; height: 34px; border-radius: 50%; flex: 0 0 34px;
+        background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center;
+        font: 600 14px "JetBrains Mono", monospace; letter-spacing: 0;
+    }
+    .account-row .meta { flex: 1; min-width: 0; }
+    .account-row .aname { font-size: 14px; color: var(--text); letter-spacing: 0.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .account-row .aemail { font-size: 11px; color: var(--muted); letter-spacing: 0.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .account-row .atag { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); }
+    #account-empty { color: var(--muted); font-size: 12px; letter-spacing: 1px; text-align: center; margin: 2px auto 4px; }
+    .account-actions { display: flex; flex-direction: column; gap: 10px; align-items: center; width: min(420px, 74vw); margin: 0 auto; }
+    .oauth-error {
+        width: min(420px, 74vw); margin: 10px auto 0; text-align: center;
+        color: #ff6b5e; font: 400 12px "JetBrains Mono", monospace; letter-spacing: 0.5px;
+    }
+    .divider { display: flex; align-items: center; gap: 12px; width: min(420px, 74vw); margin: 16px auto; color: var(--muted); font-size: 12px; letter-spacing: 2px; }
+    .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: rgba(255,255,255,0.08); }
     .name-field {
         width: min(420px, 74vw); margin: 14px auto 4px; display: block;
         background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12);
@@ -128,6 +171,8 @@
     }
     .pill:hover { border-color: rgba(255,100,0,0.5); }
     .pill.selected { border-color: var(--accent); background: rgba(255,100,0,0.08); box-shadow: 0 0 14px rgba(255,100,0,0.25); }
+    .service-pill.connected { border-color: var(--accent); background: rgba(255,100,0,0.08); box-shadow: 0 0 14px rgba(255,100,0,0.25); color: var(--text); }
+    .service-pill .svc-ok { color: var(--accent); margin-left: 6px; }
     .question { min-height: 30px; }
     .question .q { font-size: 18px; letter-spacing: 2px; }
     .question .q2 { display: none; }
@@ -187,7 +232,10 @@
     #frame-14 .emoji-msg { color: var(--text); }
 
     /* Frame 15 dashboard-like hero */
-    #frame-15 { display: grid; grid-template-columns: 1fr; gap: 16px; pointer-events: auto; }
+    /* pointer-events stays "none" (inherited from .frame-card) until the card
+       gets .active, so the invisible dashboard cannot swallow clicks meant for
+       earlier frames (e.g. the Get Started button under it). */
+    #frame-15 { display: grid; grid-template-columns: 1fr; gap: 16px; }
     .dash-grid {
         display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
         margin-top: 14px; opacity: 0; transform: translateY(12px);
@@ -220,12 +268,32 @@
 
     <div id="frame-06" class="frame-card">
         <div class="kicker">Welcome</div>
-        <h2>Welcome back</h2>
-        <p class="sub">Everything stays on this device &mdash; no accounts, no cloud.</p>
-        <input class="name-field" id="profile-name" type="text" maxlength="24"
-               placeholder="Your name (optional)">
-        <button class="btn-orange provider-btn" data-continue>Create local profile</button>
-        <div><button class="btn-ghost" data-continue>Continue as guest</button></div>
+        <h2>Sign in</h2>
+        <p class="sub">Everything stays on this device. Cloud sign-in only appears once configured.</p>
+        <div id="profile-chip" class="profile-chip" style="display:none">
+            <div class="avatar" id="profile-avatar">?</div>
+            <div class="meta">
+                <div class="pname" id="profile-name"></div>
+                <div class="pemail" id="profile-email"></div>
+                <div class="ptag" id="profile-provider"></div>
+            </div>
+        </div>
+        <div class="account-list" id="account-list"></div>
+        <div id="account-empty" style="display:none">No saved profiles yet.</div>
+        <div class="account-actions">
+            <button class="provider-btn oauth-btn" id="btn-google" data-oauth="0" style="display:none">
+                <span class="ic"><svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg></span>Add Google account
+            </button>
+            <button class="provider-btn oauth-btn" id="btn-apple" data-oauth="1" style="display:none">
+                <span class="ic"><svg viewBox="0 0 48 48"><path fill="#999999" d="M31.69 25.29c.05 5.63 4.94 7.5 4.99 7.53-.04.13-.78 2.67-2.57 5.29-1.55 2.26-3.16 4.51-5.69 4.56-2.49.05-3.29-1.48-6.14-1.48-2.85 0-3.74 1.43-6.1 1.53-2.45.1-4.32-2.44-5.88-4.69-3.2-4.63-5.65-13.08-2.36-18.78 1.63-2.84 4.56-4.64 7.73-4.69 2.41-.05 4.69 1.62 6.17 1.62 1.47 0 4.23-2 7.14-1.71 1.22.05 4.64.49 6.84 3.71-.18.11-4.08 2.38-4.04 7.11zM26.6 8.4c1.4-1.66 2.31-3.97 2.06-6.27-1.99.08-4.4 1.33-5.82 3-1.28 1.48-2.4 3.84-2.1 6.1 2.22.17 4.49-1.13 5.86-2.83z"/></svg></span>Add Apple account
+            </button>
+            <button class="provider-btn oauth-btn" id="btn-microsoft" data-oauth="2" style="display:none">
+                <span class="ic"><svg viewBox="0 0 48 48"><rect x="6" y="6" width="16" height="16" fill="#F35325"/><rect x="26" y="6" width="16" height="16" fill="#81BC06"/><rect x="6" y="26" width="16" height="16" fill="#05A6F0"/><rect x="26" y="26" width="16" height="16" fill="#FFBA08"/></svg></span>Add Microsoft account
+            </button>
+            <div class="divider oauth-divider" id="oauth-divider" style="display:none"><span>OR</span></div>
+            <div id="oauth-error" class="oauth-error" style="display:none"></div>
+            <div><button class="btn-ghost" id="btn-guest">Continue without account</button></div>
+        </div>
     </div>
 
     <div id="frame-07" class="frame-card">
@@ -277,16 +345,21 @@
         <div class="privacy-cards">
             <div class="privacy-card" data-privacy><div class="orb"></div><div class="lv">Standard</div><div class="desc">Balanced tracking &amp; personalisation.</div></div>
             <div class="privacy-card" data-privacy><div class="orb"></div><div class="lv">Balanced</div><div class="desc">Smart protection, minimal tracking.</div></div>
-            <div class="privacy-card" data-privacy><div class="orb"></div><div class="lv">Maximum</div><div class="desc">Block trackers everywhere.</div></div>
+            <div class="privacy-card selected" data-privacy><div class="orb"></div><div class="lv">Maximum</div><div class="desc">Block trackers everywhere.</div></div>
         </div>
         <button class="btn-orange" id="btn-privacy" style="opacity:0.45; pointer-events:none;">Next &rarr;</button>
     </div>
 
     <div id="frame-10" class="frame-card">
-        <div class="kicker">Local</div>
-        <h2>Local-first storage</h2>
-        <p class="sub">Your choices stay on this device.</p>
-        <div class="task-panel" id="local-tasks"></div>
+        <div class="kicker">Connect</div>
+        <h2>Connect your services</h2>
+        <p class="sub">Fast access to the tools you love. Only configured services appear.</p>
+        <div class="pills-grid" id="services-grid"></div>
+        <div id="services-empty" style="display:none; color:var(--muted); font-size:12px; letter-spacing:1px;">No services configured yet — add client IDs to oauth.json to connect.</div>
+        <div class="row">
+            <button class="btn-ghost" id="btn-skip-services" style="margin-top:0;">Skip</button>
+            <button class="btn-orange" id="btn-services" style="opacity:0.45; pointer-events:none;">Next &rarr;</button>
+        </div>
     </div>
 
     <div id="frame-11" class="frame-card">
@@ -342,14 +415,67 @@
 <script>
 "use strict";
 
-/* ============================ Bridge ============================ */
+    /* ============================ Context menu lock ============================ */
+    window.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+
+    /* ============================ Bridge ============================ */
 var bridge = null;
+var oauthManager = null;
 var bridgeReady = false;
+var oauthProfile = null;
+function onAuthSuccess(profile) {
+    setOAuthBusy(false);
+    if (!profile) return;
+    // Service connections (github/slack/...) just toggle their button state in
+    // frame-10; only the three sign-in providers advance the welcome frame.
+    if (profile.provider === "google" || profile.provider === "apple" || profile.provider === "microsoft") {
+        oauthProfile = profile;
+        state.name = oauthProfile.name || oauthProfile.email || state.name;
+        // Persist as a saved account and scope service connections to it.
+        if (bridge && bridge.saveAccount) {
+            bridge.saveAccount(profile.provider, state.name, profile.email || "", profile.avatar || "",
+                               function (accountId) {
+                state.selectedAccountId = accountId || "";
+                if (oauthManager && oauthManager.setCurrentAccountId)
+                    oauthManager.setCurrentAccountId(state.selectedAccountId);
+            });
+        }
+        var chip = document.getElementById("profile-chip");
+        document.getElementById("profile-name").textContent = state.name;
+        document.getElementById("profile-email").textContent = oauthProfile.email || "";
+        document.getElementById("profile-avatar").textContent = (state.name || "?").charAt(0).toUpperCase();
+        var ptag = document.getElementById("profile-provider");
+        if (ptag) ptag.textContent = oauthProfile.provider || "connected";
+        chip.style.display = "flex";
+        document.getElementById("oauth-error").style.display = "none";
+        document.getElementById("account-list").style.display = "none";
+        document.getElementById("account-empty").style.display = "none";
+        document.querySelectorAll(".oauth-btn").forEach(function (btn) { btn.style.display = "none"; });
+        document.getElementById("oauth-divider").style.display = "none";
+        gsap.fromTo("#profile-chip", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" });
+        gsap.delayedCall(0.9, goSignIn);
+    } else {
+        markServiceConnected(profile.provider);
+    }
+}
+function onAuthFailed(message) {
+    setOAuthBusy(false);
+    var err = document.getElementById("oauth-error");
+    err.style.display = "block";
+    err.textContent = "Sign-in failed: " + message;
+}
 if (typeof QWebChannel !== "undefined") {
     new QWebChannel(qt.webChannelTransport, function (ch) {
         bridge = ch.objects.onboardingBridge;
+        oauthManager = ch.objects.oauthManager;
         bridgeReady = true;
-        console.log("[onboarding] bridge registered:", !!bridge);
+        console.log("[onboarding] bridge registered:", !!bridge, "oauthManager:", !!oauthManager);
+        if (oauthManager) {
+            oauthManager.authSuccess.connect(onAuthSuccess);
+            oauthManager.authFailed.connect(onAuthFailed);
+        }
+        updateOAuthVisibility();
+        renderAccountList();
     });
 }
 function callBridge(method, arg) {
@@ -366,7 +492,9 @@ var state = {
     priority: "",
     privacy: "",
     importLocal: true,
+    selectedAccountId: "",
 };
+var importedBrowsers = [];
 
 /* ============================ Scene ============================ */
 var canvas = document.getElementById("webgl-canvas");
@@ -562,7 +690,7 @@ window.addEventListener("resize", function () {
 });
 
 /* ============================ UI helpers ============================ */
-function showCard(id) {
+function _showCard(id) {
     var cards = document.querySelectorAll(".frame-card");
     for (var i = 0; i < cards.length; i++) cards[i].classList.remove("active");
     var el = document.getElementById(id);
@@ -654,17 +782,106 @@ document.getElementById("btn-getstarted").addEventListener("click", function () 
 });
 
 /* ---------------- Frame 06 -> 07 ---------------- */
-var contButtons = document.querySelectorAll("[data-continue]");
-for (var ci = 0; ci < contButtons.length; ci++) {
-    contButtons[ci].addEventListener("click", function () {
-        onFrameStart(7);
-        var n = document.getElementById("profile-name").value.trim();
-        if (n) state.name = n;
-        _showCard("frame-07");
-        var items = document.querySelectorAll("#import-list .import-item");
-        gsap.fromTo(items, { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.5, stagger: 0.09, ease: "power2.out" });
+function goSignIn() {
+    onFrameStart(7);
+    _showCard("frame-07");
+    // QWebChannel methods that return values are async: the result arrives via
+    // the callback. Always reveal the list immediately so the frame is never
+    // blank while the browser scan is in flight.
+    var items = document.querySelectorAll("#import-list .import-item");
+    gsap.fromTo(items, { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.5, stagger: 0.09, ease: "power2.out" });
+    if (bridge && bridge.scanBrowsersJson) {
+        bridge.scanBrowsersJson(function (found) {
+            if (!found) return;
+            importedBrowsers = found.filter(function (b) { return b && b.found; }).map(function (b) { return b.id; });
+            if (importedBrowsers.length) {
+                var first = document.querySelector("#import-list .import-item");
+                if (first) first.querySelector("span").textContent = "Bookmarks (" + importedBrowsers.length + " browser" + (importedBrowsers.length > 1 ? "s" : "") + ")";
+            }
+        });
+    }
+}
+document.getElementById("btn-guest").addEventListener("click", goSignIn);
+
+/* Saved accounts from the bridge, clickable to select and proceed. */
+function renderAccountList() {
+    var list = document.getElementById("account-list");
+    var empty = document.getElementById("account-empty");
+    if (!bridge || !bridge.accountsJson) {
+        empty.style.display = "block";
+        return;
+    }
+    bridge.accountsJson(function (accounts) {
+        list.innerHTML = "";
+        if (!accounts || !accounts.length) {
+            empty.style.display = "block";
+            return;
+        }
+        empty.style.display = "none";
+        accounts.forEach(function (acc) {
+            var row = document.createElement("div");
+            row.className = "account-row";
+            row.setAttribute("data-id", acc.id || "");
+            var initial = ((acc.name || acc.email || "?").charAt(0) || "?").toUpperCase();
+            var provider = acc.provider || "local";
+            row.innerHTML = '<div class="avatar">' + initial + '</div>' +
+                '<div class="meta"><div class="aname"></div><div class="aemail"></div><div class="atag"></div></div>';
+            row.querySelector(".aname").textContent = acc.name || "Saved account";
+            row.querySelector(".aemail").textContent = acc.email || "";
+            row.querySelector(".atag").textContent = provider;
+            row.addEventListener("click", function () {
+                selectSavedAccount(acc.id || "");
+            });
+            list.appendChild(row);
+        });
     });
 }
+function selectSavedAccount(accountId) {
+    if (!accountId) return;
+    state.selectedAccountId = accountId;
+    if (bridge && bridge.selectAccount) bridge.selectAccount(accountId);
+    if (oauthManager && oauthManager.setCurrentAccountId) oauthManager.setCurrentAccountId(accountId);
+    gsap.delayedCall(0.4, goSignIn);
+}
+
+/* OAuth: buttons are shown only for configured providers. */
+function updateOAuthVisibility() {
+    if (!oauthManager) return;
+    var btns = Array.prototype.slice.call(document.querySelectorAll(".oauth-btn"));
+    var pending = btns.length;
+    var anyConfigured = false;
+    var divider = document.getElementById("oauth-divider");
+    if (!pending) { divider.style.display = "none"; return; }
+    btns.forEach(function (btn) {
+        var idx = parseInt(btn.getAttribute("data-oauth"), 10);
+        oauthManager.isConfigured(idx, function (configured) {
+            btn.style.display = configured ? "flex" : "none";
+            if (configured) anyConfigured = true;
+            pending--;
+            if (pending === 0) divider.style.display = anyConfigured ? "flex" : "none";
+        });
+    });
+}
+function setOAuthBusy(busy, providerLabel) {
+    document.querySelectorAll(".oauth-btn, .service-pill").forEach(function (btn) {
+        btn.disabled = busy;
+    });
+    var err = document.getElementById("oauth-error");
+    if (busy) {
+        err.style.display = "block";
+        err.textContent = "Waiting for you to finish in the browser\u2026";
+    } else {
+        err.style.display = "none";
+    }
+}
+document.querySelectorAll(".oauth-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+        if (!oauthManager) return;
+        var idx = parseInt(btn.getAttribute("data-oauth"), 10);
+        setOAuthBusy(true, btn.textContent);
+        oauthManager.startAuth(idx);
+    });
+});
 
 /* ---------------- Frame 07 -> 08 ---------------- */
 document.getElementById("btn-skip-import").addEventListener("click", function () { goPersonalize(); });
@@ -677,6 +894,9 @@ document.getElementById("btn-import").addEventListener("click", function () {
     var iv = setInterval(function () {
         if (idx >= items.length) {
             clearInterval(iv);
+            if (bridge && bridge.importBrowserBookmarks && importedBrowsers.length) {
+                bridge.importBrowserBookmarks(importedBrowsers[0]);
+            }
             gsap.to("#import-list", { scale: 0.5, opacity: 0, duration: 0.7, ease: "power2.in" });
             gsap.delayedCall(0.75, goPersonalize);
             return;
@@ -745,20 +965,91 @@ document.querySelectorAll(".privacy-card").forEach(function (c) {
     });
 });
 document.getElementById("btn-privacy").addEventListener("click", function () {
-    goLocalConfirmation();
+    goServices();
 });
 
-function goLocalConfirmation() {
+function goServices() {
     onFrameStart(10);
-    setPlanet(false);
-    renderTasks("local-tasks", [
-        "Saving preferences locally",
-        "Keeping data on device",
-        "No cloud services used",
-    ]);
     _showCard("frame-10");
-    gsap.delayedCall(0.9, goBuild);
+    renderServicesGrid();
 }
+/* Service slots in OAuthManager: {index, provider key, display name}. */
+var SERVICE_SLOTS = [
+    { idx: 3, key: "github", name: "GitHub" },
+    { idx: 4, key: "slack", name: "Slack" },
+    { idx: 5, key: "discord", name: "Discord" },
+    { idx: 6, key: "drive", name: "Google Drive" },
+    { idx: 7, key: "calendar", name: "Google Calendar" },
+    { idx: 8, key: "dropbox", name: "Dropbox" },
+    { idx: 9, key: "notion", name: "Notion" }
+];
+function renderServicesGrid() {
+    var grid = document.getElementById("services-grid");
+    grid.innerHTML = "";
+    if (!oauthManager) {
+        document.getElementById("services-empty").style.display = "block";
+        enableNext("btn-services");
+        return;
+    }
+    // isConfigured() is async over QWebChannel; only render the slots that
+    // report true, then reveal them.
+    var any = false;
+    var pending = SERVICE_SLOTS.length;
+    function finish() {
+        if (pending > 0) return;
+        document.getElementById("services-empty").style.display = any ? "none" : "block";
+        gsap.fromTo("#services-grid .pill", { opacity: 0, y: 12, scale: 0.94 }, { opacity: 1, y: 0, scale: 1, duration: 0.5, stagger: 0.07, ease: "power2.out" });
+        enableNext("btn-services");
+        refreshServiceStates();
+    }
+    SERVICE_SLOTS.forEach(function (slot) {
+        oauthManager.isConfigured(slot.idx, function (configured) {
+            pending--;
+            if (!configured) { finish(); return; }
+            any = true;
+            var btn = document.createElement("button");
+            btn.className = "pill service-pill";
+            btn.dataset.slot = String(slot.idx);
+            btn.dataset.key = slot.key;
+            btn.innerHTML = "<span class='svc-name'>" + slot.name + "</span>";
+            btn.addEventListener("click", function () {
+                if (!oauthManager) return;
+                oauthManager.isConnected(parseInt(btn.dataset.slot, 10), function (already) {
+                    if (already) return;
+                    setOAuthBusy(true, slot.name);
+                    oauthManager.startAuth(parseInt(btn.dataset.slot, 10));
+                });
+            });
+            grid.appendChild(btn);
+            finish();
+        });
+    });
+}
+function refreshServiceStates() {
+    if (!oauthManager) return;
+    document.querySelectorAll("#services-grid .service-pill").forEach(function (btn) {
+        var idx = parseInt(btn.dataset.slot, 10);
+        oauthManager.isConnected(idx, function (connected) {
+            if (!connected) return;
+            btn.classList.add("connected");
+            btn.innerHTML = "<span class='svc-name'>" + btn.dataset.key + "</span> <span class='svc-ok'>&#10003;</span>";
+            enableNext("btn-services");
+        });
+    });
+}
+function markServiceConnected(providerKey) {
+    var btn = document.querySelector('#services-grid .service-pill[data-key="' + providerKey + '"]');
+    if (btn && oauthManager) {
+        oauthManager.isConnected(parseInt(btn.dataset.slot, 10), function (connected) {
+            if (!connected) return;
+            btn.classList.add("connected");
+            btn.innerHTML = "<span class='svc-name'>" + btn.dataset.key + "</span> <span class='svc-ok'>&#10003;</span>";
+            enableNext("btn-services");
+        });
+    }
+}
+document.getElementById("btn-skip-services").addEventListener("click", function () { goBuild(); });
+document.getElementById("btn-services").addEventListener("click", function () { goBuild(); });
 
 /* ---------------- Frame 11: building ---------------- */
 var BUILD_TASKS = [
@@ -915,7 +1206,11 @@ function finishOnboarding() {
     gsap.to(camera.position, { z: 34, y: 6, duration: 1.5, ease: "power2.inOut" });
     gsap.to("#frame-14", { opacity: 0, duration: 0.6, delay: 0.3 });
     gsap.delayedCall(1.6, function () {
-        callBridge("completeOnboarding", state.name);
+        if (oauthProfile && bridge && bridge.completeOnboardingWithProfile) {
+            bridge.completeOnboardingWithProfile(oauthProfile.provider, state.name, oauthProfile.email);
+        } else {
+            callBridge("completeOnboarding", state.name);
+        }
     });
 }
 function finishAsGuest() {

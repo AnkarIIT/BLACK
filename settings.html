@@ -413,7 +413,42 @@
             font-weight: 700;
             margin-bottom: 4px;
         }
+
+        /* Dark glassmorphism confirm modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.55);
+            backdrop-filter: blur(6px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal-card {
+            background: var(--mac-card);
+            border: 1px solid var(--mac-border);
+            border-radius: 14px;
+            box-shadow: 0 24px 48px rgba(0, 0, 0, 0.45);
+            padding: 22px 24px;
+            width: min(360px, 84vw);
+            color: var(--mac-text);
+        }
+        .modal-card h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+        .modal-card p { font-size: 13px; color: var(--mac-text-sec); margin-bottom: 20px; line-height: 1.5; }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+        .modal-actions button {
+            font-size: 13px; font-weight: 600; padding: 8px 16px; border-radius: 8px;
+            cursor: pointer; border: 1px solid var(--mac-border); background: var(--mac-selected-tab);
+            color: var(--mac-text);
+        }
+        .modal-actions .btn-danger {
+            background: #ff453a; border-color: #ff453a; color: #fff;
+        }
+        .modal-actions .btn-danger:hover { background: #ff5b4f; }
     </style>
+    <link rel="stylesheet" href="chrome-theme.css">
 </head>
 <body>
     <div class="window">
@@ -795,6 +830,17 @@
         </div>
     </div>
 
+    <div class="modal-overlay" id="pwConfirmModal">
+        <div class="modal-card" role="dialog" aria-modal="true">
+            <h3>Clear Saved Passwords</h3>
+            <p>Are you sure you want to delete every saved login? This cannot be undone.</p>
+            <div class="modal-actions">
+                <button id="pwConfirmCancel">Cancel</button>
+                <button class="btn-danger" id="pwConfirmOk">Clear All</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         function switchTab(id, title) {
             document.querySelectorAll('.content').forEach(function(c) {
@@ -1047,7 +1093,24 @@
                     });
                 }
                 const pwClearBtn = document.getElementById('pwClearBtn');
-                if (pwClearBtn) pwClearBtn.addEventListener('click', function () { passwords.clearAll(); });
+                if (pwClearBtn) {
+                    pwClearBtn.addEventListener('click', function () {
+                        document.getElementById('pwConfirmModal').classList.add('show');
+                    });
+                    document.getElementById('pwConfirmCancel').addEventListener('click', function () {
+                        document.getElementById('pwConfirmModal').classList.remove('show');
+                    });
+                    document.getElementById('pwConfirmOk').addEventListener('click', function () {
+                        document.getElementById('pwConfirmModal').classList.remove('show');
+                        passwords.clearAll();
+                    });
+                    document.getElementById('pwConfirmModal').addEventListener('click', function (e) {
+                        if (e.target === this) this.classList.remove('show');
+                    });
+                    window.addEventListener('keydown', function (e) {
+                        if (e.key === 'Escape') document.getElementById('pwConfirmModal').classList.remove('show');
+                    });
+                }
 
                 const renderNeverSave = function () {
                     const list = parseList(passwords.neverSaveJson);

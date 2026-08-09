@@ -1,0 +1,39 @@
+{
+  "dev_mode": true,
+  "google": {
+    "clientId": "MOCK_GOOGLE_CLIENT_ID"
+  },
+  "microsoft": {
+    "clientId": "MOCK_MICROSOFT_CLIENT_ID"
+  },
+  "apple": {
+    "clientId": "MOCK_APPLE_CLIENT_ID",
+    "clientSecret": "YOUR_APPLE_ES256_JWT"
+  },
+  "github": {
+    "clientId": "YOUR_GITHUB_CLIENT_ID",
+    "clientSecret": "YOUR_GITHUB_CLIENT_SECRET"
+  },
+  "slack": {
+    "clientId": "YOUR_SLACK_CLIENT_ID",
+    "port": 9011
+  },
+  "discord": {
+    "clientId": "YOUR_DISCORD_CLIENT_ID",
+    "port": 9012
+  },
+  "drive": {
+    "clientId": "YOUR_GOOGLE_CLIENT_ID"
+  },
+  "calendar": {
+    "clientId": "YOUR_GOOGLE_CLIENT_ID"
+  },
+  "dropbox": {
+    "clientId": "YOUR_DROPBOX_CLIENT_ID",
+    "port": 9013
+  },
+  "notion": {
+    "clientId": "YOUR_NOTION_CLIENT_ID",
+    "port": 9014
+  }
+}

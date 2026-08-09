@@ -46,7 +46,20 @@ signals:
 protected:
     bool acceptNavigationRequest(const QUrl &url, NavigationType type, bool isMainFrame) override;
 
+    // Replace the native OS alert/confirm/prompt windows (white QMessageBox
+    // with the platform palette) with BLACK-themed frameless dark dialogs.
+    void javaScriptAlert(const QUrl &securityOrigin, const QString &msg) override;
+    bool javaScriptConfirm(const QUrl &securityOrigin, const QString &msg) override;
+    bool javaScriptPrompt(const QUrl &securityOrigin, const QString &msg,
+                          const QString &defaultValue, QString *result) override;
+
 private:
+    // Shared frameless modal used by the three JS dialog overrides. Returns
+    // QDialog::Accepted/Rejected; when showInput is set the entered text is
+    // written back through `input`.
+    int showJsDialog(const QString &message, const QString &okText,
+                     const QString &cancelText, QString *input, bool showInput) const;
+
     QPointer<QWebChannel> m_webChannel;
     QPointer<QWebChannel> m_passwordChannel;
 };

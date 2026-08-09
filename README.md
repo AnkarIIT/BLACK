@@ -1,6 +1,6 @@
 # BLACK Browser
 
-A high-performance, Safari-inspired browser for Windows, built with **Qt 6.8.0** and **Qt WebEngine (Chromium 122)**. BLACK borrows macOS Safari's visual language — traffic-light window controls, a fluid tab bar, a live tab overview grid, and a smart sidebar — while staying fully **local-first**: no cloud accounts, no telemetry, no sync.
+A high-performance, Safari-inspired browser built with **Qt 6.8.0** and **Qt WebEngine (Chromium 122)**. BLACK borrows macOS Safari's visual language — traffic-light window controls, a fluid tab bar, a live tab overview grid, and a smart sidebar — while staying fully **local-first**: no cloud accounts, no telemetry, no sync.
 
 **Note**: BLACK uses the Chromium (Blink) engine with Safari-inspired UI styling. It is not WebKit and has no macOS/Apple integration.
 
@@ -17,13 +17,24 @@ A high-performance, Safari-inspired browser for Windows, built with **Qt 6.8.0**
 - **Offline Safe Browsing**: navigation to hosts on an embedded blocklist (plus local overrides) is redirected to a warning page. Lookups run on Chromium's IO thread against a `QReadWriteLock`-guarded set — no cloud Safe Browsing API.
 - **Private mode**: incognito windows use a throwaway `QWebEngineProfile` and skip session persistence.
 - **Hardened WebEngine**: clipboard and screen-capture access are disabled in the page settings.
+- **OAuth tokens**: service tokens are stored encrypted in `services.json` via `VaultCrypto`.
 
-### Onboarding
-- A frameless, **16-frame WebGL cinematic** first-run experience built with **Three.js & GSAP**, covering profile creation, import, personalization, and privacy level — all local, no account required.
+## Onboarding
+
+A frameless, **WebGL cinematic** first-run experience built with **Three.js & GSAP**.
+The current flow covers:
+
+1. Intro cinematic + welcome screen.
+2. Real OAuth identity providers: **Google**, **Apple**, **Microsoft**.
+3. Local browser data import: **bookmarks** from installed browsers via `BookmarkImporter`.
+4. Personalization + privacy setup (**Maximum Privacy** default).
+5. Real service connections: **GitHub**, **Slack**, **Discord**, **Google Drive**, **Google Calendar**, **Dropbox**, **Notion**.
+6. Optional service connections: **GitHub**, **Slack**, **Discord**, **Google Drive**, **Google Calendar**, **Dropbox**, **Notion** — buttons appear only for configured providers and can be skipped.
+7. Launch writes `.first_run_done` and opens the main browser.
+
+There is **no cloud sign-in** by default. All profile fields and service tokens stay on-device.
 
 ## First-Run Flow
-
-On first launch BLACK shows the cinematic onboarding experience described above — there is **no cloud sign-in** and no separate login page. Finishing the cinematic (Launch / Skip) writes the `.first_run_done` marker and the browser opens honoring the "opens with" setting; closing the setup window without finishing exits the app.
 
 ```
         First Launch?
@@ -35,10 +46,10 @@ On first launch BLACK shows the cinematic onboarding experience described above 
      │                  │
      ▼                  ▼
  Onboarding dialog  Honor "opens with"
- (onboarding_experience.html)   │
-     │                  ├── Last session (restore)
-     │ (Launch/Skip)    ├── New private window
-     ▼                  └── Start page
+ (onboarding_experience.html)
+     │
+     │ (Launch / Skip)
+     ▼
  Write .first_run_done
      │
      ▼
@@ -63,6 +74,8 @@ On first launch BLACK shows the cinematic onboarding experience described above 
 | Private / incognito windows | ✅ |
 | macOS-style chrome & keyboard shortcuts | ✅ |
 | Extension manager (internal pages) | ✅ |
+| Local bookmark import from installed browsers | ✅ |
+| OAuth service connections (tokens stored encrypted locally) | ✅ |
 
 ### Not Included (by design / not yet implemented)
 - No cloud sync, no accounts, no iCloud/Keychain, no Apple Pay
@@ -72,8 +85,74 @@ On first launch BLACK shows the cinematic onboarding experience described above 
 - No per-site content settings
 - No content-blocker extension API (uBlock-style)
 
-## Build Instructions (Windows)
+## Onboarding Configuration
 
+Real OAuth/service buttons appear only when providers are configured in `<AppDataLocation>/oauth.json`.
+
+Example `oauth.json`:
+
+```json
+{
+  "google": {
+    "clientId": "YOUR_GOOGLE_CLIENT_ID"
+  },
+  "microsoft": {
+    "clientId": "YOUR_MS_CLIENT_ID"
+  },
+  "apple": {
+    "clientId": "YOUR_APPLE_CLIENT_ID",
+    "clientSecret": "YOUR_APPLE_ES256_JWT"
+  },
+  "github": {
+    "clientId": "YOUR_GITHUB_CLIENT_ID",
+    "clientSecret": "YOUR_GITHUB_CLIENT_SECRET"
+  },
+  "slack": {
+    "clientId": "YOUR_SLACK_CLIENT_ID",
+    "port": 9011
+  },
+  "discord": {
+    "clientId": "YOUR_DISCORD_CLIENT_ID",
+    "port": 9012
+  },
+  "drive": {
+    "clientId": "YOUR_GOOGLE_CLIENT_ID"
+  },
+  "calendar": {
+    "clientId": "YOUR_GOOGLE_CLIENT_ID"
+  },
+  "dropbox": {
+    "clientId": "YOUR_DROPBOX_CLIENT_ID",
+    "port": 9013
+  },
+  "notion": {
+    "clientId": "YOUR_NOTION_CLIENT_ID",
+    "port": 9014
+  }
+}
+```
+
+Notes:
+- Redirect URI for fixed-port providers: `http://127.0.0.1:<port>/callback`.
+- Google/Microsoft/Drive/Calendar/Apple use an ephemeral local port.
+- Apple additionally requires a pre-generated ES256 `client_secret` JWT.
+- Tokens are persisted encrypted in `services.json`; `BookmarkImporter` reads local browser profile data only.
+
+## Build Instructions
+
+### Linux
+```bash
+# Configure
+cmake -S . -B build-linux -DCMAKE_PREFIX_PATH=/home/pixel/Qt/6.8.0/gcc_64/lib/cmake
+
+# Build
+cmake --build build-linux
+
+# Run
+./build-linux/BLACK
+```
+
+### Windows
 ```powershell
 # 1. Set up Visual Studio environment
 "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat"
@@ -93,10 +172,9 @@ cd build\Release
 
 | Dependency | Version | Notes |
 |------------|---------|-------|
-| Windows | 10 / 11 | |
+| Linux / Windows | current | Fedora/Ubuntu or Windows 10/11 tested |
 | CMake | 3.16+ | |
-| Visual Studio | 2022 17+ | MSVC 14.5+ |
-| Qt | 6.8.0 | MSVC 2022 64-bit |
+| Qt | 6.8.0 | GCC/MSVC 2022 64-bit |
 | Qt WebEngine | 6.8.0 | **Chromium-based (not WebKit)** |
 
 ## Project Structure
@@ -118,7 +196,9 @@ BLACK/
 ├── ShelfStore.cpp/.h             # Local favorites / bookmarks store
 ├── ExtensionManager.cpp/.h       # Internal extension pages
 ├── Account.cpp/.h                # Local profile + first-run marker
-├── onboarding_experience.html    # 16-frame WebGL cinematic onboarding
+├── OAuthManager.cpp/.h           # OAuth 2.0 / PKCE + encrypted token store
+├── OnboardingBridge.h/.cpp       # First-run bridge + local browser import
+├── onboarding_experience.html    # Cinematic onboarding
 ├── startpage_enhanced.html       # Start page
 ├── settings.html, bookmarks.html # Settings & bookmarks UI
 ├── history.html, extensions.html # History & extensions UI
@@ -158,6 +238,7 @@ BLACK/
 | HTTPS-First upgrades | ✅ |
 | Offline Safe Browsing (no cloud API) | ✅ |
 | Encrypted local password vault (DPAPI / PBKDF2-HMAC) | ✅ |
+| Encrypted local service token store (`services.json`) | ✅ |
 | Isolated-world content scripts | ✅ |
 | Password bridge scoped to internal pages / private autofill world | ✅ |
 | Single-instance guard (`QLockFile` + URL hand-off) | ✅ |

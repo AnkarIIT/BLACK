@@ -101,7 +101,44 @@
             padding: 80px 20px;
             font-size: 14px;
         }
+
+        /* Dark glassmorphism confirm modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.55);
+            backdrop-filter: blur(6px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            box-shadow: 0 24px 48px rgba(0, 0, 0, 0.45);
+            padding: 22px 24px;
+            width: min(360px, 84vw);
+            color: var(--text);
+        }
+        .modal-card h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+        .modal-card p { font-size: 13px; color: var(--sec); margin-bottom: 20px; line-height: 1.5; }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+        .modal-actions button {
+            font-size: 13px; font-weight: 600; padding: 8px 16px; border-radius: 8px;
+            cursor: pointer; border: 1px solid var(--border); background: var(--hover);
+            color: var(--text);
+        }
+        .modal-actions button:hover { background: rgba(0, 0, 0, 0.1); }
+        html.black-forced-dark .modal-actions button:hover { background: rgba(255, 255, 255, 0.12); }
+        .modal-actions .btn-danger {
+            background: #ff3b30; border-color: #ff3b30; color: #fff;
+        }
+        .modal-actions .btn-danger:hover { background: #ff453a; }
     </style>
+    <link rel="stylesheet" href="chrome-theme.css">
 </head>
 <body>
     <div class="header">
@@ -110,6 +147,17 @@
     </div>
     <button id="clearBtn">Clear History&hellip;</button>
     <div id="list"></div>
+
+    <div class="modal-overlay" id="confirmModal">
+        <div class="modal-card" role="dialog" aria-modal="true">
+            <h3>Clear History</h3>
+            <p>Are you sure you want to clear all browsing history? This cannot be undone.</p>
+            <div class="modal-actions">
+                <button id="confirmCancel">Cancel</button>
+                <button class="btn-danger" id="confirmOk">Clear All</button>
+            </div>
+        </div>
+    </div>
 
     <script>
         let store = null;
@@ -189,8 +237,23 @@
                 render();
 
                 document.getElementById('clearBtn').addEventListener('click', function () {
-                    if (confirm('Clear all browsing history?'))
-                        store.clearAll();
+                    document.getElementById('confirmModal').classList.add('show');
+                });
+                document.getElementById('confirmCancel').addEventListener('click', function () {
+                    document.getElementById('confirmModal').classList.remove('show');
+                });
+                document.getElementById('confirmOk').addEventListener('click', function () {
+                    document.getElementById('confirmModal').classList.remove('show');
+                    store.clearAll();
+                });
+                const closeModal = function () {
+                    document.getElementById('confirmModal').classList.remove('show');
+                };
+                document.getElementById('confirmModal').addEventListener('click', function (e) {
+                    if (e.target === this) closeModal();
+                });
+                window.addEventListener('keydown', function (e) {
+                    if (e.key === 'Escape') closeModal();
                 });
 
                 const theme = channel.objects.theme;

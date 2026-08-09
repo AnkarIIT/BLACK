@@ -51,6 +51,7 @@ private:
     Q_DISABLE_COPY(TrackerBlocker)
 
     bool isBlockedHost(const QString &host) const;
+    bool isIncognito() const;
     int blockedLastNDays(int days) const;
     QList<QDate> daysInWindow(int days) const;
     void rollDayIfNeeded() const;
