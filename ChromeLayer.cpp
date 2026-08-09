@@ -155,6 +155,35 @@ void ChromeLayer::setChromeMode(bool chrome)
     }
 
 #if !defined(Q_OS_MAC)
+    applyWindowControlStyles(chrome);
+#endif
+
+    m_tabStrip->setVisible(chrome);
+    if (m_window->m_tabBar)
+        m_window->m_tabBar->setVisible(!chrome);
+
+    // Chrome docks the sidebar as a flush panel instead of a floating card.
+    m_window->applySidebarLayout(chrome);
+
+    // Chrome surfaces Settings in the toolbar (Safari keeps it hidden).
+    if (m_window->m_settingsButton) {
+        if (chrome) {
+            if (m_window->m_settingsButton->parentWidget() != m_window->m_toolbar) {
+                m_window->m_settingsButton->setParent(m_window->m_toolbar);
+                m_window->m_toolbarLayout->addWidget(m_window->m_settingsButton);
+            }
+            m_window->m_settingsButton->show();
+        } else {
+            m_window->m_toolbarLayout->removeWidget(m_window->m_settingsButton);
+            m_window->m_settingsButton->setParent(m_window);
+            m_window->m_settingsButton->hide();
+        }
+    }
+}
+
+void ChromeLayer::applyWindowControlStyles(bool chrome)
+{
+#if !defined(Q_OS_MAC)
     if (chrome) {
         // Flat Chrome titlebar controls: 46px-wide hit targets, glyph icons,
         // hover highlight, red hover on close.
@@ -188,31 +217,6 @@ void ChromeLayer::setChromeMode(bool chrome)
         m_window->m_maximizeButton->setStyleSheet(macTrafficStyle(QStringLiteral("#27c93f"), QStringLiteral("#1aab29")));
     }
 #endif
-
-    m_tabStrip->setVisible(chrome);
-    if (m_window->m_tabBar)
-        m_window->m_tabBar->setVisible(!chrome);
-
-    // Chrome docks the sidebar as a flush panel instead of a floating card.
-    m_window->applySidebarLayout(chrome);
-
-    // Chrome surfaces Settings in the toolbar (Safari keeps it hidden).
-    if (m_window->m_settingsButton) {
-        if (chrome) {
-            if (m_window->m_settingsButton->parentWidget() != m_window->m_toolbar) {
-                m_window->m_settingsButton->setParent(m_window->m_toolbar);
-                m_window->m_toolbarLayout->addWidget(m_window->m_settingsButton);
-            }
-            m_window->m_settingsButton->show();
-        } else {
-            m_window->m_toolbarLayout->removeWidget(m_window->m_settingsButton);
-            m_window->m_settingsButton->setParent(m_window);
-            m_window->m_settingsButton->hide();
-        }
-    }
-
-    // Rebuild tabs into whichever strip is now active.
-    m_window->rebuildTabBar();
 }
 
 void ChromeLayer::applyTheme(const ChromePalette &palette)
@@ -228,4 +232,12 @@ void ChromeLayer::applyTheme(const ChromePalette &palette)
         "QToolButton { border: none; background: transparent; border-radius: 6px; padding: 0; }"
         "QToolButton:hover { background-color: %1; }"
     ).arg(palette.inactiveTabHover));
+
+#if !defined(Q_OS_MAC)
+    // While Chrome mode is active, refresh the window-control glyphs so they
+    // pick up the new palette (setChromeMode early-returns when the mode is
+    // unchanged, so it never re-applies them on a theme switch).
+    if (m_chrome)
+        applyWindowControlStyles(true);
+#endif
 }

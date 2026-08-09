@@ -49,6 +49,12 @@ public:
     QToolButton *newTabButton() const { return m_newTabButton; }
 
 private:
+    // Styles the window-control buttons for the active mode. Chrome uses flat
+    // SVG glyphs tinted from the current palette; Safari restores the fixed
+    // macOS-style circles. Called on every mode switch and re-applied on theme
+    // changes so the glyph colors never go stale while Chrome mode is active.
+    void applyWindowControlStyles(bool chrome);
+
     BrowserWindow *m_window;
     bool m_chrome;
     ChromePalette m_palette;

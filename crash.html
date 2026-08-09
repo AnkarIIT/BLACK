@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-ui-layout="safari">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -26,6 +26,21 @@
     --border: rgba(255,255,255,0.12);
     --hairline: rgba(255,255,255,0.09);
     --danger: #ff453a;
+  }
+  /* Classic Chrome mode: the native side sets data-ui-layout="chrome" on
+     <html> (see BrowserWindow::applyUiLayoutToView). chrome-theme.css already
+     re-tokens --bg-window/--bg-card/--accent/--text-*; these blocks close the
+     gap for the border/hairline/danger tokens it does not override, so the
+     crash card never mixes Safari-era neutrals into the Chrome palette. */
+  html[data-ui-layout="chrome"] {
+    --border: rgba(0,0,0,0.14);
+    --hairline: rgba(0,0,0,0.08);
+    --danger: #d93025;
+  }
+  html[data-ui-layout="chrome"].black-forced-dark {
+    --border: rgba(255,255,255,0.14);
+    --hairline: rgba(255,255,255,0.08);
+    --danger: #ff6a5e;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
@@ -110,6 +125,25 @@
       var url = raw ? raw : '';
       var urlEl = document.getElementById('url');
       if (urlEl) urlEl.textContent = url || '—';
+
+      // Dark mode. This qrc page gets the full bridge in the MainWorld, so the
+      // SafariTheme object is reachable here; apply black-forced-dark live and
+      // keep following scheme changes while the page is open.
+      function applyDark(isDark) {
+        document.documentElement.classList.toggle('black-forced-dark', isDark);
+      }
+      if (window.qt && qt.webChannelTransport) {
+        try {
+          new QWebChannel(qt.webChannelTransport, function (channel) {
+            var theme = channel.objects.theme;
+            if (!theme) return;
+            theme.themeSchemeChanged.connect(function () {
+              applyDark(theme.themeScheme === 1);
+            });
+            applyDark(theme.themeScheme === 1);
+          });
+        } catch (e) { /* channel unavailable: stay with the base palette */ }
+      }
 
       document.getElementById('reload').addEventListener('click', function () {
         if (url) location.href = url;

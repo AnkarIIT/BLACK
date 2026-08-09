@@ -665,13 +665,17 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
 
     connect(&BrowserSettings::instance(), &BrowserSettings::settingsChanged, this, [this]() {
         m_history->setRetentionDays(retentionDaysFor(BrowserSettings::instance().removeHistoryItems()));
-        rebuildTabBar();
         applyUiLayout();
     });
 
     connect(&SafariTheme::instance(), &SafariTheme::schemeChanged, this, [this]() {
         applyTheme();
     });
+
+    // Wire the settings button exactly once. It must not live inside
+    // applyTheme(), which runs on every theme change and would stack duplicate
+    // connections (the modal menu would then open once per stacked connect).
+    connect(m_settingsButton, &QToolButton::clicked, this, &BrowserWindow::showSettingsMenu);
 }
 
 BrowserWindow::~BrowserWindow() {
@@ -1250,19 +1254,25 @@ QLabel* BrowserWindow::sidebarItemTextForAction(const QString &action)
 
 void BrowserWindow::styleSidebarItems()
 {
+    const bool chrome = chromeMode();
+    const ChromePalette cp = chromePalette();
+    const QString selBg = chrome ? cp.selectedBg : selectedBg();
+    const QString hv    = chrome ? cp.hover      : hover();
+    const QString acc   = chrome ? cp.accent     : accent();
+    const QString txt   = chrome ? cp.textPrimary : textPrimary();
     for (int i = 0; i < m_sidebarItems.count(); ++i) {
         const bool isActive = m_sidebarItems[i]->property("sidebarActive").toBool();
         m_sidebarItems[i]->setStyleSheet(QString(
             "QFrame { background-color: %1; border-radius: 6px; }"
             "QFrame:hover { background-color: %2; }"
-        ).arg(isActive ? selectedBg() : QStringLiteral("transparent"), hover()));
+        ).arg(isActive ? selBg : QStringLiteral("transparent"), hv));
         if (i < m_sidebarItemSvg.count() && i < m_sidebarItemIcons.count()) {
             m_sidebarItemIcons[i]->setPixmap(
-                createSvgIcon(m_sidebarItemSvg[i], 18, isActive ? accent() : textPrimary()).pixmap(18, 18));
+                createSvgIcon(m_sidebarItemSvg[i], 18, isActive ? acc : txt).pixmap(18, 18));
         }
         m_sidebarItemTexts[i]->setStyleSheet(QString(
             "font-size: 13px; color: %1; font-weight: %2; background: transparent;"
-        ).arg(isActive ? accent() : textPrimary(), isActive ? "600" : "400"));
+        ).arg(isActive ? acc : txt, isActive ? "600" : "400"));
     }
 }
 
@@ -2327,15 +2337,23 @@ void BrowserWindow::rebuildTabBar()
     const QString tabTextTiny   = chrome ? cp.textTertiary      : textTertiary();
     const QString tabAccent     = chrome ? cp.accent            : accent();
 
-    // Clear the layout completely (widgets are deleted; the add-tab buttons
-    // are kept for re-insertion at the end).
-    while (QLayoutItem *item = target->takeAt(0)) {
-        QWidget *w = item->widget();
-        if (w && w != m_addTabButton
-            && w != (m_chromeLayer ? m_chromeLayer->newTabButton() : nullptr))
-            w->deleteLater();
-        delete item;
-    }
+    // Clear BOTH tab layouts (the active strip and the one hidden by the other
+    // mode). Otherwise a mode switch leaves the previous strip's tab widgets
+    // orphaned inside the hidden strip until the next switch back.
+    auto clearLayout = [](QLayout *lay, QWidget *keep1, QWidget *keep2) {
+        if (!lay)
+            return;
+        while (QLayoutItem *item = lay->takeAt(0)) {
+            QWidget *w = item->widget();
+            if (w && w != keep1 && w != keep2)
+                w->deleteLater();
+            delete item;
+        }
+    };
+    QWidget *const chromeNewTab = m_chromeLayer ? m_chromeLayer->newTabButton() : nullptr;
+    clearLayout(target, m_addTabButton, chromeNewTab);
+    clearLayout(chrome ? m_tabBarLayout : (m_chromeLayer ? m_chromeLayer->tabLayout() : nullptr),
+                m_addTabButton, chromeNewTab);
     m_tabWidgets.clear();
     m_tabItemIcons.clear();
     m_tabItemTexts.clear();
@@ -2593,7 +2611,9 @@ bool BrowserWindow::eventFilter(QObject *obj, QEvent *event) {
         } else if (event->type() == QEvent::FocusOut) {
             m_urlFocused = false;
             m_urlMouseFocusPending = false;
-            animateUrlBar(520);
+            // Return to the mode's resting width, not a hardcoded Safari value:
+            // the Chrome omnibox settles at 720, the Safari bar at 520.
+            animateUrlBar(chromeMode() ? 720 : 520);
             updateUrlContainerStyle();
             QTimer::singleShot(150, this, [this]() {
                 if (m_urlSuggest && m_urlSuggest->isVisible() && !m_urlSuggest->underMouse()
@@ -3126,7 +3146,6 @@ void BrowserWindow::applyTheme()
     m_downloadsButton->setIcon(createSvgIcon(svgDownloads, 18, navIconColor));
     m_tabOverviewButton->setIcon(createSvgIcon(svgTabOverview, 18, navIconColor));
     m_settingsButton->setIcon(createSvgIcon(svgSettings, 18, navIconColor));
-    connect(m_settingsButton, &QToolButton::clicked, this, &BrowserWindow::showSettingsMenu);
     m_extensionsButton->setIcon(createSvgIcon(svgExtensions, 18, navIconColor));
     updateProfileButton();
 
@@ -3175,20 +3194,23 @@ void BrowserWindow::applyTheme()
         "QLineEdit { background-color: %1; border: none; border-radius: 6px; "
         "padding: 6px 10px; font-size: 12px; color: %2; }"
         "QLineEdit:focus { background-color: %3; }"
-    ).arg(searchBg(), textPrimary(), hover()));
+    ).arg(chrome ? cp.omniboxBg : searchBg(),
+          chrome ? cp.textPrimary : textPrimary(),
+          chrome ? cp.hover : hover()));
 
     for (QLabel *lbl : m_sidebarHeaders) {
         lbl->setStyleSheet(QString(
             "font-size: 10px; font-weight: 500; color: %1; padding: 6px 4px 2px 4px; "
             "letter-spacing: 0.2px;"
-        ).arg(textTertiary()));
+        ).arg(chrome ? cp.textTertiary : textTertiary()));
     }
     if (m_newGroupButton) {
         m_newGroupButton->setStyleSheet(QString(
             "QPushButton { background: transparent; border: none; color: %1; "
             "font-size: 12px; font-weight: 500; text-align: left; padding: 2px 8px; border-radius: 6px; }"
             "QPushButton:hover { background-color: %2; }"
-        ).arg(textSecondary(), hover()));
+        ).arg(chrome ? cp.textSecondary : textSecondary(),
+              chrome ? cp.hover : hover()));
     }
     styleSidebarItems();
 
@@ -3205,10 +3227,10 @@ void BrowserWindow::applyTheme()
     // Tab overview
     m_overviewOverlay->setStyleSheet(QString(
         "#OverviewOverlay { background-color: %1; }"
-    ).arg(SafariTheme::instance().scrim));
+    ).arg(chrome ? cp.scrim : SafariTheme::instance().scrim));
     m_overviewPanel->setStyleSheet(QString(
         "#OverviewPanel { background-color: %1; border-radius: 14px; }"
-    ).arg(bgWindow()));
+    ).arg(chrome ? cp.windowBg : bgWindow()));
     if (m_overviewScroll) {
         m_overviewScroll->setStyleSheet(QString(
             "QScrollArea { background: transparent; border: none; }"
@@ -3219,26 +3241,31 @@ void BrowserWindow::applyTheme()
             "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }"
         ));
     }
-    m_overviewTitle->setStyleSheet(QString("font-size: 16px; font-weight: 700; color: %1;").arg(textPrimary()));
+    m_overviewTitle->setStyleSheet(QString("font-size: 16px; font-weight: 700; color: %1;")
+        .arg(chrome ? cp.textPrimary : textPrimary()));
     if (m_overviewSearch) {
         m_overviewSearch->setStyleSheet(QString(
             "QLineEdit { background-color: %1; border: none; border-radius: 7px; "
             "padding: 7px 12px; font-size: 13px; color: %2; }"
             "QLineEdit:focus { background-color: %3; }"
-        ).arg(searchBg(), textPrimary(), hover()));
+        ).arg(chrome ? cp.omniboxBg : searchBg(),
+              chrome ? cp.textPrimary : textPrimary(),
+              chrome ? cp.hover : hover()));
     }
     m_overviewDoneButton->setStyleSheet(QString(
         "QPushButton { background: transparent; border: none; color: %1; font-size: 14px; font-weight: 600; }"
         "QPushButton:hover { color: %2; }"
-    ).arg(accent(), textPrimary()));
+    ).arg(chrome ? cp.accent : accent(),
+          chrome ? cp.textPrimary : textPrimary()));
     m_overviewNewTabButton->setStyleSheet(QString(
         "QPushButton { background-color: %1; color: #ffffff; border-radius: 8px; "
         "font-size: 13px; font-weight: 600; padding: 8px 0; border: none; }"
         "QPushButton:hover { background-color: %2; }"
-    ).arg(accent(), accentHover()));
+    ).arg(chrome ? cp.accent : accent(),
+          chrome ? cp.accentHover : accentHover()));
 
-    // Refresh dynamically-created widgets
-    rebuildTabBar();
+    // Refresh dynamically-created widgets. The tab strip itself is rebuilt by
+    // the applyUiLayout() tail call below (single rebuild point).
     if (m_overviewVisible) rebuildOverviewGrid();
 
     if (m_chromeLayer)
@@ -3273,8 +3300,13 @@ void BrowserWindow::applyUiLayout()
     if (m_tabBar)
         m_tabBar->setVisible(!chrome);
 
-    if (m_urlContainer)
+    if (m_urlContainer) {
         m_urlContainer->setMaximumWidth(chrome ? 720 : 520);
+        // A bar left focused during a mode switch keeps the 820px focus width.
+        // Release it back to the layout once unfocused.
+        if (!m_urlFocused)
+            m_urlContainer->setMinimumWidth(320);
+    }
 
     // Move traffic lights, toggle layer visibility, and rebuild the tab strip.
     // No-op when the mode is already active, so theme refreshes stay cheap.
@@ -3292,6 +3324,12 @@ void BrowserWindow::applyUiLayout()
     if (m_shieldInside)   m_shieldInside->setVisible(!chrome);
     if (m_extensionsButton) m_extensionsButton->setVisible(chrome);
     if (m_profileButton)  m_profileButton->setVisible(chrome);
+
+    // Single rebuild point: every layout-mode change, theme change, and
+    // settings change funnels through applyUiLayout(), so the tab strip is
+    // rebuilt exactly once per change. Callers must not rebuild separately
+    // (rebuildTabBar() clears both strips to prevent orphaned tab widgets).
+    rebuildTabBar();
 }
 
 // Sets data-ui-layout on a single view. Used for tabs and the settings dialog,
