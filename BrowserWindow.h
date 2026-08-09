@@ -37,6 +37,7 @@ class QWebEngineNewWindowRequest;
 class QWebEngineDownloadRequest;
 class QWebEngineProfile;
 class QWebChannel;
+class ChromeLayer;
 class ShelfStore;
 class PasswordStore;
 class ExtensionManager;
@@ -137,6 +138,8 @@ private:
     void updateUrlContainerStyle();
     void updateWebViewBackgrounds();
 
+    friend class ChromeLayer;
+
     QIcon createSvgIcon(const QString &svgData, int size = 18, const QString &color = "#1d1d1f");
     QToolButton* createTrafficLight(const QString &color, const QString &hoverColor);
 
@@ -197,6 +200,10 @@ private:
     QWidget        *m_toolbar;
     QWidget        *m_tabBar;
     QHBoxLayout    *m_tabBarLayout;
+
+    QHBoxLayout    *m_toolbarLayout;
+    QHBoxLayout    *m_trafficLayout;
+    ChromeLayer    *m_chromeLayer;
 
     QToolButton *m_backButton;
     QToolButton *m_forwardButton;

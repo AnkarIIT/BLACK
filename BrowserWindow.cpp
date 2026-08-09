@@ -1,4 +1,5 @@
 #include "BrowserWindow.h"
+#include "ChromeLayer.h"
 #include "SafariWebView.h"
 #include "SafariWebPage.h"
 #include "SafariTheme.h"
@@ -208,6 +209,19 @@ static QString borderLight()   { return SafariTheme::instance().borderLight; }
 static QString hover()         { return SafariTheme::instance().hover; }
 static QString searchBg()      { return SafariTheme::instance().searchBg; }
 static QString selectedBg()    { return SafariTheme::instance().selectedBg; }
+
+// ── Chrome Palette (Classic Chrome layout) ───────────────────────────────────
+static bool chromeMode()
+{
+    return BrowserSettings::instance().uiLayout() == BrowserSettings::ClassicChrome;
+}
+
+static ChromePalette chromePalette()
+{
+    return SafariTheme::instance().scheme() == SafariTheme::Scheme::Dark
+        ? ChromeTheme::dark()
+        : ChromeTheme::light();
+}
 
 // ── SVG Icons (Safari-style, stroke-based) ─────────────────────────────────
 static const QString svgBack       = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"15 18 9 12 15 6\"/></svg>";
@@ -448,6 +462,9 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     , m_urlAnim(nullptr)
     , m_shieldInside(nullptr)
     , m_central(nullptr)
+    , m_toolbarLayout(nullptr)
+    , m_trafficLayout(nullptr)
+    , m_chromeLayer(nullptr)
     , m_backButton(new QToolButton(this))
     , m_forwardButton(new QToolButton(this))
     , m_sidebarButton(new QToolButton(this))
@@ -577,6 +594,8 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     }
 
     setupUi();
+    m_chromeLayer = new ChromeLayer(this, this);
+    m_chromeLayer->setupUi(m_central, static_cast<QVBoxLayout*>(m_central->layout()));
     setupTabBar();
     setupSidebar();
     setupFindBar();
@@ -790,6 +809,7 @@ void BrowserWindow::setupUi()
     QHBoxLayout *toolbarLayout = new QHBoxLayout(m_toolbar);
     toolbarLayout->setContentsMargins(12, 0, 12, 0);
     toolbarLayout->setSpacing(6);
+    m_toolbarLayout = toolbarLayout;
 
     // Traffic lights
     m_closeButton    = createTrafficLight(QStringLiteral("#ff5f56"), QStringLiteral("#e0443e"));
@@ -803,6 +823,7 @@ void BrowserWindow::setupUi()
     QHBoxLayout *trafficLayout = new QHBoxLayout();
     trafficLayout->setContentsMargins(8, 0, 8, 0);
     trafficLayout->setSpacing(6);
+    m_trafficLayout = trafficLayout;
     trafficLayout->addWidget(m_closeButton);
     trafficLayout->addWidget(m_minimizeButton);
     trafficLayout->addWidget(m_maximizeButton);
@@ -1860,7 +1881,9 @@ void BrowserWindow::handleCertificateError(QWebEngineCertificateError error) {
         return;
     }
 
-    error.deferCertificateError();
+    // Qt 6.8's QWebEngineCertificateError API is defer(); there is no
+    // deferCertificateError().
+    error.defer();
 
     auto *dialog = new QMessageBox(QMessageBox::Warning,
                                    QStringLiteral("Security Warning"),
@@ -2015,10 +2038,26 @@ void BrowserWindow::handlePermissionRequestOld(QWebEnginePage *page, const QUrl 
 
 void BrowserWindow::rebuildTabBar()
 {
-    // Clear the layout completely (widgets are deleted, addTabButton is kept)
-    while (QLayoutItem *item = m_tabBarLayout->takeAt(0)) {
+    // Chrome mode renders tabs inside the chrome strip; Safari uses the
+    // classic tab bar. Pick the target layout up front.
+    const bool chrome = chromeMode();
+    QHBoxLayout *target = chrome && m_chromeLayer ? m_chromeLayer->tabLayout() : m_tabBarLayout;
+    QWidget *parentWidget = chrome && m_chromeLayer ? m_chromeLayer->tabStrip() : m_tabBar;
+    const ChromePalette cp = chromePalette();
+    const QString tabBgActive   = chrome ? cp.activeTabBg       : tabActive();
+    const QString tabBgInactive = chrome ? cp.inactiveTabBg     : tabInactive();
+    const QString tabBgHover    = chrome ? cp.inactiveTabHover  : tabHover();
+    const QString tabTextMain   = chrome ? cp.textPrimary       : textPrimary();
+    const QString tabTextDim    = chrome ? cp.textSecondary     : textSecondary();
+    const QString tabTextTiny   = chrome ? cp.textTertiary      : textTertiary();
+    const QString tabAccent     = chrome ? cp.accent            : accent();
+
+    // Clear the layout completely (widgets are deleted; the add-tab buttons
+    // are kept for re-insertion at the end).
+    while (QLayoutItem *item = target->takeAt(0)) {
         QWidget *w = item->widget();
-        if (w && w != m_addTabButton)
+        if (w && w != m_addTabButton
+            && w != (m_chromeLayer ? m_chromeLayer->newTabButton() : nullptr))
             w->deleteLater();
         delete item;
     }
@@ -2027,25 +2066,26 @@ void BrowserWindow::rebuildTabBar()
     m_tabItemTexts.clear();
 
     const bool compact = (BrowserSettings::instance().tabLayout() == QLatin1String("Compact"));
+    const int tabHeight = chrome ? 30 : (compact ? 24 : 28);
 
     // Rebuild: tabs left-aligned, add-tab button right after the last tab
     for (int i = 0; i < m_tabs.count(); ++i) {
         bool isActive = (i == m_currentTabIndex);
         const TabInfo &tab = m_tabs[i];
 
-        auto *tabWidget = new QWidget(m_tabBar);
-        tabWidget->setFixedHeight(compact ? 24 : 28);
+        auto *tabWidget = new QWidget(parentWidget);
+        tabWidget->setFixedHeight(tabHeight);
         tabWidget->setCursor(Qt::PointingHandCursor);
         tabWidget->setProperty("tabIndex", i);
 
         if (tab.isPinned) {
-            tabWidget->setFixedSize(compact ? 28 : 32, compact ? 24 : 28);
+            tabWidget->setFixedSize(compact ? 28 : 32, tabHeight);
             tabWidget->setStyleSheet(QString(
                 "QWidget { background-color: %1; border-radius: %2px; border: none; }"
                 "QWidget:hover { background-color: %3; }"
-            ).arg(isActive ? tabActive() : tabInactive())
+            ).arg(isActive ? tabBgActive : tabBgInactive)
              .arg(compact ? 5 : 7)
-             .arg(isActive ? tabActive() : tabHover()));
+             .arg(isActive ? tabBgActive : tabBgHover));
 
             QGridLayout *gridLayout = new QGridLayout(tabWidget);
             gridLayout->setContentsMargins(4, 4, 4, 4);
@@ -2057,7 +2097,7 @@ void BrowserWindow::rebuildTabBar()
                 iconLabel->setPixmap(pix);
             } else {
                 iconLabel->setText(QStringLiteral("\U0001F310"));
-                iconLabel->setStyleSheet(QString("font-size: 11px; background: transparent; color: %1;").arg(textSecondary()));
+                iconLabel->setStyleSheet(QString("font-size: 11px; background: transparent; color: %1;").arg(tabTextDim));
             }
             iconLabel->setFixedSize(16, 16);
             iconLabel->setAlignment(Qt::AlignCenter);
@@ -2066,7 +2106,7 @@ void BrowserWindow::rebuildTabBar()
             if (tab.isAudible) {
                 QPushButton *audioBtn = new QPushButton(tabWidget);
                 audioBtn->setFixedSize(12, 12);
-                QIcon volIcon = createSvgIcon(tab.isMuted ? svgVolumeMute : svgVolume2, 10, isActive ? accent() : textPrimary());
+                QIcon volIcon = createSvgIcon(tab.isMuted ? svgVolumeMute : svgVolume2, 10, isActive ? tabAccent : tabTextMain);
                 audioBtn->setIcon(volIcon);
                 audioBtn->setIconSize(QSize(10, 10));
                 audioBtn->setStyleSheet(QStringLiteral("QPushButton { background: transparent; border: none; padding: 0; }"));
@@ -2077,7 +2117,7 @@ void BrowserWindow::rebuildTabBar()
             }
 
             tabWidget->installEventFilter(this);
-            m_tabBarLayout->addWidget(tabWidget);
+            target->addWidget(tabWidget);
             m_tabWidgets.append(tabWidget);
             m_tabItemIcons.append(iconLabel);
             m_tabItemTexts.append(nullptr); // Null text label for pinned tabs
@@ -2088,9 +2128,9 @@ void BrowserWindow::rebuildTabBar()
             tabWidget->setStyleSheet(QString(
                 "QWidget { background-color: %1; border-radius: %2px; border: none; }"
                 "QWidget:hover { background-color: %3; }"
-            ).arg(isActive ? tabActive() : tabInactive())
+            ).arg(isActive ? tabBgActive : tabBgInactive)
              .arg(compact ? 5 : 7)
-             .arg(isActive ? tabActive() : tabHover()));
+             .arg(isActive ? tabBgActive : tabBgHover));
 
             QHBoxLayout *tabLayout = new QHBoxLayout(tabWidget);
             tabLayout->setContentsMargins(compact ? 6 : 8, 2, compact ? 2 : 4, 2);
@@ -2103,7 +2143,7 @@ void BrowserWindow::rebuildTabBar()
                 iconLabel->setPixmap(pix);
             } else {
                 iconLabel->setText(QStringLiteral("\U0001F310"));
-                iconLabel->setStyleSheet(QString("font-size: 11px; background: transparent; color: %1;").arg(textSecondary()));
+                iconLabel->setStyleSheet(QString("font-size: 11px; background: transparent; color: %1;").arg(tabTextDim));
             }
             iconLabel->setFixedSize(14, 14);
             iconLabel->setAlignment(Qt::AlignCenter);
@@ -2116,7 +2156,7 @@ void BrowserWindow::rebuildTabBar()
                 titleLbl = new QLabel(truncate(shownText, compact ? 14 : 18), tabWidget);
                 titleLbl->setStyleSheet(QString(
                     "color: %1; font-size: 12px; font-weight: %2; background: transparent;"
-                ).arg(isActive ? textPrimary() : textSecondary(),
+                ).arg(isActive ? tabTextMain : tabTextDim,
                      isActive ? "600" : "400"));
                 titleLbl->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
                 tabLayout->addWidget(titleLbl, 1);
@@ -2125,7 +2165,7 @@ void BrowserWindow::rebuildTabBar()
             if (tab.isAudible) {
                 QPushButton *audioBtn = new QPushButton(tabWidget);
                 audioBtn->setFixedSize(16, 16);
-                QIcon volIcon = createSvgIcon(tab.isMuted ? svgVolumeMute : svgVolume2, 12, textSecondary());
+                QIcon volIcon = createSvgIcon(tab.isMuted ? svgVolumeMute : svgVolume2, 12, tabTextDim);
                 audioBtn->setIcon(volIcon);
                 audioBtn->setIconSize(QSize(12, 12));
                 audioBtn->setStyleSheet(QStringLiteral("QPushButton { background: transparent; border: none; padding: 0; }"));
@@ -2141,20 +2181,23 @@ void BrowserWindow::rebuildTabBar()
             closeBtn->setStyleSheet(QString(
                 "QPushButton { background: transparent; border: none; color: %1; font-size: 9px; border-radius: 9px; }"
                 "QPushButton:hover { background: rgba(255,59,48,0.12); color: #ff3b30; }"
-            ).arg(textTertiary()));
+            ).arg(tabTextTiny));
             connect(closeBtn, &QPushButton::clicked, this, [this, i]() { closeTab(i); });
             tabLayout->addWidget(closeBtn);
 
             tabWidget->installEventFilter(this);
-            m_tabBarLayout->addWidget(tabWidget);
+            target->addWidget(tabWidget);
             m_tabWidgets.append(tabWidget);
             m_tabItemIcons.append(iconLabel);
             m_tabItemTexts.append(titleLbl);
         }
     }
 
-    m_tabBarLayout->addWidget(m_addTabButton);
-    m_tabBarLayout->addSpacing(4);
+    if (chrome && m_chromeLayer)
+        target->addWidget(m_chromeLayer->newTabButton());
+    else
+        target->addWidget(m_addTabButton);
+    target->addSpacing(4);
 }
 
 void BrowserWindow::refreshTabLabel(int index)
@@ -2589,11 +2632,12 @@ void BrowserWindow::updateNavigationState() {
     // Update reload/stop icon
     bool loading = (m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count())
                    && m_tabs[m_currentTabIndex].loading;
+    const QString iconColor = chromeMode() ? chromePalette().textPrimary : textPrimary();
     if (loading) {
-        m_reloadButton->setIcon(createSvgIcon(svgStop, 18, textPrimary()));
+        m_reloadButton->setIcon(createSvgIcon(svgStop, 18, iconColor));
         m_reloadButton->setToolTip(QStringLiteral("Stop"));
     } else {
-        m_reloadButton->setIcon(createSvgIcon(svgReload, 18, textPrimary()));
+        m_reloadButton->setIcon(createSvgIcon(svgReload, 18, iconColor));
         m_reloadButton->setToolTip(QStringLiteral("Reload"));
     }
 }
@@ -2746,38 +2790,49 @@ void BrowserWindow::setupKeyboardShortcuts()
 // ═══════════════════════════════════════════════════════════════════════════
 void BrowserWindow::updateUrlContainerStyle()
 {
+    const bool chrome = chromeMode();
+    const ChromePalette cp = chromePalette();
     m_urlContainer->setStyleSheet(QString(
-        "#UrlContainer { background-color: %1; border: %2 solid %3; border-radius: 8px; }"
-    ).arg(searchBg(), m_urlFocused ? "1.5px" : "1px",
-          m_urlFocused ? accent() : borderLight()));
+        "#UrlContainer { background-color: %1; border: %2 solid %3; border-radius: %4px; }"
+    ).arg(chrome ? cp.omniboxBg : searchBg(),
+          m_urlFocused ? QStringLiteral("1.5px") : QStringLiteral("1px"),
+          m_urlFocused ? (chrome ? cp.accent : accent())
+                       : (chrome ? cp.omniboxBorder : borderLight()))
+     .arg(QString::number(chrome ? 15 : 8)));
 }
 
 void BrowserWindow::applyTheme()
 {
+    const bool chrome = chromeMode();
+    const ChromePalette cp = chromePalette();
+
     // Central widget + toolbar
     m_central->setStyleSheet(QString(
         "#CentralWidget { background-color: %1; border-radius: 10px; border: 0.5px solid %2; }"
-    ).arg(bgWindow(), border()));
+    ).arg(chrome ? cp.windowBg : bgWindow(),
+          chrome ? cp.border : border()));
     m_toolbar->setStyleSheet(QString(
         "#Toolbar { background-color: %1; border-bottom: 0.5px solid %2; "
         "border-top-left-radius: 10px; border-top-right-radius: 10px; }"
-    ).arg(bgToolbar(), border()));
+    ).arg(chrome ? cp.toolbarBg : bgToolbar(),
+          chrome ? cp.border : border()));
 
     // Navigation buttons
+    const QString navIconColor = chrome ? cp.textPrimary : textPrimary();
     const QString navBtnStyle = QString(
         "QToolButton { border: none; background: transparent; border-radius: 6px; padding: 6px; }"
         "QToolButton:hover { background-color: %1; }"
         "QToolButton:disabled { opacity: 0.3; }"
-    ).arg(hover());
+    ).arg(chrome ? cp.hover : hover());
 
-    m_sidebarButton->setIcon(createSvgIcon(svgSidebar, 18, textPrimary()));
-    m_backButton->setIcon(createSvgIcon(svgBack, 18, textPrimary()));
-    m_forwardButton->setIcon(createSvgIcon(svgForward, 18, textPrimary()));
-    m_reloadButton->setIcon(createSvgIcon(svgReload, 18, textPrimary()));
-    m_shareButton->setIcon(createSvgIcon(svgShare, 18, textPrimary()));
-    m_downloadsButton->setIcon(createSvgIcon(svgDownloads, 18, textPrimary()));
-    m_tabOverviewButton->setIcon(createSvgIcon(svgTabOverview, 18, textPrimary()));
-    m_settingsButton->setIcon(createSvgIcon(svgSettings, 18, textPrimary()));
+    m_sidebarButton->setIcon(createSvgIcon(svgSidebar, 18, navIconColor));
+    m_backButton->setIcon(createSvgIcon(svgBack, 18, navIconColor));
+    m_forwardButton->setIcon(createSvgIcon(svgForward, 18, navIconColor));
+    m_reloadButton->setIcon(createSvgIcon(svgReload, 18, navIconColor));
+    m_shareButton->setIcon(createSvgIcon(svgShare, 18, navIconColor));
+    m_downloadsButton->setIcon(createSvgIcon(svgDownloads, 18, navIconColor));
+    m_tabOverviewButton->setIcon(createSvgIcon(svgTabOverview, 18, navIconColor));
+    m_settingsButton->setIcon(createSvgIcon(svgSettings, 18, navIconColor));
 
     for (QToolButton *b : { m_sidebarButton, m_backButton, m_forwardButton, m_reloadButton,
                             m_shareButton, m_downloadsButton, m_tabOverviewButton, m_settingsButton }) {
@@ -2788,7 +2843,7 @@ void BrowserWindow::applyTheme()
     m_reloadButton->setStyleSheet(QString(
         "QToolButton { border: none; background: transparent; border-radius: 5px; padding: 0; }"
         "QToolButton:hover { background-color: %1; }"
-    ).arg(hover()));
+    ).arg(chrome ? cp.hover : hover()));
     updateNavigationState();
 
     // URL bar
@@ -2797,8 +2852,8 @@ void BrowserWindow::applyTheme()
         "  background: transparent; color: %1; border: none; "
         "  font-size: 14px; font-weight: 400; padding: 0 6px; "
         "}"
-    ).arg(textPrimary()));
-    m_shieldInside->setIcon(createSvgIcon(svgShield, 14, accent()));
+    ).arg(chrome ? cp.textPrimary : textPrimary()));
+    m_shieldInside->setIcon(createSvgIcon(svgShield, 14, chrome ? cp.accent : accent()));
     m_shieldInside->setStyleSheet(QStringLiteral("border: none; background: transparent;"));
     updateUrlContainerStyle();
 
@@ -2806,7 +2861,7 @@ void BrowserWindow::applyTheme()
     m_loadingBar->setStyleSheet(QString(
         "QProgressBar { background-color: transparent; border: none; border-radius: 0px; }"
         "QProgressBar::chunk { background-color: %1; }"
-    ).arg(accent()));
+    ).arg(chrome ? cp.accent : accent()));
 
     // Sidebar (floating card)
     m_sidebar->setStyleSheet(QString(
@@ -2883,6 +2938,9 @@ void BrowserWindow::applyTheme()
     rebuildTabBar();
     if (m_overviewVisible) rebuildOverviewGrid();
 
+    if (m_chromeLayer)
+        m_chromeLayer->applyTheme(chromePalette());
+
     updateWebViewBackgrounds();
     updateWebViewTheme();
     applyUiLayout();
@@ -2920,6 +2978,11 @@ void BrowserWindow::applyUiLayout()
 
     if (m_urlContainer)
         m_urlContainer->setMaximumWidth(chrome ? 720 : 520);
+
+    // Move traffic lights, toggle layer visibility, and rebuild the tab strip.
+    // No-op when the mode is already active, so theme refreshes stay cheap.
+    if (m_chromeLayer)
+        m_chromeLayer->setChromeMode(chrome);
 }
 
 void BrowserWindow::updateWebViewBackgrounds()

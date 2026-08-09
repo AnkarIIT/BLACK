@@ -1,0 +1,71 @@
+/* Classic Chrome layout overrides for internal pages.
+ *
+ * applyUiLayout() sets data-ui-layout="chrome" on <html> of every page while
+ * the Classic Chrome UI is active. Internal pages keep their own base
+ * palettes; this sheet re-tokens them to the Chrome palette so the page
+ * backdrop blends with the chrome tab strip and toolbar.
+ *
+ * Dark mode is signalled by the html.black-forced-dark class (the pages'
+ * existing mechanism), so selectors combine the two states.
+ */
+
+/* ── Light Chrome ─────────────────────────────────────────────────────────── */
+
+/* settings.html / extensions.html */
+html[data-ui-layout="chrome"] {
+    --mac-bg: #eef0f2;
+    --mac-border: rgba(0, 0, 0, 0.14);
+    --mac-card: #ffffff;
+    --mac-text: #1a1a1a;
+    --mac-text-sec: #5f6368;
+    --mac-accent: #1a73e8;
+    --mac-control-border: #d8dadd;
+    --mac-selected-tab: rgba(26, 115, 232, 0.12);
+}
+
+/* startpage_enhanced.html / privacyreport.html / features.html */
+html[data-ui-layout="chrome"] {
+    --bg-window: #eef0f2;
+    --bg-card: #ffffff;
+    --accent: #1a73e8;
+    --text-primary: #1a1a1a;
+    --text-secondary: #5f6368;
+    --text-tertiary: #9aa0a6;
+}
+
+/* history.html / bookmarks.html */
+html[data-ui-layout="chrome"] {
+    --bg: #eef0f2;
+    --card: #ffffff;
+    --text: #1a1a1a;
+    --accent: #1a73e8;
+}
+
+/* ── Dark Chrome ──────────────────────────────────────────────────────────── */
+
+html[data-ui-layout="chrome"].black-forced-dark {
+    --mac-bg: #2d2e30;
+    --mac-border: rgba(255, 255, 255, 0.14);
+    --mac-card: #202124;
+    --mac-text: #e8eaed;
+    --mac-text-sec: #9aa0a6;
+    --mac-accent: #8ab4f8;
+    --mac-control-border: #5f6368;
+    --mac-selected-tab: rgba(138, 180, 248, 0.16);
+}
+
+html[data-ui-layout="chrome"].black-forced-dark {
+    --bg-window: #2d2e30;
+    --bg-card: #202124;
+    --accent: #8ab4f8;
+    --text-primary: #e8eaed;
+    --text-secondary: #9aa0a6;
+    --text-tertiary: #80868b;
+}
+
+html[data-ui-layout="chrome"].black-forced-dark {
+    --bg: #2d2e30;
+    --card: #202124;
+    --text: #e8eaed;
+    --accent: #8ab4f8;
+}

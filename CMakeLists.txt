@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets Svg WebChannel)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets Svg WebChannel Network)
 
 qt_add_executable(BLACK
     main.cpp
@@ -37,10 +37,17 @@ qt_add_executable(BLACK
     OSPaths.cpp
     OSPaths.h
     OnboardingBridge.h
+    OnboardingBridge.cpp
     AppearanceManager.h
     AppearanceManager.cpp
     BookmarkImporter.cpp
     BookmarkImporter.h
+    OAuthManager.cpp
+    OAuthManager.h
+    ChromeLayer.cpp
+    ChromeLayer.h
+    ChromeTheme.cpp
+    ChromeTheme.h
 )
 
 if(WIN32)
@@ -61,6 +68,7 @@ qt_add_resources(BLACK "resources" PREFIX "/" BASE "${CMAKE_CURRENT_SOURCE_DIR}"
         features.html
         privacyreport.html
         safebrowsing_warning.html
+        chrome-theme.css
         app.png
 )
 
@@ -71,6 +79,7 @@ target_link_libraries(BLACK PRIVATE
     Qt6::WebEngineWidgets
     Qt6::Svg
     Qt6::WebChannel
+    Qt6::Network
 )
 
 if(MSVC)
