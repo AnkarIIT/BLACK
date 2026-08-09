@@ -13,6 +13,7 @@
 #include "SafeBrowsing.h"
 #include "OSPaths.h"
 #include "BookmarkImporter.h"
+#include "VaultCrypto.h"
 #include <QFrame>
 #include <QStyle>
 #include <QGraphicsDropShadowEffect>
@@ -211,6 +212,9 @@ static QString searchBg()      { return SafariTheme::instance().searchBg; }
 static QString selectedBg()    { return SafariTheme::instance().selectedBg; }
 
 // ── Chrome Palette (Classic Chrome layout) ───────────────────────────────────
+// Automatic reload budget before a crashed tab lands on the crash page.
+static const int kMaxRendererCrashReloads = 2;
+
 static bool chromeMode()
 {
     return BrowserSettings::instance().uiLayout() == BrowserSettings::ClassicChrome;
@@ -402,6 +406,35 @@ static QString dataFile(const QString &fileName) {
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir().mkpath(dir);
     return dir + QLatin1Char('/') + fileName;
+}
+
+// Append a renderer-crash event to crash.json so crashes are auditable even
+// after the window closes. Never blocks on I/O and never throws.
+static void logCrashEvent(const QString &url, int crashCount, const QString &action)
+{
+    QFile file(dataFile(QStringLiteral("crash.json")));
+    if (!file.open(QIODevice::ReadOnly | QIODevice::WriteOnly))
+        return;
+    QJsonArray events;
+    const QByteArray existing = file.readAll();
+    if (!existing.isEmpty()) {
+        const QJsonDocument doc = QJsonDocument::fromJson(existing);
+        if (doc.isObject())
+            events = doc.object()[QStringLiteral("events")].toArray();
+    }
+    QJsonObject event;
+    event[QStringLiteral("ts")] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    event[QStringLiteral("url")] = url;
+    event[QStringLiteral("crashCount")] = crashCount;
+    event[QStringLiteral("action")] = action;
+    events.append(event);
+    // Keep the file bounded to the most recent 200 events.
+    while (events.size() > 200)
+        events.removeFirst();
+    QJsonObject root;
+    root[QStringLiteral("events")] = events;
+    file.resize(0);
+    file.write(QJsonDocument(root).toJson());
 }
 
 static QString searchUrlFor(const QString &query) {
@@ -1515,6 +1548,8 @@ SafariWebView* BrowserWindow::addTabView(const QUrl &url, QWebEngineNewWindowReq
             if (m_tabs[i].view == view) {
                 m_tabs[i].loading = false;
                 if (ok) {
+                    m_tabs[i].crashCount = 0;
+                    m_tabs[i].showingCrashPage = false;
                     saveHistoryItem(m_tabs[i].title, m_tabs[i].url);
                     // Refresh the visible tab's thumbnail so the overview stays fresh.
                     if (i == m_currentTabIndex && !m_overviewVisible) {
@@ -1535,9 +1570,20 @@ SafariWebView* BrowserWindow::addTabView(const QUrl &url, QWebEngineNewWindowReq
             const bool dark = (SafariTheme::instance().scheme() == SafariTheme::Scheme::Dark);
             view->page()->runJavaScript(kPageThemeClassScript.arg(dark ? QStringLiteral("true") : QStringLiteral("false")));
         }
+        // Keep the layout mode attribute in sync on every finished load so tabs
+        // opened after a mode switch never bleed the other layout's theme.
+        applyUiLayoutToView(view);
         onLoadFinished(ok);
     });
     connect(view, &QWebEngineView::loadFinished, this, &BrowserWindow::updateNavigationState);
+
+    // A crashed/killed renderer must never take the whole app down with it.
+    // Auto-reload transient failures; give up and show a crash page after
+    // repeated crashes. Mode-agnostic: works in both Safari and Chrome layouts.
+    connect(view->page(), &QWebEnginePage::renderProcessTerminated,
+            this, [this, view]() {
+        handleRenderProcessCrash(view);
+    });
 
     // Open target="_blank", window.open() and other new-window requests as tabs.
     const auto openPagesInTabs = [this]() {
@@ -1884,6 +1930,13 @@ void BrowserWindow::openSettingsDialog()
         m_settingsView->page()->setBackgroundColor(Qt::transparent);
         m_settingsView->page()->settings()->setAttribute(QWebEngineSettings::ShowScrollBars, false);
         m_settingsView->setUrl(QUrl(QStringLiteral("qrc:/settings.html")));
+        connect(m_settingsView, &QWebEngineView::loadFinished, this, [this]() {
+            m_settingsCrashCount = 0;
+            applyUiLayoutToView(m_settingsView);
+        });
+        // Keep the settings sheet alive if its shared renderer dies.
+        connect(m_settingsView->page(), &QWebEnginePage::renderProcessTerminated,
+                this, [this]() { handleRenderProcessCrash(m_settingsView); });
         layout->addWidget(m_settingsView);
 
         m_webChannel->registerObject(QStringLiteral("settingsDialog"),
@@ -2985,19 +3038,13 @@ void BrowserWindow::applyUiLayout()
     const bool chrome = (mode == BrowserSettings::ClassicChrome);
     const QString layoutValue = chrome ? QStringLiteral("chrome") : QStringLiteral("safari");
 
-    // Drive both internal pages and external web content from the same root mode.
-    const QString js = QStringLiteral(
-        "(function(mode){"
-        "var el=document.documentElement;"
-        "if(!el)return;"
-        "el.setAttribute('data-ui-layout', mode);"
-        "})('%1');"
-    ).arg(layoutValue);
     for (const TabInfo &tab : m_tabs) {
         if (!tab.view)
             continue;
-        tab.view->page()->runJavaScript(js);
+        applyUiLayoutToView(tab.view);
     }
+    if (m_settingsView)
+        applyUiLayoutToView(m_settingsView);
 
 #if defined(Q_OS_MAC)
     // In Chrome mode leave a wider left gutter so traffic lights sit inside the
@@ -3020,6 +3067,82 @@ void BrowserWindow::applyUiLayout()
     // setChromeMode bails out early when the mode is unchanged, so re-apply the
     // sidebar treatment here to cover first-run startup in Chrome mode.
     applySidebarLayout(chrome);
+}
+
+// Sets data-ui-layout on a single view. Used for tabs and the settings dialog,
+// which lives outside m_tabs, so both stay in sync when the layout mode flips.
+void BrowserWindow::applyUiLayoutToView(QWebEngineView *view)
+{
+    if (!view || !view->page())
+        return;
+    const QString layoutValue = chromeMode()
+        ? QStringLiteral("chrome") : QStringLiteral("safari");
+    view->page()->runJavaScript(QStringLiteral(
+        "(function(mode){"
+        "var el=document.documentElement;"
+        "if(!el)return;"
+        "el.setAttribute('data-ui-layout', mode);"
+        "})('%1');").arg(layoutValue));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Renderer Crash Recovery ────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+void BrowserWindow::handleRenderProcessCrash(QWebEngineView *view)
+{
+    if (!view)
+        return;
+
+    // Locate the tab by view pointer. The settings dialog is tracked separately.
+    int index = -1;
+    for (int i = 0; i < m_tabs.count(); ++i) {
+        if (m_tabs[i].view == view) {
+            index = i;
+            break;
+        }
+    }
+
+    if (index >= 0) {
+        TabInfo &tab = m_tabs[index];
+        tab.crashCount++;
+
+        // Allow a couple of automatic reloads for transient renderer exits
+        // (GPU/driver hiccups, out-of-memory kills). Beyond that, surface a
+        // dedicated crash page instead of looping forever.
+        if (tab.crashCount <= kMaxRendererCrashReloads) {
+            logCrashEvent(tab.url, tab.crashCount, QStringLiteral("reload"));
+            QTimer::singleShot(150, view, [view]() {
+                if (view)
+                    view->reload();
+            });
+        } else {
+            const QString original = tab.url.isEmpty()
+                ? newTabUrl().toString() : tab.url;
+            tab.crashCount = 0;
+            tab.showingCrashPage = true;
+            logCrashEvent(original, kMaxRendererCrashReloads + 1, QStringLiteral("crash-page"));
+            view->setUrl(QUrl(QStringLiteral("qrc:/crash.html?url=")
+                              + QString::fromUtf8(QUrl::toPercentEncoding(original))));
+        }
+        return;
+    }
+
+    // The settings dialog reuses a shared renderer; reload it a couple of times
+    // before giving up so a flaky GPU/driver can't pin the dialog in a loop.
+    if (m_settingsView == view) {
+        if (++m_settingsCrashCount <= kMaxRendererCrashReloads) {
+            logCrashEvent(QStringLiteral("qrc:/settings.html"), m_settingsCrashCount,
+                          QStringLiteral("reload"));
+            QTimer::singleShot(150, view, [this, view]() {
+                if (view)
+                    view->reload();
+            });
+        } else {
+            logCrashEvent(QStringLiteral("qrc:/settings.html"),
+                          kMaxRendererCrashReloads + 1, QStringLiteral("give-up"));
+            m_settingsCrashCount = 0;
+        }
+    }
 }
 
 // Safari keeps the sidebar as a floating rounded card with a soft shadow;
@@ -3421,6 +3544,7 @@ void BrowserWindow::saveSession() {
             QJsonObject entry;
             entry[QStringLiteral("url")] = tab.url;
             entry[QStringLiteral("lastActive")] = tab.lastActive;
+            entry[QStringLiteral("crashed")] = tab.showingCrashPage;
             array.append(entry);
         }
         QJsonObject obj;
@@ -3457,9 +3581,11 @@ void BrowserWindow::restoreSession() {
                 for (const QJsonValue &v : array) {
                     QString url;
                     qint64 lastActive = 0;
+                    bool wasCrashed = false;
                     if (v.isObject()) {
                         url = v.toObject()[QStringLiteral("url")].toString();
                         lastActive = v.toObject()[QStringLiteral("lastActive")].toDouble(0);
+                        wasCrashed = v.toObject()[QStringLiteral("crashed")].toBool(false);
                     } else {
                         url = v.toString();
                     }
@@ -3470,7 +3596,15 @@ void BrowserWindow::restoreSession() {
                         continue;
                     if (restored == restoreIdx)
                         adjustedRestoreIdx = m_tabs.count();
-                    addNewTab(QUrl(url));
+                    if (wasCrashed) {
+                        // A tab left on the crash page stays on it across
+                        // restarts instead of hammering the same broken page.
+                        addNewTab(QUrl(QStringLiteral("qrc:/crash.html?url=")
+                                       + QString::fromUtf8(QUrl::toPercentEncoding(url))));
+                        m_tabs.last().showingCrashPage = true;
+                    } else {
+                        addNewTab(QUrl(url));
+                    }
                     m_tabs.last().lastActive = lastActive;
                     ++restored;
                 }
@@ -3492,31 +3626,38 @@ void BrowserWindow::saveBookmark(const QString &title, const QString &url) {
 }
 
 
-void BrowserWindow::loadPermissions() {
+void BrowserWindow::loadPermissions()
+{
     m_permissionChoices.clear();
-    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QFile file(dir + QStringLiteral("/permissions.json"));
-    if (file.open(QIODevice::ReadOnly)) {
-        QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-        if (doc.isObject()) {
-            QJsonObject obj = doc.object();
-            for (auto it = obj.constBegin(); it != obj.constEnd(); ++it) {
-                m_permissionChoices.insert(it.key(), it.value().toBool());
-            }
-        }
+    const QString path = dataFile(QStringLiteral("permissions.json"));
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return;
+    const QByteArray raw = file.readAll();
+    const QByteArray plain = VaultCrypto::decrypt(raw);
+    const QByteArray payload = plain.isEmpty() ? raw : plain;
+    const QJsonDocument doc = QJsonDocument::fromJson(payload);
+    if (!doc.isObject())
+        return;
+    const QJsonObject obj = doc.object();
+    for (auto it = obj.constBegin(); it != obj.constEnd(); ++it) {
+        m_permissionChoices.insert(it.key(), it.value().toBool());
     }
 }
 
-void BrowserWindow::savePermissions() {
+void BrowserWindow::savePermissions()
+{
     QJsonObject obj;
     for (auto it = m_permissionChoices.constBegin(); it != m_permissionChoices.constEnd(); ++it) {
         obj.insert(it.key(), it.value());
     }
-    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QFile file(dir + QStringLiteral("/permissions.json"));
-    if (file.open(QIODevice::WriteOnly)) {
-        file.write(QJsonDocument(obj).toJson(QJsonDocument::Compact));
-    }
+    const QByteArray payload = QJsonDocument(obj).toJson(QJsonDocument::Compact);
+    const QByteArray blob = VaultCrypto::encrypt(payload);
+    const QString path = dataFile(QStringLiteral("permissions.json"));
+    QFile file(path);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        file.write(blob.isEmpty() ? payload : blob);
 }
 
 #include "BrowserWindow.moc"
+

@@ -68,6 +68,7 @@ qt_add_resources(BLACK "resources" PREFIX "/" BASE "${CMAKE_CURRENT_SOURCE_DIR}"
         features.html
         privacyreport.html
         safebrowsing_warning.html
+        crash.html
         chrome-theme.css
         app.png
 )

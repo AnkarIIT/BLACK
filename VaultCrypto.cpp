@@ -33,6 +33,10 @@ const int kIvSize = 12;
 const int kTagSize = 16;
 const int kPbkdf2Iterations = 150000;
 
+#if defined(Q_OS_WIN)
+const char kDpapiEntropy[] = "BLACK_BROWSER_VAULT_ENTROPY_BLOCK_32";
+#endif
+
 QByteArray randomBytes(int n)
 {
     QByteArray out;
@@ -62,47 +66,49 @@ QByteArray pbkdf2HmacSha256(const QByteArray &password, const QByteArray &salt,
     quint32 blockIndex = 1;
     int written = 0;
     while (written < dkLen) {
-        QByteArray u = salt;
-        appendUint32Be(u, blockIndex);
-        QByteArray t = QMessageAuthenticationCode::hash(u, password, QCryptographicHash::Sha256);
-        QByteArray uPrev = t;
-        for (int i = 1; i < iterations; ++i) {
-            uPrev = QMessageAuthenticationCode::hash(uPrev, password, QCryptographicHash::Sha256);
-            for (int j = 0; j < hLen; ++j)
-                t[j] = char(uchar(t.at(j)) ^ uchar(uPrev.at(j)));
+        QByteArray u;
+        {
+            QByteArray block;
+            block.append(password);
+            block.append(salt);
+            appendUint32Be(block, blockIndex);
+            u = QMessageAuthenticationCode::hash(block, password, QCryptographicHash::Sha256);
         }
-        const int n = qMin(hLen, dkLen - written);
-        memcpy(out.data() + written, t.constData(), size_t(n));
-        written += n;
+        QByteArray t = u;
+        for (int i = 1; i < iterations; ++i) {
+            u = QMessageAuthenticationCode::hash(u, password, QCryptographicHash::Sha256);
+            for (int j = 0; j < hLen; ++j)
+                t[j] ^= u[j];
+        }
+        const int copySize = qMin(hLen, dLen - written);
+        memcpy(out.data() + written, t.constData(), copySize);
+        written += copySize;
         ++blockIndex;
     }
     return out;
 }
 
-// HMAC-SHA256 keystream block: HMAC(key, "BLACK-CTR" || iv || counterBE)
-QByteArray keystreamBlock(const QByteArray &key, const QByteArray &iv, quint32 counter)
-{
-    QByteArray block;
-    block.reserve(9 + iv.size() + 4);
-    block.append("BLACK-CTR", 9);
-    block.append(iv);
-    appendUint32Be(block, counter);
-    return QMessageAuthenticationCode::hash(block, key, QCryptographicHash::Sha256);
-}
-
-// Counter-mode XOR using the HMAC keystream. Symmetric: encrypt == decrypt.
 QByteArray hmacCtrXor(const QByteArray &key, const QByteArray &iv, const QByteArray &data)
 {
     QByteArray out;
     out.resize(data.size());
-    quint32 counter = 0;
-    int offset = 0;
-    while (offset < data.size()) {
-        const QByteArray ks = keystreamBlock(key, iv, counter++);
-        const int n = qMin(ks.size(), data.size() - offset);
-        for (int i = 0; i < n; ++i)
-            out[offset + i] = data.at(offset + i) ^ ks.at(i);
-        offset += n;
+    const int blockSize = 32;
+    QByteArray counter;
+    counter.resize(blockSize);
+    memcpy(counter.data(), iv.constData(), qMin(blockSize, iv.size()));
+
+    for (int offset = 0; offset < data.size(); offset += blockSize) {
+        const QByteArray keystream = QMessageAuthenticationCode::hash(counter, key, QCryptographicHash::Sha256);
+        const int chunk = qMin(blockSize, data.size() - offset);
+        for (int i = 0; i < chunk; ++i)
+            out[offset + i] = data.at(offset + i) ^ keystream[i];
+
+        for (int i = blockSize - 1; i >= 0; --i) {
+            unsigned char v = static_cast<unsigned char>(counter[i]) + 1;
+            counter[i] = static_cast<char>(v);
+            if (v != 0)
+                break;
+        }
     }
     return out;
 }
@@ -196,8 +202,6 @@ QByteArray hmacCtrDecryptBlob(const QByteArray &envelope)
 }
 
 #if defined(Q_OS_WIN)
-const char kDpapiEntropy[] = "BLACK_BROWSER_VAULT_ENTROPY_BLOCK_32";
-
 QByteArray dpapiEncrypt(const QByteArray &plain)
 {
     DATA_BLOB in;
@@ -228,7 +232,6 @@ QByteArray dpapiDecrypt(const QByteArray &blob)
     entropy.cbData = DWORD(sizeof(kDpapiEntropy) - 1);
 
     DATA_BLOB out = { nullptr, 0 };
-    // Try first with custom entropy
     if (CryptUnprotectData(&in, nullptr, &entropy, nullptr, nullptr,
                             CRYPTPROTECT_UI_FORBIDDEN, &out)) {
         QByteArray result(reinterpret_cast<const char *>(out.pbData), int(out.cbData));
@@ -236,7 +239,7 @@ QByteArray dpapiDecrypt(const QByteArray &blob)
         return result;
     }
 
-    // Fallback to nullptr entropy for backward compatibility
+    out = { nullptr, 0 };
     if (CryptUnprotectData(&in, nullptr, nullptr, nullptr, nullptr,
                             CRYPTPROTECT_UI_FORBIDDEN, &out)) {
         QByteArray result(reinterpret_cast<const char *>(out.pbData), int(out.cbData));

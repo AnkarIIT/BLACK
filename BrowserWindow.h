@@ -56,6 +56,8 @@ struct TabInfo {
     bool isAudible = false;
     bool isMuted = false;
     qint64 lastActive = 0; // ms since epoch, updated on creation/activation
+    int crashCount = 0;    // consecutive renderer crashes before the crash page shows
+    bool showingCrashPage = false; // persisted so a crashed tab restores to the crash page
 };
 
 struct DownloadItemInfo {
@@ -136,7 +138,9 @@ private:
     void setupKeyboardShortcuts();
     void applyTheme();
     void applyUiLayout();
+    void applyUiLayoutToView(QWebEngineView *view);
     void applySidebarLayout(bool chrome);
+    void handleRenderProcessCrash(QWebEngineView *view);
     void updateUrlContainerStyle();
     void updateWebViewBackgrounds();
 
@@ -296,6 +300,7 @@ private:
     QWebEngineProfile *m_profile;
     QWebChannel     *m_webChannel;
     QWebChannel     *m_passwordChannel;
+    int              m_settingsCrashCount = 0; // consecutive settings renderer crashes
     ShelfStore      *m_bookmarks;
     ShelfStore      *m_history;
     PasswordStore   *m_passwords;
