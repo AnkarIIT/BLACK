@@ -152,6 +152,13 @@
         width: min(420px, 74vw); margin: 10px auto 0; text-align: center;
         color: #ff6b5e; font: 400 12px "JetBrains Mono", monospace; letter-spacing: 0.5px;
     }
+    .oauth-locked {
+        width: min(420px, 74vw); margin: 12px auto 0; text-align: center;
+        color: var(--muted); font: 400 12px "JetBrains Mono", monospace; letter-spacing: 0.5px;
+        border: 1px solid rgba(255,255,255,0.12); border-radius: 10px;
+        padding: 12px 16px; background: rgba(255,255,255,0.03); line-height: 1.6;
+    }
+    .oauth-btn:disabled, .service-pill:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
     .divider { display: flex; align-items: center; gap: 12px; width: min(420px, 74vw); margin: 16px auto; color: var(--muted); font-size: 12px; letter-spacing: 2px; }
     .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: rgba(255,255,255,0.08); }
     .name-field {
@@ -499,6 +506,7 @@
             </button>
             <div class="divider oauth-divider" id="oauth-divider" style="display:none"><span>OR</span></div>
             <div id="oauth-error" class="oauth-error" style="display:none"></div>
+            <div id="oauth-locked" class="oauth-locked" style="display:none">Stored sign-in data couldn't be decrypted on this device. Sign-in is disabled until the vault key is restored.</div>
             <div><button class="btn-ghost" id="btn-guest">Continue without account</button></div>
         </div>
         <div class="layout-picker" id="layout-picker" style="margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--line);">
@@ -577,6 +585,7 @@
         <p class="sub">Fast access to the tools you love. Only configured services appear.</p>
         <div class="pills-grid" id="services-grid"></div>
         <div id="services-empty" style="display:none; color:var(--muted); font-size:12px; letter-spacing:1px;">No services configured yet — add client IDs to oauth.json to connect.</div>
+        <div id="services-locked" class="oauth-locked" style="display:none">Service connections couldn't be decrypted on this device. Connect is disabled until the vault key is restored.</div>
         <div class="row">
             <button class="btn-ghost" id="btn-skip-services" style="margin-top:0;">Skip</button>
             <button class="btn-orange" id="btn-services" style="opacity:0.45; pointer-events:none;">Next &rarr;</button>
@@ -701,6 +710,7 @@ var bridge = null;
 var oauthManager = null;
 var bridgeReady = false;
 var oauthProfile = null;
+var oauthLocked = false;
 function onAuthSuccess(profile) {
     setOAuthBusy(false);
     if (!profile) return;
@@ -751,6 +761,12 @@ if (typeof QWebChannel !== "undefined") {
         if (oauthManager) {
             oauthManager.authSuccess.connect(onAuthSuccess);
             oauthManager.authFailed.connect(onAuthFailed);
+            if (oauthManager.decryptFailed) {
+                oauthManager.decryptFailed(function (locked) {
+                    oauthLocked = !!locked;
+                    applyOAuthLock();
+                });
+            }
         }
         appearance = ch.objects.appearance;
         if (appearance) {
@@ -1293,13 +1309,16 @@ function updateOAuthVisibility() {
             btn.style.display = configured ? "flex" : "none";
             if (configured) anyConfigured = true;
             pending--;
-            if (pending === 0) divider.style.display = anyConfigured ? "flex" : "none";
+            if (pending === 0) {
+                divider.style.display = anyConfigured ? "flex" : "none";
+                applyOAuthLock();
+            }
         });
     });
 }
 function setOAuthBusy(busy, providerLabel) {
     document.querySelectorAll(".oauth-btn, .service-pill").forEach(function (btn) {
-        btn.disabled = busy;
+        btn.disabled = busy || oauthLocked;
     });
     var err = document.getElementById("oauth-error");
     if (busy) {
@@ -1309,9 +1328,27 @@ function setOAuthBusy(busy, providerLabel) {
         err.style.display = "none";
     }
 }
+/* Fail-closed UI: when OAuthManager reported it could not decrypt the stored
+ * connection set (services.json failed authentication), mirror that state here
+ * by disabling every sign-in and service-connect button. A flow started now
+ * could never be persisted. */
+function applyOAuthLock() {
+    var accountNotice = document.getElementById("oauth-locked");
+    var servicesNotice = document.getElementById("services-locked");
+    if (!oauthLocked) {
+        if (accountNotice) accountNotice.style.display = "none";
+        if (servicesNotice) servicesNotice.style.display = "none";
+        return;
+    }
+    document.querySelectorAll(".oauth-btn, .service-pill").forEach(function (btn) {
+        btn.disabled = true;
+    });
+    if (accountNotice) accountNotice.style.display = "block";
+    if (servicesNotice) servicesNotice.style.display = "block";
+}
 document.querySelectorAll(".oauth-btn").forEach(function (btn) {
     btn.addEventListener("click", function () {
-        if (!oauthManager) return;
+        if (!oauthManager || oauthLocked) return;
         var idx = parseInt(btn.getAttribute("data-oauth"), 10);
         setOAuthBusy(true, btn.textContent);
         oauthManager.startAuth(idx);
@@ -1485,7 +1522,7 @@ function renderServicesGrid() {
             btn.dataset.key = slot.key;
             btn.innerHTML = "<span class='svc-name'>" + slot.name + "</span>";
             btn.addEventListener("click", function () {
-                if (!oauthManager) return;
+                if (!oauthManager || oauthLocked) return;
                 oauthManager.isConnected(parseInt(btn.dataset.slot, 10), function (already) {
                     if (already) return;
                     setOAuthBusy(true, slot.name);
@@ -1496,6 +1533,7 @@ function renderServicesGrid() {
             finish();
         });
     });
+    applyOAuthLock();
 }
 function refreshServiceStates() {
     if (!oauthManager) return;
