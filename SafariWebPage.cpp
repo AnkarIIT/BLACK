@@ -73,7 +73,11 @@ int SafariWebPage::showJsDialog(const QString &message, const QString &okText,
     QDialog dialog(anchor);
     dialog.setModal(true);
     dialog.setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
+#if defined(Q_OS_MACOS)
     dialog.setAttribute(Qt::WA_TranslucentBackground);
+#else
+    dialog.setAttribute(Qt::WA_OpaquePaintEvent);
+#endif
     dialog.setStyleSheet(QStringLiteral("QDialog { background: %1; }").arg(t.scrim));
 
     QVBoxLayout *root = new QVBoxLayout(&dialog);
