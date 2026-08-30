@@ -14,6 +14,7 @@
 #include "OSPaths.h"
 #include "BookmarkImporter.h"
 #include "VaultCrypto.h"
+#include "PermissionsBridge.h"
 #include <QFrame>
 #include <QStyle>
 #include <QGraphicsDropShadowEffect>
@@ -546,11 +547,18 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     , m_extensions(nullptr)
     , m_account(nullptr)
 {    setWindowFlags(Qt::Window | Qt::FramelessWindowHint |
-                   Qt::WindowSystemMenuHint |
-                   Qt::WindowMinimizeButtonHint |
-                   Qt::WindowMaximizeButtonHint);
+                    Qt::WindowSystemMenuHint |
+                    Qt::WindowMinimizeButtonHint |
+                    Qt::WindowMaximizeButtonHint);
+#if defined(Q_OS_MACOS)
+    // Translucent background needed on macOS for native traffic light integration
     setAttribute(Qt::WA_TranslucentBackground);
-    setMinimumSize(800, 500);
+#else
+    // On Windows/Linux, opaque background avoids compositor overhead and
+    // rendering glitches with frameless windows.
+    setAttribute(Qt::WA_OpaquePaintEvent);
+#endif
+    setMinimumSize(320, 400);
     setFont(QFont("SF Pro Display", 13));
 
     m_webChannel = new QWebChannel(this);
@@ -568,11 +576,13 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     m_account = new Account(this);
     connect(m_account, &Account::changed, this, [this]() { updateProfileButton(); });
     m_bookmarkImporter = new BookmarkImporter(this);
+    m_permissionsBridge = new PermissionsBridge(this);
     m_webChannel->registerObject(QStringLiteral("passwords"), m_passwords);
     m_webChannel->registerObject(QStringLiteral("extensions"), m_extensions);
     m_webChannel->registerObject(QStringLiteral("account"), m_account);
     m_webChannel->registerObject(QStringLiteral("bookmarkImporter"), m_bookmarkImporter);
     m_webChannel->registerObject(QStringLiteral("safeBrowsing"), &SafeBrowsing::instance());
+    m_webChannel->registerObject(QStringLiteral("permissions"), m_permissionsBridge);
 
     // Password-only bridge for external pages. SafariWebPage exposes this
     // channel to no one except the native autofill content script, and only in
@@ -968,7 +978,7 @@ void BrowserWindow::setupUi()
     m_extensionsButton->setToolTip(QStringLiteral("Extensions"));
     m_extensionsButton->setVisible(false);
     connect(m_extensionsButton, &QToolButton::clicked, this, [this]() {
-        navigateCurrentTo(QUrl(QStringLiteral("qrc:/extensions.html")));
+        navigateCurrentTo(QUrl(QStringLiteral("qrc:/settings.html?tab=extensions")));
     });
     toolbarLayout->addWidget(m_extensionsButton);
 
@@ -1814,8 +1824,16 @@ QUrl BrowserWindow::newTabUrl() const {
 
 QUrl BrowserWindow::homepageUrl() const {
     const QString hp = BrowserSettings::instance().homepage().trimmed();
-    if (!hp.isEmpty())
-        return QUrl(hp);
+    if (!hp.isEmpty()) {
+        const QUrl url(hp);
+        const QString scheme = url.scheme().toLower();
+        // Only allow safe schemes to prevent javascript: or file:// injection.
+        if (scheme == QLatin1String("https") || scheme == QLatin1String("http")
+            || scheme == QLatin1String("qrc") || scheme.isEmpty()
+            || scheme == QLatin1String("about")) {
+            return url;
+        }
+    }
     return QUrl(QStringLiteral("qrc:/startpage_enhanced.html"));
 }
 
@@ -3940,9 +3958,14 @@ void BrowserWindow::savePermissions()
     const QByteArray payload = QJsonDocument(obj).toJson(QJsonDocument::Compact);
     const QByteArray blob = VaultCrypto::encrypt(payload);
     // Fail safe: if encryption is unavailable, refuse to persist rather than
-    // silently writing the choices in plaintext.
-    if (blob.isEmpty())
+    // silently writing the choices in plaintext. Warn the user so they are
+    // not surprised when prompts reappear on the next launch.
+    if (blob.isEmpty()) {
+        QMessageBox::warning(this, tr("Permissions Not Saved"),
+            tr("Your permission settings could not be saved because encryption is unavailable. "
+               "Permission prompts will reappear each time you start the browser."));
         return;
+    }
     OSPaths::writeFileAtomic(dataFile(QStringLiteral("permissions.json")), blob);
 }
 
