@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets Svg WebChannel Network)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets Svg WebChannel Network Test)
 
 qt_add_executable(BLACK
     main.cpp
@@ -48,6 +48,8 @@ qt_add_executable(BLACK
     ChromeLayer.h
     ChromeTheme.cpp
     ChromeTheme.h
+    PlatformAdaptor.cpp
+    PlatformAdaptor.h
 )
 
 if(WIN32)
@@ -94,3 +96,25 @@ set_target_properties(BLACK PROPERTIES
     MACOSX_BUNDLE_BUNDLE_NAME "BLACK"
     MACOSX_BUNDLE_GUI_IDENTIFIER "com.black.browser"
 )
+
+enable_testing()
+
+add_executable(test_vaultcrypto tests/test_vaultcrypto.cpp VaultCrypto.cpp OSPaths.cpp)
+target_link_libraries(test_vaultcrypto PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
+add_test(NAME test_vaultcrypto COMMAND test_vaultcrypto)
+set_tests_properties(test_vaultcrypto PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+add_executable(test_trackerblocker tests/test_trackerblocker.cpp TrackerBlocker.cpp SafeBrowsing.cpp OSPaths.cpp)
+target_link_libraries(test_trackerblocker PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::WebEngineWidgets Qt6::Test)
+add_test(NAME test_trackerblocker COMMAND test_trackerblocker)
+set_tests_properties(test_trackerblocker PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+add_executable(test_passwordstore tests/test_passwordstore.cpp PasswordStore.cpp VaultCrypto.cpp OSPaths.cpp)
+target_link_libraries(test_passwordstore PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
+add_test(NAME test_passwordstore COMMAND test_passwordstore)
+set_tests_properties(test_passwordstore PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+add_executable(test_oauthmanager tests/test_oauthmanager.cpp OAuthManager.cpp VaultCrypto.cpp OSPaths.cpp)
+target_link_libraries(test_oauthmanager PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::Test)
+add_test(NAME test_oauthmanager COMMAND test_oauthmanager)
+set_tests_properties(test_oauthmanager PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

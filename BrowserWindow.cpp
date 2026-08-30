@@ -13,6 +13,7 @@
 #include "SafeBrowsing.h"
 #include "OSPaths.h"
 #include "BookmarkImporter.h"
+#include "PlatformAdaptor.h"
 #include <QFrame>
 #include <QStyle>
 #include <QGraphicsDropShadowEffect>
@@ -533,6 +534,16 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     m_webChannel->registerObject(QStringLiteral("account"), m_account);
     m_webChannel->registerObject(QStringLiteral("bookmarkImporter"), m_bookmarkImporter);
     m_webChannel->registerObject(QStringLiteral("safeBrowsing"), &SafeBrowsing::instance());
+    m_webChannel->registerObject(QStringLiteral("platform"), &PlatformAdaptor::instance());
+
+    connect(&PlatformAdaptor::instance(), &PlatformAdaptor::platformChanged, this, [this](const QString &platform) {
+        const QString js = QStringLiteral(
+            "(function(plat){if(document.documentElement) document.documentElement.dataset.platform = plat;})('%1');"
+        ).arg(platform);
+        for (const TabInfo &tab : m_tabs) {
+            if (tab.view) tab.view->page()->runJavaScript(js);
+        }
+    });
 
     // Password-only bridge for external pages. SafariWebPage exposes this
     // channel to no one except the native autofill content script, and only in
@@ -990,8 +1001,10 @@ void BrowserWindow::setupTabBar()
     m_tabBarLayout->setSpacing(compact ? 1 : 2);
     m_tabBarLayout->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
-    // Add tab button
-    m_addTabButton->setFixedSize(compact ? 22 : 26, compact ? 22 : 26);
+    // Add tab button with dynamic touch target scaling
+    const int touchTarget = PlatformAdaptor::instance().touchTargetSize();
+    const int btnSize = compact ? qMax(22, touchTarget - 10) : qMax(26, touchTarget - 6);
+    m_addTabButton->setFixedSize(btnSize, btnSize);
     m_addTabButton->setToolTip(QStringLiteral("New Tab"));
     connect(m_addTabButton, &QToolButton::clicked, this, &BrowserWindow::addTabAction);
 
@@ -1340,7 +1353,10 @@ QWidget* BrowserWindow::buildOverviewCard(int index)
     if (!tab.thumbnail.isNull()) {
         QLabel *thumbLbl = new QLabel(card);
         thumbLbl->setPixmap(tab.thumbnail);
-        thumbLbl->setFixedSize(100, 65);
+        const qreal dpr = devicePixelRatioF();
+        const int thumbWidth = qRound(100 * (dpr > 1.25 ? 1.2 : 1.0));
+        const int thumbHeight = qRound(65 * (dpr > 1.25 ? 1.2 : 1.0));
+        thumbLbl->setFixedSize(thumbWidth, thumbHeight);
         thumbLbl->setScaledContents(true);
         thumbLbl->setStyleSheet(QStringLiteral("border-radius: 6px; border: 0.5px solid rgba(0,0,0,0.15);"));
         lay->addWidget(thumbLbl);
@@ -3088,7 +3104,9 @@ void BrowserWindow::contextMenuEvent(QContextMenuEvent *event) {
 void BrowserWindow::setupFindBar() {
     m_findBar = new QWidget(m_central);
     m_findBar->setObjectName(QStringLiteral("FindBar"));
-    m_findBar->setFixedHeight(36);
+    const int touchTarget = PlatformAdaptor::instance().touchTargetSize();
+    const int barHeight = qMax(36, touchTarget + 4);
+    m_findBar->setFixedHeight(barHeight);
     m_findBar->setVisible(false);
 
     QHBoxLayout *lay = new QHBoxLayout(m_findBar);
