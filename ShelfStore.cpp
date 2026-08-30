@@ -47,8 +47,8 @@ ShelfStore::ShelfStore(const QString &fileName, QObject *parent)
 
 QString ShelfStore::json() const
 {
-    // Pure read: pruning/persistence happens inside loadArray(), so this
-    // getter (called on every URL-suggestion keystroke) never writes to disk.
+    // Pure read: this getter (called on every URL-suggestion keystroke)
+    // never writes to disk. Pruning is performed only on write paths.
     return QJsonDocument(loadArray()).toJson(QJsonDocument::Compact);
 }
 
@@ -56,7 +56,11 @@ void ShelfStore::add(const QString &title, const QString &url)
 {
     if (url.isEmpty())
         return;
+    QUrl qurl(url);
+    if (!qurl.isValid() || (qurl.scheme() != QLatin1String("http") && qurl.scheme() != QLatin1String("https")))
+        return;
     QJsonArray array = loadArray();
+    pruneArray(array);
     for (int i = array.size() - 1; i >= 0; --i) {
         if (array.at(i).toObject().value(QStringLiteral("url")).toString() == url)
             array.removeAt(i);
@@ -77,6 +81,7 @@ void ShelfStore::remove(const QString &url)
     if (url.isEmpty())
         return;
     QJsonArray array = loadArray();
+    pruneArray(array);
     for (int i = array.size() - 1; i >= 0; --i) {
         if (array.at(i).toObject().value(QStringLiteral("url")).toString() == url)
             array.removeAt(i);
@@ -95,6 +100,7 @@ int ShelfStore::importBookmarks(const QJsonArray &items)
 {
     // Single read: pull the current store once and merge in memory.
     QJsonArray array = loadArray();
+    pruneArray(array);
 
     // Existing entries are matched by both their raw and normalized forms so
     // previously-added unnormalized URLs still dedupe correctly.
@@ -163,25 +169,21 @@ QJsonArray ShelfStore::loadArray() const
     const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
     if (!doc.isArray())
         return QJsonArray();
-    QJsonArray array = doc.array();
+    return doc.array();
+}
 
-    // Enforce the retention policy here so reads stay correct without making
-    // the json() getter persist on every call. A write only happens when
-    // expired entries are actually dropped (once, not per keystroke).
-    if (m_retentionDays > 0) {
-        const QDateTime cutoff = QDateTime::currentDateTime().addDays(-m_retentionDays);
-        QJsonArray kept;
-        for (const QJsonValue &value : array) {
-            const QString ts = value.toObject().value(QStringLiteral("timestamp")).toString();
-            if (ts.isEmpty() || QDateTime::fromString(ts, Qt::ISODate) >= cutoff)
-                kept.append(value);
-        }
-        if (kept.size() != array.size()) {
-            array = kept;
-            saveArray(array);
-        }
+void ShelfStore::pruneArray(QJsonArray &array) const
+{
+    if (m_retentionDays <= 0)
+        return;
+    const QDateTime cutoff = QDateTime::currentDateTime().addDays(-m_retentionDays);
+    QJsonArray kept;
+    for (const QJsonValue &value : array) {
+        const QString ts = value.toObject().value(QStringLiteral("timestamp")).toString();
+        if (ts.isEmpty() || QDateTime::fromString(ts, Qt::ISODate) >= cutoff)
+            kept.append(value);
     }
-    return array;
+    array = kept;
 }
 
 void ShelfStore::saveArray(const QJsonArray &array) const

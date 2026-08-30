@@ -120,6 +120,9 @@ void BookmarkImporter::walkNode(const QJsonObject &node, QJsonArray &out) const
         const QString url = node.value(QStringLiteral("url")).toString().trimmed();
         if (url.isEmpty())
             return;
+        QUrl qurl(url);
+        if (!qurl.isValid() || (qurl.scheme() != QLatin1String("http") && qurl.scheme() != QLatin1String("https")))
+            return;
         const QString title = name.trimmed();
         QJsonObject item;
         item[QStringLiteral("title")] = title.isEmpty() ? url : title;
