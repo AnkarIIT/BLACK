@@ -314,6 +314,7 @@ private:
     ExtensionManager *m_extensions;
     Account         *m_account;
     BookmarkImporter *m_bookmarkImporter;
+    PermissionsBridge *m_permissionsBridge;
     QMap<QString, bool> m_permissionChoices;
 };
 
