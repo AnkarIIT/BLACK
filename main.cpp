@@ -31,6 +31,7 @@
 #include "ShelfStore.h"
 #include "AppearanceManager.h"
 #include "SafariTheme.h"
+#include "PlatformAdaptor.h"
 
 // Check if this is the first run
 bool isFirstRun() {
@@ -360,7 +361,15 @@ int main(int argc, char *argv[])
     BrowserWindow window;
     g_activeWindow = &window;
 
-    const QSize desired(1400, 900);
+    PlatformAdaptor *adaptor = PlatformAdaptor::instance();
+    QSize desired;
+    if (adaptor->isPhone()) {
+        desired = QSize(qMin(1400, adaptor->screenWidth()), qMin(900, adaptor->screenHeight()));
+    } else if (adaptor->isTablet()) {
+        desired = QSize(1200, 800);
+    } else {
+        desired = QSize(1400, 900);
+    }
     QScreen *screen = QGuiApplication::primaryScreen();
     if (screen) {
         const QRect avail = screen->availableGeometry();
