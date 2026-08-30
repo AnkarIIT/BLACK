@@ -109,3 +109,17 @@ void PermissionsBridge::clearPermissions()
     QFile::remove(path);
     emit changed();
 }
+
+#ifdef QT_DEBUG
+void PermissionsBridge::savePermissionsTest(const QJsonObject &obj)
+{
+    const QString path = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                         + QLatin1Char('/') + QStringLiteral("permissions.json");
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    const QByteArray plain = QJsonDocument(obj).toJson(QJsonDocument::Compact);
+    const QByteArray blob = VaultCrypto::encrypt(plain);
+    if (blob.isEmpty())
+        return;
+    OSPaths::writeFileAtomic(path, blob);
+}
+#endif
