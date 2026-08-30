@@ -7,6 +7,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets Svg WebChannel Network)
+find_package(OpenSSL REQUIRED)
 
 qt_add_executable(BLACK
     main.cpp
@@ -48,6 +49,10 @@ qt_add_executable(BLACK
     ChromeLayer.h
     ChromeTheme.cpp
     ChromeTheme.h
+    PlatformAdaptor.cpp
+    PlatformAdaptor.h
+    PermissionsBridge.cpp
+    PermissionsBridge.h
 )
 
 if(WIN32)
@@ -64,14 +69,14 @@ qt_add_resources(BLACK "resources" PREFIX "/" BASE "${CMAKE_CURRENT_SOURCE_DIR}"
         bookmarks.html
         history.html
         settings.html
-        extensions.html
         features.html
         privacyreport.html
         safebrowsing_warning.html
         crash.html
         chrome-theme.css
+        responsive.css
         app.png
-)
+    )
 
 target_link_libraries(BLACK PRIVATE
     Qt6::Core
@@ -81,6 +86,8 @@ target_link_libraries(BLACK PRIVATE
     Qt6::Svg
     Qt6::WebChannel
     Qt6::Network
+    OpenSSL::SSL
+    OpenSSL::Crypto
 )
 
 if(MSVC)
@@ -88,6 +95,8 @@ if(MSVC)
 else()
     target_compile_options(BLACK PRIVATE -Wall -Wextra -Wpedantic)
 endif()
+
+target_compile_definitions(BLACK PRIVATE HAVE_OPENSSL)
 
 set_target_properties(BLACK PROPERTIES
     WIN32_EXECUTABLE ON
