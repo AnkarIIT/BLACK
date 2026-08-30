@@ -461,6 +461,133 @@
         color: var(--accent);
         margin-top: 2px;
     }
+
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+        .frame-card {
+            min-width: min(540px, 92vw);
+            padding: 32px 28px;
+            border-radius: 14px;
+        }
+        .frame-card h1 { font-size: 28px; letter-spacing: 6px; }
+        .frame-card h2 { font-size: 22px; letter-spacing: 2px; }
+        .frame-card .sub { font-size: 13px; }
+        .btn-orange { padding: 12px 28px; font-size: 12px; letter-spacing: 2px; }
+        .provider-btn { width: min(360px, 84vw); padding: 12px 18px; font-size: 13px; }
+        .provider-btn .ic { font-size: 16px; }
+        .profile-chip { width: min(360px, 84vw); padding: 10px 14px; }
+        .profile-chip .avatar { width: 34px; height: 34px; font-size: 13px; }
+        .account-row { padding: 10px 14px; }
+        .account-row .avatar { width: 30px; height: 30px; font-size: 12px; }
+        .name-field { width: min(360px, 84vw); padding: 12px 14px; font-size: 13px; }
+        .pills-grid { gap: 10px; }
+        .pill { padding: 10px 18px; font-size: 12px; }
+        .privacy-card { width: 150px; padding: 22px 14px; }
+        .privacy-card .lv { font-size: 13px; }
+        .privacy-card .desc { font-size: 10px; }
+        .mock-browser {
+            width: min(760px, 96vw);
+            height: min(480px, 75vh);
+        }
+        .browser-chrome { height: 40px; padding: 0 16px; gap: 12px; }
+        .browser-brand { font-size: 10px; }
+        .browser-tabs { margin-left: 16px; gap: 4px; }
+        .browser-tab { padding: 4px 10px; font-size: 9px; }
+        .browser-sidebar { width: 160px; padding: 16px 12px; }
+        .sidebar-item { font-size: 11px; padding: 6px 10px; }
+        .browser-viewport { padding: 28px; gap: 18px; }
+        .browser-greeting { font-size: 22px; }
+        .browser-search { max-width: 380px; padding: 10px 16px; font-size: 12px; }
+        .pinned-sites { gap: 16px; }
+        .pinned-icon { width: 40px; height: 40px; font-size: 16px; }
+        .browser-widgets { grid-template-columns: 1fr; gap: 10px; max-width: 380px; }
+        .browser-widget { padding: 12px; }
+        .widget-title { font-size: 8px; }
+        .widget-val { font-size: 13px; }
+    }
+
+    @media (max-width: 480px) {
+        .frame-card {
+            min-width: 94vw;
+            padding: 28px 20px;
+            border-radius: 12px;
+        }
+        #frame-04 { font-size: 24px; letter-spacing: 4px; }
+        .frame-card h1 { font-size: 24px; letter-spacing: 4px; }
+        .frame-card h2 { font-size: 20px; letter-spacing: 1px; }
+        .frame-card .sub { font-size: 12px; margin: 8px 0 24px; }
+        .frame-card .kicker { font-size: 11px; letter-spacing: 3px; }
+        .btn-orange { padding: 12px 24px; font-size: 11px; letter-spacing: 2px; min-height: 48px; }
+        .btn-ghost { font-size: 11px; letter-spacing: 1px; }
+        .segmented { gap: 4px; padding: 3px; border-radius: 8px; }
+        .seg-btn { min-width: 110px; padding: 8px 12px; font-size: 11px; }
+        .provider-btn { width: 90vw; padding: 14px 16px; font-size: 13px; min-height: 48px; }
+        .provider-btn .ic { font-size: 16px; }
+        .profile-chip { width: 90vw; padding: 10px 12px; }
+        .profile-chip .avatar { width: 32px; height: 32px; font-size: 12px; }
+        .profile-chip .pname { font-size: 13px; }
+        .profile-chip .pemail { font-size: 10px; }
+        .account-row { padding: 10px 12px; }
+        .account-row .avatar { width: 28px; height: 28px; font-size: 11px; }
+        .account-row .aname { font-size: 13px; }
+        .account-row .aemail { font-size: 10px; }
+        .name-field { width: 90vw; padding: 14px 14px; font-size: 16px; }
+        .import-item { padding: 10px 4px; font-size: 13px; }
+        .import-item .dot { width: 20px; height: 20px; font-size: 11px; }
+        .pills-grid { gap: 8px; margin: 20px auto 24px; }
+        .pill { padding: 12px 16px; font-size: 12px; min-height: 44px; }
+        .question .q { font-size: 16px; }
+        .privacy-card { width: 140px; padding: 20px 12px; }
+        .privacy-card .lv { font-size: 12px; letter-spacing: 1px; }
+        .privacy-card .desc { font-size: 9px; }
+        .task-panel { width: 90vw; }
+        .task-row { padding: 8px 0; font-size: 13px; }
+        .task-row .mark { width: 18px; height: 18px; font-size: 10px; }
+        .progress-track { height: 6px; margin: 18px 0 8px; }
+        #reveal-pct { font-size: 36px; letter-spacing: 6px; }
+        .mock-browser {
+            width: 98vw;
+            height: 85vh;
+            border-radius: 12px;
+        }
+        .browser-chrome { height: 38px; padding: 0 12px; }
+        .traffic-light { width: 9px; height: 9px; }
+        .browser-brand { font-size: 9px; }
+        .browser-tabs { gap: 3px; }
+        .browser-tab { padding: 3px 8px; font-size: 8px; }
+        .browser-sidebar { width: 140px; padding: 14px 10px; }
+        .sidebar-item { font-size: 10px; padding: 5px 8px; }
+        .browser-viewport { padding: 20px 16px; gap: 14px; }
+        .browser-greeting { font-size: 20px; }
+        .browser-search { max-width: 100%; padding: 12px 16px; font-size: 16px; }
+        .pinned-sites { gap: 14px; }
+        .pinned-icon { width: 36px; height: 36px; font-size: 14px; }
+        .browser-widgets { grid-template-columns: 1fr; }
+        .browser-widget { padding: 10px; }
+    }
+
+    /* Touch device adjustments */
+    @media (pointer: coarse) {
+        .btn-orange { min-height: 48px; }
+        .btn-ghost { min-height: 44px; }
+        .provider-btn { min-height: 48px; }
+        .seg-btn { min-height: 40px; }
+        .pill { min-height: 44px; }
+        .name-field { min-height: 48px; }
+        .profile-chip { min-height: 48px; }
+        .account-row { min-height: 48px; }
+        .traffic-light { min-width: 12px; min-height: 12px; }
+        .sidebar-item { min-height: 44px; }
+        .pinned-site { min-height: 44px; }
+    }
+
+    /* Landscape phone adjustments */
+    @media (max-width: 800px) and (orientation: landscape) {
+        .frame-card { padding: 20px 24px; }
+        .mock-browser { height: 90vh; }
+        .browser-viewport { padding: 16px 20px; gap: 12px; }
+        .pinned-sites { flex-direction: row; flex-wrap: wrap; justify-content: center; }
+    }
 </style>
 </head>
 <body>
@@ -1272,11 +1399,17 @@ function renderAccountList() {
             row.setAttribute("data-id", acc.id || "");
             var initial = ((acc.name || acc.email || "?").charAt(0) || "?").toUpperCase();
             var provider = acc.provider || "local";
-            row.innerHTML = '<div class="avatar">' + initial + '</div>' +
-                '<div class="meta"><div class="aname"></div><div class="aemail"></div><div class="atag"></div></div>';
-            row.querySelector(".aname").textContent = acc.name || "Saved account";
-            row.querySelector(".aemail").textContent = acc.email || "";
-            row.querySelector(".atag").textContent = provider;
+            var avatar = document.createElement("div");
+            avatar.className = "avatar";
+            avatar.textContent = initial;
+            var meta = document.createElement("div");
+            meta.className = "meta";
+            meta.innerHTML = '<div class="aname"></div><div class="aemail"></div><div class="atag"></div>';
+            meta.querySelector(".aname").textContent = acc.name || "Saved account";
+            meta.querySelector(".aemail").textContent = acc.email || "";
+            meta.querySelector(".atag").textContent = provider;
+            row.appendChild(avatar);
+            row.appendChild(meta);
             row.addEventListener("click", function () {
                 selectSavedAccount(acc.id || "");
             });
