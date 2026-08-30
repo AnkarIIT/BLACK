@@ -3822,15 +3822,29 @@ void BrowserWindow::saveSession() {
     QJsonObject obj;
     obj[QStringLiteral("tabs")] = array;
     obj[QStringLiteral("currentIndex")] = currentSavedIndex >= 0 ? currentSavedIndex : 0;
-    OSPaths::writeFileAtomic(dataFile(QStringLiteral("session.json")),
-                             QJsonDocument(obj).toJson());
+    const QByteArray payload = QJsonDocument(obj).toJson(QJsonDocument::Compact);
+    const QByteArray blob = VaultCrypto::encrypt(payload);
+    // Encrypt session data so browsing history is not exposed as plaintext.
+    // If encryption is unavailable (master key missing/corrupt), refuse to write
+    // plaintext and skip the session save to avoid leaking unencrypted data.
+    if (blob.isEmpty()) {
+        return;
+    }
+    OSPaths::writeFileAtomic(dataFile(QStringLiteral("session.json")), blob);
 }
 
 void BrowserWindow::restoreSession() {
     if (m_incognito) return;
     QFile file(dataFile(QStringLiteral("session.json")));
     if (file.open(QIODevice::ReadOnly)) {
-        QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+        const QByteArray raw = file.readAll();
+        QByteArray payload = VaultCrypto::decrypt(raw);
+        // Fail closed: if decryption fails (tampered data or vault key
+        // unavailable), do not fall back to plaintext. The session is
+        // considered unrecoverable and we start fresh.
+        if (payload.isEmpty())
+            return;
+        QJsonDocument doc = QJsonDocument::fromJson(payload);
         if (doc.isObject()) {
             QJsonArray array = doc.object()[QStringLiteral("tabs")].toArray();
             int restoreIdx = doc.object()[QStringLiteral("currentIndex")].toInt(0);
