@@ -94,7 +94,12 @@ bool SafeBrowsing::isBlocked(const QUrl &url) const
     const QString scheme = url.scheme().toLower();
     if (scheme != QLatin1String("http") && scheme != QLatin1String("https"))
         return false;
-    const QString host = url.host().toLower();
+    QString host = url.host().toLower();
+    // Normalize Unicode / homoglyph domains to ASCII-compatible Punycode so
+    // that visually similar phishing domains are still caught.
+    const QByteArray ace = QUrl::toAce(url.host());
+    if (!ace.isEmpty())
+        host = QString::fromLatin1(ace).toLower();
     QReadLocker locker(&m_lock);
     if (m_allowed.contains(host))
         return false;
