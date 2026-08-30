@@ -409,6 +409,15 @@
         }
         .list-del:hover { color: var(--mac-accent); }
 
+        .status-allowed {
+            color: #30d158;
+            font-weight: 600;
+        }
+        .status-blocked {
+            color: #ff453a;
+            font-weight: 600;
+        }
+
         .pane-title {
             font-size: 15px;
             font-weight: 700;
@@ -448,8 +457,174 @@
             background: #ff453a; border-color: #ff453a; color: #fff;
         }
         .modal-actions .btn-danger:hover { background: #ff5b4f; }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .window {
+                border-radius: 0;
+                height: 100vh;
+                max-height: 100vh;
+            }
+            .titlebar {
+                height: 48px;
+                padding: 0 10px;
+            }
+            .toolbar {
+                padding: 5px 6px;
+                gap: 1px;
+            }
+            .tool-btn {
+                padding: 4px 3px;
+                max-width: 56px;
+            }
+            .tool-icon {
+                font-size: 14px;
+            }
+            .tool-label {
+                font-size: 8px;
+            }
+            .content {
+                padding: 16px 16px;
+            }
+            .settings-grid {
+                grid-template-columns: 1fr;
+                row-gap: 10px;
+                max-width: 100%;
+            }
+            .label {
+                text-align: left;
+                padding-bottom: 2px;
+            }
+            .value {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 6px;
+            }
+            select, input[type="text"] {
+                min-width: 0;
+                max-width: 100%;
+                width: 100%;
+            }
+            .extensions-layout {
+                flex-direction: column;
+                height: auto;
+                max-height: 60vh;
+            }
+            .ext-left {
+                width: 100%;
+                border-right: none;
+                border-bottom: 1px solid var(--mac-border);
+                padding: 12px 12px 8px;
+            }
+            .ext-right {
+                padding: 20px 16px;
+            }
+            .list-site {
+                width: auto;
+                max-width: 40%;
+            }
+            .list-pass {
+                max-width: 50%;
+            }
+            .modal-card {
+                width: 92vw;
+                padding: 18px 20px;
+            }
+            .pane-title {
+                font-size: 14px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .titlebar {
+                height: 44px;
+            }
+            .tool-btn {
+                max-width: 50px;
+                padding: 3px 2px;
+            }
+            .tool-icon {
+                font-size: 13px;
+                margin-bottom: 2px;
+            }
+            .tool-label {
+                font-size: 7px;
+            }
+            .content {
+                padding: 12px 12px;
+            }
+            .settings-grid {
+                font-size: 12px;
+            }
+            select, input[type="text"] {
+                font-size: 12px;
+                padding: 6px 10px;
+            }
+            .mac-btn {
+                font-size: 11px;
+                padding: 6px 10px;
+            }
+            .list-row {
+                padding: 8px 10px;
+                flex-wrap: wrap;
+            }
+            .list-site {
+                width: 100%;
+                max-width: none;
+                margin-bottom: 4px;
+            }
+            .list-user {
+                width: 100%;
+                margin-bottom: 4px;
+            }
+            .list-pass {
+                width: 100%;
+                max-width: none;
+            }
+            .list-del {
+                margin-left: auto;
+            }
+            .empty-state {
+                min-height: 180px;
+                padding: 24px 16px;
+            }
+            .modal-card {
+                width: 96vw;
+            }
+        }
+
+        /* Landscape phone */
+        @media (max-width: 800px) and (orientation: landscape) {
+            .window {
+                height: 100vh;
+            }
+            .content {
+                padding: 12px 16px;
+            }
+            .extensions-layout {
+                max-height: 70vh;
+            }
+        }
+
+        /* Touch device adjustments */
+        @media (pointer: coarse) {
+            .tool-btn {
+                min-height: 44px;
+            }
+            .mac-btn {
+                min-height: 40px;
+            }
+            select, input[type="text"] {
+                min-height: 40px;
+            }
+            .dot {
+                min-width: 14px;
+                min-height: 14px;
+            }
+        }
     </style>
     <link rel="stylesheet" href="chrome-theme.css">
+    <link rel="stylesheet" href="responsive.css">
 </head>
 <body>
     <div class="window">
@@ -773,10 +948,13 @@
             </div>
 
             <div id="websites" class="content">
-                <div class="empty-state">
-                    <div class="empty-icon">🌐</div>
-                    <div class="empty-title">Websites</div>
-                    <div class="empty-desc">Camera, microphone, location and notification permissions are requested and remembered per site as you browse.</div>
+                <div class="pane-title">Website Permissions</div>
+                <div class="subtext" style="margin-bottom: 16px;">Manage camera, microphone, location, and notification permissions for websites.</div>
+                <div class="list-card" id="permissionsList">
+                    <div class="list-empty">No saved permissions. Permissions are saved when you choose \"Remember my decision\" on a permission prompt.</div>
+                </div>
+                <div style="display: flex; justify-content: flex-end; margin-top: 16px; gap: 8px;">
+                    <button class="mac-btn" id="clearPermissionsBtn">Clear All Permissions</button>
                 </div>
             </div>
 
@@ -1181,6 +1359,66 @@
                 extensions.changed.connect(renderExtensions);
                 renderExtensions();
                 document.getElementById('extReloadBtn').addEventListener('click', function () { extensions.reload(); });
+
+                // ── Permissions tab (Websites) ────────────────────────────────
+                const permissions = channel.objects.permissions;
+                const typeLabels = {
+                    0: 'Notifications',
+                    1: 'Location',
+                    2: 'Microphone',
+                    3: 'Camera',
+                    4: 'Camera & Microphone',
+                    5: 'Pointer Lock',
+                    6: 'Screen Capture (Video)',
+                    7: 'Screen Capture (Audio+Video)',
+                    8: 'Clipboard',
+                    9: 'Local Fonts'
+                };
+                const renderPermissions = function () {
+                    permissions.getPermissions(function (list) {
+                        const el = document.getElementById('permissionsList');
+                        if (!el) return;
+                        if (!list || list.length === 0) {
+                            el.innerHTML = '<div class="list-empty">No saved permissions. Permissions are saved when you choose "Remember my decision" on a permission prompt.</div>';
+                            return;
+                        }
+                        let html = '<div class="list-row row-head"><span class="list-site">Website</span><span class="list-user">Permission</span><span class="list-pass">Status</span><span></span></div>';
+                        list.forEach(function (site) {
+                            const origin = site.origin;
+                            const perms = site.permissions;
+                            perms.forEach(function (p) {
+                                const typeName = typeLabels[p.type] || ('Type ' + p.type);
+                                const status = p.allowed ? 'Allowed' : 'Blocked';
+                                const statusClass = p.allowed ? 'status-allowed' : 'status-blocked';
+                                html += '<div class="list-row"><span class="list-site">' + esc(origin) + '</span>'
+                                    + '<span class="list-user">' + esc(typeName) + '</span>'
+                                    + '<span class="list-pass ' + statusClass + '">' + esc(status) + '</span>'
+                                    + '<span style="display: flex; gap: 4px; align-items: center;">'
+                                    + '<button class="list-del" data-del-origin="' + encodeURIComponent(origin) + '" data-del-type="' + p.type + '" title="Remove permission">✕</button></span></div>';
+                            });
+                        });
+                        el.innerHTML = html;
+                    });
+                };
+                permissions.changed.connect(renderPermissions);
+                renderPermissions();
+                const permissionsListEl = document.getElementById('permissionsList');
+                if (permissionsListEl) {
+                    permissionsListEl.addEventListener('click', function (e) {
+                        const t = e.target;
+                        if (t.dataset.delOrigin) {
+                            const origin = decodeURIComponent(t.dataset.delOrigin);
+                            const type = parseInt(t.dataset.delType, 10);
+                            permissions.removePermission(origin, type);
+                        }
+                    });
+                }
+                document.getElementById('clearPermissionsBtn').addEventListener('click', function () {
+                    if (confirm('Clear all saved website permissions? This cannot be undone.')) {
+                        permissions.clearPermissions();
+                    }
+                });
+
             });
         }
     </script>
