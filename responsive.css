@@ -1,0 +1,254 @@
+/*
+ * BLACK Browser - Responsive CSS Framework
+ * Global variables and breakpoints for cross-platform support
+ */
+
+/* Breakpoints */
+:root {
+    --bp-phone: 480px;
+    --bp-tablet: 1024px;
+    --bp-desktop: 1025px;
+}
+
+/* Platform-aware sizing (set via data-platform attribute on <html>) */
+:root {
+    /* Default desktop values */
+    --toolbar-height: 44px;
+    --tab-bar-height: 34px;
+    --sidebar-width: 300px;
+    --url-bar-height: 36px;
+    --touch-target: 32px;
+    --corner-radius: 10px;
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 12px;
+    --spacing-lg: 16px;
+    --spacing-xl: 24px;
+    --font-size-xs: 11px;
+    --font-size-sm: 12px;
+    --font-size-base: 13px;
+    --font-size-lg: 14px;
+    --font-size-xl: 15px;
+    --font-size-2xl: 17px;
+    --icon-size-sm: 14px;
+    --icon-size-base: 16px;
+    --icon-size-lg: 20px;
+    --icon-size-xl: 24px;
+}
+
+/* Phone (≤480px) */
+html[data-platform="phone"] {
+    --toolbar-height: 56px;
+    --tab-bar-height: 48px;
+    --sidebar-width: 280px;
+    --url-bar-height: 44px;
+    --touch-target: 48px;
+    --corner-radius: 16px;
+    --spacing-xs: 6px;
+    --spacing-sm: 10px;
+    --spacing-md: 14px;
+    --spacing-lg: 18px;
+    --spacing-xl: 28px;
+    --font-size-xs: 12px;
+    --font-size-sm: 13px;
+    --font-size-base: 14px;
+    --font-size-lg: 15px;
+    --font-size-xl: 16px;
+    --font-size-2xl: 18px;
+    --icon-size-sm: 16px;
+    --icon-size-base: 18px;
+    --icon-size-lg: 22px;
+    --icon-size-xl: 28px;
+}
+
+/* Tablet (481-1024px) */
+html[data-platform="tablet"] {
+    --toolbar-height: 48px;
+    --tab-bar-height: 38px;
+    --sidebar-width: 320px;
+    --url-bar-height: 40px;
+    --touch-target: 44px;
+    --corner-radius: 12px;
+    --spacing-xs: 5px;
+    --spacing-sm: 9px;
+    --spacing-md: 13px;
+    --spacing-lg: 17px;
+    --spacing-xl: 26px;
+    --font-size-xs: 11px;
+    --font-size-sm: 12px;
+    --font-size-base: 13px;
+    --font-size-lg: 14px;
+    --font-size-xl: 15px;
+    --font-size-2xl: 16px;
+    --icon-size-sm: 14px;
+    --icon-size-base: 16px;
+    --icon-size-lg: 20px;
+    --icon-size-xl: 24px;
+}
+
+/* Touch device adjustments */
+@media (pointer: coarse) {
+    html:not([data-platform="desktop"]) {
+        --touch-target: 48px;
+    }
+}
+
+/* High DPI adjustments */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    html[data-platform="phone"] {
+        --touch-target: 52px;
+    }
+}
+
+/* Landscape phone adjustments */
+@media (max-width: 800px) and (orientation: landscape) {
+    html[data-platform="phone"] {
+        --toolbar-height: 48px;
+        --tab-bar-height: 40px;
+        --url-bar-height: 38px;
+    }
+}
+
+/* Utility classes */
+.responsive-container {
+    width: 100%;
+    max-width: 100%;
+    padding: 0 var(--spacing-md);
+    box-sizing: border-box;
+}
+
+.responsive-grid {
+    display: grid;
+    gap: var(--spacing-md);
+    grid-template-columns: 1fr;
+}
+
+@media (min-width: 600px) {
+    .responsive-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (min-width: 900px) {
+    .responsive-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (min-width: 1200px) {
+    .responsive-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+/* Responsive typography */
+.responsive-text {
+    font-size: var(--font-size-base);
+    line-height: 1.5;
+}
+
+.responsive-text-sm { font-size: var(--font-size-sm); }
+.responsive-text-lg { font-size: var(--font-size-lg); }
+.responsive-text-xl { font-size: var(--font-size-xl); }
+.responsive-text-2xl { font-size: var(--font-size-2xl); }
+
+/* Responsive buttons */
+.responsive-btn {
+    min-height: var(--touch-target);
+    min-width: var(--touch-target);
+    padding: var(--spacing-xs) var(--spacing-md);
+    border-radius: var(--corner-radius);
+    font-size: var(--font-size-base);
+    touch-action: manipulation;
+}
+
+.responsive-btn-sm {
+    min-height: calc(var(--touch-target) - 4px);
+    padding: calc(var(--spacing-xs) - 1px) var(--spacing-sm);
+    font-size: var(--font-size-sm);
+}
+
+.responsive-btn-lg {
+    min-height: calc(var(--touch-target) + 8px);
+    padding: var(--spacing-sm) var(--spacing-lg);
+    font-size: var(--font-size-lg);
+}
+
+/* Responsive form inputs */
+.responsive-input {
+    min-height: var(--touch-target);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: var(--font-size-base);
+    border-radius: var(--corner-radius);
+    border: 1px solid var(--border-color, currentColor);
+}
+
+/* Responsive cards */
+.responsive-card {
+    border-radius: var(--corner-radius);
+    padding: var(--spacing-md);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Responsive modals */
+.responsive-modal {
+    width: min(90vw, 400px);
+    max-height: 80vh;
+    border-radius: var(--corner-radius);
+    padding: var(--spacing-lg);
+}
+
+/* Scrollbar hiding for touch */
+@media (pointer: coarse) {
+    .hide-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+    .hide-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
+}
+
+/* Safe area insets for notched devices */
+@supports (padding: max(0px)) {
+    html[data-platform="phone"] .safe-area-top {
+        padding-top: max(var(--spacing-md), env(safe-area-inset-top));
+    }
+    html[data-platform="phone"] .safe-area-bottom {
+        padding-bottom: max(var(--spacing-md), env(safe-area-inset-bottom));
+    }
+    html[data-platform="phone"] .safe-area-left {
+        padding-left: max(var(--spacing-md), env(safe-area-inset-left));
+    }
+    html[data-platform="phone"] .safe-area-right {
+        padding-right: max(var(--spacing-md), env(safe-area-inset-right));
+    }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+    :root {
+        --border-color: currentColor;
+    }
+    .responsive-card {
+        border: 2px solid currentColor;
+    }
+}
+
+/* Focus visible for keyboard navigation */
+.responsive-btn:focus-visible,
+.responsive-input:focus-visible {
+    outline: 2px solid var(--accent, #0a84ff);
+    outline-offset: 2px;
+}
