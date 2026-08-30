@@ -207,13 +207,56 @@ TrackerBlocker::TrackerBlocker(bool incognito)
 {
     for (const char *host : kBlockedHosts)
         m_blockedHosts.insert(QString::fromLatin1(host));
+    buildDomainTrie();
+}
+
+TrackerBlocker::~TrackerBlocker()
+{
+    deleteTrie(m_domainTrie);
+}
+
+void TrackerBlocker::buildDomainTrie()
+{
+    m_domainTrie = new TrieNode();
+    for (const QString &domain : m_blockedHosts) {
+        TrieNode* node = m_domainTrie;
+        // Split domain into labels and reverse for suffix matching
+        const QStringList labels = domain.split(QLatin1Char('.'));
+        for (int i = labels.size() - 1; i >= 0; --i) {
+            const QString &label = labels[i];
+            if (!node->children.contains(label))
+                node->children[label] = new TrieNode();
+            node = node->children[label];
+        }
+        node->isTerminal = true;
+        node->terminalDomain = domain;
+    }
+}
+
+void TrackerBlocker::deleteTrie(TrieNode* node)
+{
+    if (node) {
+        qDeleteAll(node->children);
+        delete node;
+    }
 }
 
 bool TrackerBlocker::isBlockedHost(const QString &host) const
 {
-    for (const QString &domain : m_blockedHosts) {
-        if (host == domain || host.endsWith(QLatin1Char('.') + domain))
-            return true;
+    if (host.isEmpty())
+        return false;
+
+    TrieNode* node = m_domainTrie;
+    const QStringList labels = host.split(QLatin1Char('.'));
+
+    // Walk the trie from the TLD towards the subdomain
+    for (int i = labels.size() - 1; i >= 0; --i) {
+        const QString &label = labels[i];
+        if (!node->children.contains(label))
+            break;
+        node = node->children[label];
+        if (node->isTerminal)
+            return true; // Found a blocked domain suffix
     }
     return false;
 }
@@ -472,6 +515,43 @@ void TrackerBlocker::saveData()
     rollDayIfNeeded();
     const QString today = QDate::currentDate().toString(Qt::ISODate);
     m_daily[today] = m_today;
+
+    // TTL cleanup: purge privacy data older than 90 days to bound disk usage
+    const QDate cutoff = QDate::currentDate().addDays(-90);
+    const QString cutoffStr = cutoff.toString(Qt::ISODate);
+
+    // Purge m_daily
+    for (auto it = m_daily.begin(); it != m_daily.end(); ) {
+        const QDate day = QDate::fromString(it.key(), Qt::ISODate);
+        if (day.isValid() && day < cutoff)
+            it = m_daily.erase(it);
+        else
+            ++it;
+    }
+    // Purge m_hostCounts
+    for (auto it = m_hostCounts.begin(); it != m_hostCounts.end(); ) {
+        const QDate day = QDate::fromString(it.key(), Qt::ISODate);
+        if (day.isValid() && day < cutoff)
+            it = m_hostCounts.erase(it);
+        else
+            ++it;
+    }
+    // Purge m_hostSites
+    for (auto it = m_hostSites.begin(); it != m_hostSites.end(); ) {
+        const QDate day = QDate::fromString(it.key(), Qt::ISODate);
+        if (day.isValid() && day < cutoff)
+            it = m_hostSites.erase(it);
+        else
+            ++it;
+    }
+    // Purge m_sitesByDay
+    for (auto it = m_sitesByDay.begin(); it != m_sitesByDay.end(); ) {
+        const QDate day = QDate::fromString(it.key(), Qt::ISODate);
+        if (day.isValid() && day < cutoff)
+            it = m_sitesByDay.erase(it);
+        else
+            ++it;
+    }
 
     QJsonObject root;
     QSet<QString> dayKeys(m_daily.keys().begin(), m_daily.keys().end());

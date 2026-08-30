@@ -7,6 +7,8 @@
 #include <QMap>
 #include <QList>
 #include <QDate>
+#include <QVector>
+#include <QHash>
 
 class TrackerBlocker : public QWebEngineUrlRequestInterceptor
 {
@@ -50,6 +52,16 @@ private:
     explicit TrackerBlocker(bool incognito);
     Q_DISABLE_COPY(TrackerBlocker)
 
+    // Domain suffix trie for O(k) blocked host lookup (k = domain parts)
+    struct TrieNode {
+        QHash<QString, TrieNode*> children;
+        bool isTerminal = false;
+        QString terminalDomain;
+        TrieNode() = default;
+        ~TrieNode() { qDeleteAll(children); }
+    };
+    void buildDomainTrie();
+    void deleteTrie(TrieNode* node);
     bool isBlockedHost(const QString &host) const;
     bool isIncognito() const;
     int blockedLastNDays(int days) const;
@@ -58,6 +70,7 @@ private:
 
     bool m_incognito = false;
     QSet<QString> m_blockedHosts;
+    TrieNode* m_domainTrie = nullptr;
     mutable int m_today;
     mutable QDate m_lastDate;                          // last day m_today was rolled
     QMap<QString, int> m_daily;                        // day (ISO) -> blocked that day
