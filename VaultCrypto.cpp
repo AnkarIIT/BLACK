@@ -22,12 +22,18 @@
 #include <unistd.h>
 #endif
 
+#if defined(HAVE_OPENSSL)
+#include <openssl/evp.h>
+#include <openssl/rand.h>
+#endif
+
 namespace {
 
 const char kMagic[4] = { 'B', 'A', 'K', 'V' };
 const qint8 kVersion = 1;
 const char kCipherDpapi = 'D';
 const char kCipherHmacCtr = 'H';
+const char kCipherAesGcm = 'A';
 
 const int kKeySize = 32;         // 256-bit master / derived key
 const int kSaltSize = 16;
@@ -291,12 +297,127 @@ bool isEnvelope(const QByteArray &data)
            && data.at(4) == kVersion;
 }
 
+#if defined(HAVE_OPENSSL)
+QByteArray aesGcmEncryptBlob(const QByteArray &plain)
+{
+    const QByteArray master = loadOrCreateMasterKey();
+    if (master.isEmpty())
+        return {};
+
+    QByteArray iv;
+    iv.resize(12);
+    if (RAND_bytes(iv.data(), 12) != 1)
+        return {};
+
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    if (!ctx)
+        return {};
+
+    if (EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return {};
+    }
+    if (EVP_EncryptInit_ex(ctx, nullptr, nullptr, master.constData(), iv.constData()) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return {};
+    }
+
+    int len = 0;
+    QByteArray ciphertext(plain.size(), 0);
+    if (EVP_EncryptUpdate(ctx, ciphertext.data(), &len, plain.constData(), plain.size()) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return {};
+    }
+    int ciphertextLen = len;
+
+    if (EVP_EncryptFinal_ex(ctx, ciphertext.data() + len, &len) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return {};
+    }
+    ciphertextLen += len;
+    ciphertext.resize(ciphertextLen);
+
+    QByteArray tag(16, 0);
+    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, 16, tag.data()) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return {};
+    }
+
+    EVP_CIPHER_CTX_free(ctx);
+
+    QJsonObject obj;
+    obj.insert(QStringLiteral("kdf"), QStringLiteral("aes-256-gcm"));
+    obj.insert(QStringLiteral("iv"), QString::fromLatin1(iv.toBase64()));
+    obj.insert(QStringLiteral("data"), QString::fromLatin1(ciphertext.toBase64()));
+    obj.insert(QStringLiteral("tag"), QString::fromLatin1(tag.toBase64()));
+    return QJsonDocument(obj).toJson(QJsonDocument::Compact);
+}
+
+QByteArray aesGcmDecryptBlob(const QByteArray &envelope)
+{
+    const QJsonDocument doc = QJsonDocument::fromJson(envelope);
+    if (!doc.isObject())
+        return {};
+    const QJsonObject obj = doc.object();
+    const QByteArray iv = QByteArray::fromBase64(obj.value(QStringLiteral("iv")).toString().toLatin1());
+    const QByteArray ciphertext = QByteArray::fromBase64(obj.value(QStringLiteral("data")).toString().toLatin1());
+    const QByteArray tag = QByteArray::fromBase64(obj.value(QStringLiteral("tag")).toString().toLatin1());
+    if (iv.isEmpty() || ciphertext.isEmpty() || tag.isEmpty())
+        return {};
+
+    const QByteArray master = loadOrCreateMasterKey();
+    if (master.isEmpty())
+        return {};
+
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    if (!ctx)
+        return {};
+
+    if (EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return {};
+    }
+    if (EVP_DecryptInit_ex(ctx, nullptr, nullptr, master.constData(), iv.constData()) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return {};
+    }
+
+    int len = 0;
+    QByteArray plaintext(ciphertext.size(), 0);
+    if (EVP_DecryptUpdate(ctx, plaintext.data(), &len, ciphertext.constData(), ciphertext.size()) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return {};
+    }
+    int plaintextLen = len;
+
+    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, tag.data()) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return {};
+    }
+
+    if (EVP_DecryptFinal_ex(ctx, plaintext.data() + len, &len) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        return {}; // authentication failed
+    }
+    plaintextLen += len;
+
+    EVP_CIPHER_CTX_free(ctx);
+    plaintext.resize(plaintextLen);
+    return plaintext;
+}
+#endif
+
 QByteArray encrypt(const QByteArray &plaintext)
 {
+    QByteArray blob;
 #if defined(Q_OS_WIN)
-    const QByteArray blob = dpapiEncrypt(plaintext);
+    blob = dpapiEncrypt(plaintext);
+#elif defined(HAVE_OPENSSL)
+    blob = aesGcmEncryptBlob(plaintext);
+    if (blob.isEmpty())
+        return {};
 #else
-    const QByteArray blob = hmacCtrEncryptBlob(plaintext);
+    blob = hmacCtrEncryptBlob(plaintext);
 #endif
     if (blob.isEmpty())
         return {};
@@ -306,6 +427,8 @@ QByteArray encrypt(const QByteArray &plaintext)
     envelope.append(char(kVersion));
 #if defined(Q_OS_WIN)
     envelope.append(kCipherDpapi);
+#elif defined(HAVE_OPENSSL)
+    envelope.append(kCipherAesGcm);
 #else
     envelope.append(kCipherHmacCtr);
 #endif
@@ -324,10 +447,13 @@ QByteArray decrypt(const QByteArray &envelope)
 #if defined(Q_OS_WIN)
     if (cipher == kCipherDpapi)
         return dpapiDecrypt(payload);
-#else
+#endif
+#if defined(HAVE_OPENSSL)
+    if (cipher == kCipherAesGcm)
+        return aesGcmDecryptBlob(payload);
+#endif
     if (cipher == kCipherHmacCtr)
         return hmacCtrDecryptBlob(payload);
-#endif
     return {};
 }
 
