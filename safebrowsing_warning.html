@@ -7,6 +7,7 @@
     <title>Warning - Deceptive Site</title>
     <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <link rel="stylesheet" href="qrc:/chrome-theme.css">
+    <link rel="stylesheet" href="qrc:/responsive.css">
     <style>
         :root {
             --bg: #1d1d1f;
@@ -92,6 +93,73 @@
         }
         .btn-secondary.danger { color: var(--danger); }
         .btn:hover { opacity: 0.88; }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            body {
+                padding: 16px;
+            }
+            .card {
+                padding: 28px 24px;
+            }
+            .icon {
+                font-size: 38px;
+            }
+            h1 {
+                font-size: 18px;
+            }
+            p {
+                font-size: 12px;
+            }
+            .url {
+                font-size: 12px;
+                padding: 8px 12px;
+            }
+            .btn-row {
+                flex-direction: column;
+                gap: 8px;
+            }
+            .btn {
+                width: 100%;
+                padding: 12px 20px;
+                font-size: 13px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            body {
+                padding: 12px;
+            }
+            .card {
+                padding: 24px 18px;
+                border-radius: var(--corner-radius, 12px);
+            }
+            .icon {
+                font-size: 34px;
+            }
+            h1 {
+                font-size: 17px;
+            }
+            p {
+                font-size: 11px;
+            }
+            .url {
+                font-size: 11px;
+                padding: 8px 10px;
+            }
+            .btn {
+                padding: 14px 20px;
+                font-size: 13px;
+                min-height: 48px;
+            }
+        }
+
+        /* Touch device adjustments */
+        @media (pointer: coarse) {
+            .btn {
+                min-height: 48px;
+            }
+        }
     </style>
 </head>
 <body>

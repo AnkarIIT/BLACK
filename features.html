@@ -7,6 +7,7 @@
     <title>Features</title>
     <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <link rel="stylesheet" href="qrc:/chrome-theme.css">
+    <link rel="stylesheet" href="qrc:/responsive.css">
     <style>
         :root {
             --bg-window: #f5f5f7;
@@ -97,6 +98,51 @@
         .feat-desc { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
 
         .feat-text { flex: 1; }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .container {
+                padding: 24px 16px 40px;
+            }
+            .page-title { font-size: 20px; }
+            .page-sub { font-size: 12px; }
+            .row {
+                padding: 12px 14px;
+                gap: 12px;
+            }
+            .feat-icon {
+                width: 30px;
+                height: 30px;
+            }
+            .feat-name { font-size: 13px; }
+            .feat-desc { font-size: 11px; }
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 16px 12px 32px;
+            }
+            .page-title { font-size: 18px; }
+            .page-sub { font-size: 11px; }
+            .row {
+                padding: 10px 12px;
+                gap: 10px;
+            }
+            .feat-icon {
+                width: 28px;
+                height: 28px;
+                border-radius: 6px;
+            }
+            .feat-name { font-size: 12px; }
+            .feat-desc { font-size: 10px; }
+        }
+
+        /* Touch device adjustments */
+        @media (pointer: coarse) {
+            .row {
+                min-height: 48px;
+            }
+        }
     </style>
 </head>
 <body>
