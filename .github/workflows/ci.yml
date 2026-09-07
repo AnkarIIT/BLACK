@@ -27,7 +27,7 @@ jobs:
         host: windows
         target: desktop
         arch: win64_msvc${{ matrix.msvc_version }}_64
-        modules: qtwebengine
+        modules: qtwebengine qtwebchannel
         cache: true
         
     - name: Install OpenSSL
@@ -99,7 +99,7 @@ jobs:
         host: linux
         target: desktop
         arch: gcc_64
-        modules: qtwebengine
+        modules: qtwebengine qtwebchannel
         cache: true
         
     - name: Configure CMake
@@ -142,7 +142,7 @@ jobs:
         host: mac
         target: desktop
         arch: clang_64
-        modules: qtwebengine
+        modules: qtwebengine qtwebchannel
         cache: true
         
     - name: Install Dependencies
