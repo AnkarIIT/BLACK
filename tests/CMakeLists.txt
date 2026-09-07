@@ -8,50 +8,66 @@ set(CMAKE_AUTORCC ON)
 
 # Find Qt6
 find_package(Qt6 REQUIRED COMPONENTS Core Test WebEngineWidgets Svg WebChannel Network)
-find_package(OpenSSL REQUIRED)
 
-# Test executable
-qt_add_executable(BLACK_Tests
-    test_vaultcrypto.cpp
-    test_trackerblocker.cpp
-    test_passwordstore.cpp
-    test_oauthmanager.cpp
-    test_shelffstore.cpp
-    test_permissionsbridge.cpp
-    test_main.cpp
-)
-
-target_link_libraries(BLACK_Tests PRIVATE
-    Qt6::Core
-    Qt6::Test
-    Qt6::WebEngineWidgets
-    Qt6::Svg
-    Qt6::WebChannel
-    Qt6::Network
-    OpenSSL::SSL
-    OpenSSL::Crypto
-    ${CMAKE_SOURCE_DIR}/../VaultCrypto.cpp
-    ${CMAKE_SOURCE_DIR}/../TrackerBlocker.cpp
-    ${CMAKE_SOURCE_DIR}/../PasswordStore.cpp
-    ${CMAKE_SOURCE_DIR}/../OAuthManager.cpp
-    ${CMAKE_SOURCE_DIR}/../ShelfStore.cpp
-    ${CMAKE_SOURCE_DIR}/../PermissionsBridge.cpp
-    ${CMAKE_SOURCE_DIR}/../OSPaths.cpp
-    ${CMAKE_SOURCE_DIR}/../SafariTheme.cpp
-    ${CMAKE_SOURCE_DIR}/../BrowserSettings.cpp
-    ${CMAKE_SOURCE_DIR}/../SafeBrowsing.cpp
-    ${CMAKE_SOURCE_DIR}/../AppearanceManager.cpp
-    ${CMAKE_SOURCE_DIR}/../Account.cpp
-    ${CMAKE_SOURCE_DIR}/../ExtensionManager.cpp
-    ${CMAKE_SOURCE_DIR}/../BookmarkImporter.cpp
-)
-
-target_include_directories(BLACK_Tests PRIVATE ${CMAKE_SOURCE_DIR}/..)
-
-if(MSVC)
-    target_compile_options(BLACK_Tests PRIVATE /W4)
+# OpenSSL is only required on non-Windows for AES-GCM in VaultCrypto
+# On Windows, DPAPI is used which doesn't require OpenSSL
+if(WIN32)
+    find_package(OpenSSL QUIET)
 else()
-    target_compile_options(BLACK_Tests PRIVATE -Wall -Wextra -Wpedantic)
+    find_package(OpenSSL REQUIRED)
 endif()
 
-target_compile_definitions(BLACK_Tests PRIVATE HAVE_OPENSSL)
+# Helper function to create a test executable
+function(add_black_test test_name test_source)
+    qt_add_executable(${test_name}
+        ${test_source}
+        ${CMAKE_CURRENT_SOURCE_DIR}/../VaultCrypto.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../TrackerBlocker.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../PasswordStore.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../OAuthManager.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../ShelfStore.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../PermissionsBridge.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../OSPaths.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../SafariTheme.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../BrowserSettings.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../SafeBrowsing.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../AppearanceManager.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../Account.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../ExtensionManager.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../BookmarkImporter.cpp
+    )
+
+    target_link_libraries(${test_name} PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Qt6::WebEngineWidgets
+        Qt6::Svg
+        Qt6::WebChannel
+        Qt6::Network
+    )
+
+    if(WIN32)
+        target_link_libraries(${test_name} PRIVATE crypt32)
+    else()
+        target_link_libraries(${test_name} PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+        target_compile_definitions(${test_name} PRIVATE HAVE_OPENSSL)
+    endif()
+
+    target_include_directories(${test_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
+    if(MSVC)
+        target_compile_options(${test_name} PRIVATE /W4)
+    else()
+        target_compile_options(${test_name} PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(NAME ${test_name} COMMAND ${test_name})
+endfunction()
+
+# Create individual test executables
+add_black_test(test_vaultcrypto test_vaultcrypto.cpp)
+add_black_test(test_trackerblocker test_trackerblocker.cpp)
+add_black_test(test_passwordstore test_passwordstore.cpp)
+add_black_test(test_oauthmanager test_oauthmanager.cpp)
+add_black_test(test_shelffstore test_shelffstore.cpp)
+add_black_test(test_permissionsbridge test_permissionsbridge.cpp)

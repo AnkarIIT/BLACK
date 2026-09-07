@@ -16,15 +16,14 @@ public:
     Q_INVOKABLE void removePermission(const QString &origin, int type);
     Q_INVOKABLE void clearPermissions();
 
-#ifdef QT_DEBUG
     // Test helper: write permissions directly (bypassing encryption for test setup)
     Q_INVOKABLE void savePermissionsTest(const QJsonObject &obj);
-#endif
 
 signals:
     void changed();
 
 private:
+    friend class TestPermissionsBridge;
     QString keyFor(const QString &origin, int type) const;
     QString typeName(int type) const;
 };

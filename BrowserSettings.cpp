@@ -198,3 +198,60 @@ void BrowserSettings::openDefaultBrowserSettings()
 {
     OSPaths::openDefaultBrowserSettings();
 }
+
+QString BrowserSettings::getShortcut(const QString &action) const
+{
+    // Default shortcuts
+    static const QMap<QString, QString> defaults = {
+        { "newTab", "Ctrl+T" },
+        { "closeTab", "Ctrl+W" },
+        { "reopenClosedTab", "Ctrl+Shift+T" },
+        { "focusUrlBar", "Ctrl+L" },
+        { "findInPage", "Ctrl+F" },
+        { "reload", "Ctrl+R" },
+        { "hardReload", "Ctrl+Shift+R" },
+        { "newPrivateWindow", "Ctrl+Shift+N" },
+        { "toggleSidebar", "Ctrl+Shift+L" },
+        { "showSettings", "Ctrl+," },
+        { "nextTab", "Ctrl+Tab" },
+        { "prevTab", "Ctrl+Shift+Tab" },
+        { "zoomIn", "Ctrl+Plus" },
+        { "zoomOut", "Ctrl+Minus" },
+        { "zoomReset", "Ctrl+0" },
+        { "back", "Alt+Left" },
+        { "forward", "Alt+Right" },
+        { "home", "Alt+Home" },
+        { "fullscreen", "F11" },
+        { "print", "Ctrl+P" },
+        { "saveAsPdf", "Ctrl+Shift+P" },
+        { "devTools", "Ctrl+Shift+I" },
+    };
+
+    const QJsonObject obj = readSettingsObject();
+    const QJsonObject shortcuts = obj.value(QStringLiteral("shortcuts")).toObject();
+    if (shortcuts.contains(action))
+        return shortcuts.value(action).toString();
+
+    return defaults.value(action, QString());
+}
+
+void BrowserSettings::setShortcut(const QString &action, const QString &shortcut)
+{
+    QJsonObject obj = readSettingsObject();
+    QJsonObject shortcuts = obj.value(QStringLiteral("shortcuts")).toObject();
+    shortcuts.insert(action, shortcut);
+    obj.insert(QStringLiteral("shortcuts"), shortcuts);
+    writeSettingsObject(obj);
+    emit settingsChanged();
+}
+
+void BrowserSettings::resetShortcut(const QString &action)
+{
+    QJsonObject obj = readSettingsObject();
+    QJsonObject shortcuts = obj.value(QStringLiteral("shortcuts")).toObject();
+    if (shortcuts.remove(action)) {
+        obj.insert(QStringLiteral("shortcuts"), shortcuts);
+        writeSettingsObject(obj);
+        emit settingsChanged();
+    }
+}

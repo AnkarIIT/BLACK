@@ -15,6 +15,8 @@
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QHash>
+#include <QTextStream>
+#include <QRegularExpression>
 #include "BrowserWindow.h"
 #include "BrowserSettings.h"
 #include "TrackerBlocker.h"
@@ -32,6 +34,11 @@
 #include "AppearanceManager.h"
 #include "SafariTheme.h"
 #include "PlatformAdaptor.h"
+#include "ExtensionManager.h"
+
+#if defined(Q_OS_WIN)
+#include <windows.h>
+#endif
 
 // Check if this is the first run
 bool isFirstRun() {
@@ -108,6 +115,7 @@ int main(int argc, char *argv[])
     // These improve GPU rasterization, memory management, and smoothness
     qputenv("QTWEBENGINE_CHROMIUM_FLAGS",
         "--enable-gpu-rasterization "
+        "--ignore-gpu-blocklist "
         "--enable-zero-copy "
         "--enable-gpu-compositing "
         "--enable-features=VizDisplayCompositor,Accelerated2dCanvas,NativeGpuMemoryBuffers "
@@ -298,7 +306,41 @@ int main(int argc, char *argv[])
     // Set Safari-style User-Agent based on platform detection
     profile->setHttpUserAgent(getSafariUserAgent());
 
+    // Memory-pressure handler: periodically clear HTTP cache when memory usage is high
+    QTimer *memoryTimer = new QTimer(&app);
+    QObject::connect(memoryTimer, &QTimer::timeout, [profile]() {
+#if defined(Q_OS_WIN)
+        MEMORYSTATUSEX memInfo;
+        memInfo.dwLength = sizeof(MEMORYSTATUSEX);
+        if (GlobalMemoryStatusEx(&memInfo)) {
+            // If available physical memory is less than 500MB, clear cache
+            if (memInfo.ullAvailPhys < 500ull * 1024 * 1024) {
+                profile->clearHttpCache();
+            }
+        }
+#else
+        // Linux/macOS: read from /proc/meminfo
+        QFile meminfo("/proc/meminfo");
+        if (meminfo.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream stream(&meminfo);
+            while (!stream.atEnd()) {
+                QString line = stream.readLine();
+                if (line.startsWith("MemAvailable:")) {
+                    qint64 availableKb = line.split(QRegularExpression("\\s+")).value(1).toLongLong();
+                    if (availableKb < 500 * 1024) { // less than 500MB
+                        profile->clearHttpCache();
+                    }
+                    break;
+                }
+            }
+        }
+#endif
+    });
+    // Check every 30 seconds
+    memoryTimer->start(30000);
+
     TrackerBlocker::instance().loadData();
+    TrackerBlocker::instance().setExtensionManager(&ExtensionManager::instance());
     profile->setUrlRequestInterceptor(&TrackerBlocker::instance());
     QObject::connect(&app, &QCoreApplication::aboutToQuit, []() {
         TrackerBlocker::instance().saveData();
@@ -313,7 +355,13 @@ int main(int argc, char *argv[])
         Account account;
         QDialog onboarding;
         onboarding.setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
-        // onboarding.setAttribute(Qt::WA_TranslucentBackground);
+#if defined(Q_OS_MACOS)
+        onboarding.setAttribute(Qt::WA_TranslucentBackground);
+        onboarding.setStyleSheet(QStringLiteral("QDialog { background: transparent; }"));
+#else
+        onboarding.setAttribute(Qt::WA_OpaquePaintEvent);
+        onboarding.setStyleSheet(QStringLiteral("QDialog { background: palette(window); border-radius: 16px; }"));
+#endif
 
         QVBoxLayout *layout = new QVBoxLayout(&onboarding);
         layout->setContentsMargins(0, 0, 0, 0);
@@ -329,9 +377,7 @@ int main(int argc, char *argv[])
         OnboardingBridge bridge(&account, &bookmarksStore, &onboarding);
         channel->registerObject(QStringLiteral("onboardingBridge"), &bridge);
         channel->registerObject(QStringLiteral("oauthManager"), &oauthManager);
-        channel->registerObject(QStringLiteral("bookmarkImporter"), &importer);
         channel->registerObject(QStringLiteral("appearance"), &appearance);
-        channel->registerObject(QStringLiteral("theme"), &SafariTheme::instance());
         page->setWebChannel(channel, QWebEngineScript::MainWorld);
         page->setBridgeChannel(channel);
         layout->addWidget(view);

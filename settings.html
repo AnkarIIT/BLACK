@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' qrc:; script-src 'self' 'unsafe-inline' qrc:; connect-src 'self' qrc: http://127.0.0.1:* http://localhost:*; img-src 'self' data: qrc:; style-src 'self' 'unsafe-inline' qrc:; font-src 'self' data: qrc:; frame-src 'self' qrc:; object-src 'none'; base-uri 'self'">
     <title>Preferences</title>
     <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
@@ -692,6 +692,10 @@
                 <span class="tool-icon">🚩</span>
                 <span class="tool-label">Feature Flags</span>
             </button>
+            <button class="tool-btn" onclick="switchTab('updates', 'Updates')">
+                <span class="tool-icon">🔄</span>
+                <span class="tool-label">Updates</span>
+            </button>
         </div>
 
         <!-- Tab Contents -->
@@ -1008,6 +1012,41 @@
                     <div class="empty-title">Feature Flags</div>
                     <div class="empty-desc">Experimental features are managed automatically by BLACK and rolled out when stable.</div>
                 </div>
+            </div>
+
+            <div id="updates" class="content">
+                <div class="pane-title">Software Updates</div>
+                <div class="subtext" style="margin-bottom: 16px;">Check for updates to BLACK. Updates are downloaded securely and installed automatically.</div>
+                <div class="settings-grid" style="max-width: 500px;">
+                    <div class="label">Current Version:</div>
+                    <div class="value">
+                        <span id="currentVersion">1.0.0</span>
+                    </div>
+
+                    <div class="label">Latest Version:</div>
+                    <div class="value">
+                        <span id="latestVersion">Checking…</span>
+                    </div>
+
+                    <div class="label">Status:</div>
+                    <div class="value">
+                        <span id="updateStatus">Unknown</span>
+                    </div>
+
+                    <div class="label">Release Notes:</div>
+                    <div class="value">
+                        <div id="releaseNotes" style="max-height: 150px; overflow-y: auto; white-space: pre-wrap; font-size: 12px; color: var(--mac-text-sec);"></div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap;">
+                    <button class="mac-btn" id="checkUpdatesBtn">Check for Updates</button>
+                    <button class="mac-blue-btn" id="installUpdateBtn" style="display: none;">Install Update</button>
+                </div>
+                <div id="downloadProgress" style="display: none; margin-top: 12px;">
+                    <div style="font-size: 12px; color: var(--mac-text-sec); margin-bottom: 4px;">Downloading update… <span id="downloadPercent">0%</span></div>
+                    <progress id="downloadBar" value="0" max="100" style="width: 100%; height: 6px;"></progress>
+                </div>
+                <div id="updateError" style="display: none; margin-top: 12px; padding: 10px 12px; border-radius: 8px; font-size: 13px; color: #d70015; background: rgba(215,0,21,0.08); border: 1px solid rgba(215,0,21,0.25);"></div>
             </div>
         </div>
     </div>
@@ -1418,6 +1457,82 @@
                         permissions.clearPermissions();
                     }
                 });
+
+                // ── Updates tab ────────────────────────────────────────────────
+                const updater = channel.objects.updater;
+                const currentVersionEl = document.getElementById('currentVersion');
+                const latestVersionEl = document.getElementById('latestVersion');
+                const updateStatusEl = document.getElementById('updateStatus');
+                const releaseNotesEl = document.getElementById('releaseNotes');
+                const checkUpdatesBtn = document.getElementById('checkUpdatesBtn');
+                const installUpdateBtn = document.getElementById('installUpdateBtn');
+                const downloadProgressDiv = document.getElementById('downloadProgress');
+                const downloadPercentEl = document.getElementById('downloadPercent');
+                const downloadBar = document.getElementById('downloadBar');
+                const updateErrorDiv = document.getElementById('updateError');
+
+                if (currentVersionEl) currentVersionEl.textContent = updater.currentVersion;
+
+                const renderUpdater = function () {
+                    if (latestVersionEl) latestVersionEl.textContent = updater.latestVersion || '—';
+                    if (updateStatusEl) {
+                        if (updater.checkingForUpdates) {
+                            updateStatusEl.textContent = 'Checking…';
+                        } else if (updater.updateAvailable) {
+                            updateStatusEl.textContent = 'Update available';
+                            updateStatusEl.style.color = '#30d158';
+                        } else if (updater.lastError) {
+                            updateStatusEl.textContent = 'Check failed';
+                            updateStatusEl.style.color = '#ff453a';
+                        } else {
+                            updateStatusEl.textContent = 'Up to date';
+                            updateStatusEl.style.color = '#30d158';
+                        }
+                    }
+                    if (releaseNotesEl) {
+                        releaseNotesEl.textContent = updater.releaseNotes || '—';
+                    }
+                    if (installUpdateBtn) {
+                        installUpdateBtn.style.display = updater.updateAvailable ? 'inline-flex' : 'none';
+                    }
+                };
+
+                if (checkUpdatesBtn) {
+                    checkUpdatesBtn.addEventListener('click', function () {
+                        updateErrorDiv.style.display = 'none';
+                        updater.checkForUpdates();
+                    });
+                }
+
+                if (installUpdateBtn) {
+                    installUpdateBtn.addEventListener('click', function () {
+                        downloadProgressDiv.style.display = 'block';
+                        downloadProgressDiv.querySelector('#downloadPercent').textContent = '0%';
+                        downloadProgressDiv.querySelector('#downloadBar').value = 0;
+                        updateErrorDiv.style.display = 'none';
+                        updater.installUpdate();
+                    });
+                }
+
+                updater.updateStatusChanged.connect(renderUpdater);
+                updater.downloadProgress.connect(function (received, total) {
+                    if (total > 0) {
+                        const percent = Math.round((received / total) * 100);
+                        if (downloadPercentEl) downloadPercentEl.textContent = percent + '%';
+                        if (downloadBar) downloadBar.value = percent;
+                    }
+                });
+                updater.downloadFinished.connect(function (success, error) {
+                    downloadProgressDiv.style.display = 'none';
+                    if (success) {
+                        renderUpdater();
+                    } else {
+                        updateErrorDiv.style.display = 'block';
+                        updateErrorDiv.textContent = error || 'Update failed';
+                    }
+                });
+
+                renderUpdater();
 
             });
         }

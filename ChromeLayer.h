@@ -65,6 +65,11 @@ private:
     QHBoxLayout *m_windowCtlLayout; // window-control container (Windows/Linux, right edge)
     QHBoxLayout *m_tabLayout;      // [tabs...][new-tab button]
     QToolButton *m_newTabButton;
+
+    // Tab scrolling for overflow
+    QScrollArea *m_tabScrollArea = nullptr;
+    QToolButton *m_scrollLeftBtn = nullptr;
+    QToolButton *m_scrollRightBtn = nullptr;
 };
 
 #endif // CHROMELAYER_H

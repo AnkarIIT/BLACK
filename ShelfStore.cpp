@@ -1,5 +1,6 @@
 #include "ShelfStore.h"
 #include "OSPaths.h"
+#include "VaultCrypto.h"
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -11,11 +12,16 @@
 
 namespace {
 const int kMaxEntries = 500;
+}
 
-// Canonical bookmark URL: trimmed, hostname lowercased, trailing "/" stripped
-// everywhere except on the bare root (so https://example.com/ and
-// https://example.com/path/ are dedup-friendly while the root keeps its form).
-QString normalizedUrl(const QString &input)
+ShelfStore::ShelfStore(const QString &fileName, QObject *parent)
+    : QObject(parent)
+    , m_fileName(fileName)
+    , m_retentionDays(0)
+{
+}
+
+QString ShelfStore::normalizedUrl(const QString &input)
 {
     const QString trimmed = input.trimmed();
     if (trimmed.isEmpty())
@@ -35,14 +41,6 @@ QString normalizedUrl(const QString &input)
     if (!url.fragment().isEmpty())
         result += QStringLiteral("#") + url.fragment();
     return result;
-}
-}
-
-ShelfStore::ShelfStore(const QString &fileName, QObject *parent)
-    : QObject(parent)
-    , m_fileName(fileName)
-    , m_retentionDays(0)
-{
 }
 
 QString ShelfStore::json() const
@@ -163,13 +161,28 @@ QJsonArray ShelfStore::loadArray() const
 {
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir().mkpath(dir);
-    QFile file(dir + QLatin1Char('/') + m_fileName);
+    const QString path = dir + QLatin1Char('/') + m_fileName;
+    QFile file(path);
     if (!file.open(QIODevice::ReadOnly))
         return QJsonArray();
-    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-    if (!doc.isArray())
+
+    const QByteArray raw = file.readAll();
+    if (raw.isEmpty())
         return QJsonArray();
-    return doc.array();
+
+    // Try to decrypt first (encrypted format)
+    const QByteArray plain = VaultCrypto::decrypt(raw);
+    if (!plain.isEmpty()) {
+        const QJsonDocument doc = QJsonDocument::fromJson(plain);
+        if (doc.isArray())
+            return doc.array();
+    }
+
+    // Legacy plaintext format detected - refuse to load, return empty array
+    // The file will be overwritten with encrypted format on next write
+    // Log a warning so the user knows their data is being migrated
+    qWarning() << "ShelfStore:" << m_fileName << "contains legacy plaintext data. It will be re-encrypted on next save.";
+    return QJsonArray();
 }
 
 void ShelfStore::pruneArray(QJsonArray &array) const
@@ -190,6 +203,13 @@ void ShelfStore::saveArray(const QJsonArray &array) const
 {
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir().mkpath(dir);
-    OSPaths::writeFileAtomic(dir + QLatin1Char('/') + m_fileName,
-                             QJsonDocument(array).toJson());
+    const QString path = dir + QLatin1Char('/') + m_fileName;
+
+    const QByteArray plain = QJsonDocument(array).toJson(QJsonDocument::Compact);
+    const QByteArray encrypted = VaultCrypto::encrypt(plain);
+    if (encrypted.isEmpty()) {
+        // Encryption failed - don't write plaintext, abort silently
+        return;
+    }
+    OSPaths::writeFileAtomic(path, encrypted);
 }

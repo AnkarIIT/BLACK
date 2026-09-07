@@ -6,9 +6,9 @@
 #include <QString>
 
 // Shared, file-backed store exposed to the QWebChannel "library" pages
-// (bookmarks.html / history.html). Reads and writes a JSON array at
+// (bookmarks.html / history.html). Reads and writes an ENCRYPTED JSON array at
 // <AppDataLocation>/<fileName> on every mutation, so multiple windows stay
-// in sync without extra plumbing.
+// in sync without extra plumbing. Data is encrypted at rest using VaultCrypto.
 class ShelfStore : public QObject
 {
     Q_OBJECT
@@ -32,10 +32,17 @@ public:
     // Entries older than this many days are dropped on read (0 = keep all).
     void setRetentionDays(int days);
 
+    // Normalize a URL for consistent storage and comparison
+    static QString normalizedUrl(const QString &input);
+
+    // Prune entries older than retentionDays (if > 0)
+    void pruneArray(QJsonArray &array) const;
+
 signals:
     void changed();
 
 private:
+    friend class TestShelfStore;
     QJsonArray loadArray() const;
     void saveArray(const QJsonArray &array) const;
 

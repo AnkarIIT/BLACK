@@ -63,6 +63,11 @@ public:
     // at session restore (0 = never).
     static int autoCloseDays(const QString &setting);
 
+    // Shortcut customization
+    Q_INVOKABLE QString getShortcut(const QString &action) const;
+    Q_INVOKABLE void setShortcut(const QString &action, const QString &shortcut);
+    Q_INVOKABLE void resetShortcut(const QString &action);
+
 signals:
     void settingsChanged();
 

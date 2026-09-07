@@ -10,6 +10,8 @@
 #include <QVector>
 #include <QHash>
 
+class ExtensionManager;
+
 class TrackerBlocker : public QWebEngineUrlRequestInterceptor
 {
     Q_OBJECT
@@ -45,11 +47,16 @@ public:
     void loadData();
     void saveData();
 
+    // Set extension manager for declarative blocking rules
+    void setExtensionManager(ExtensionManager *manager);
+
 signals:
     void privacyChanged();
 
 private:
+    friend class TestTrackerBlocker;
     explicit TrackerBlocker(bool incognito);
+    ~TrackerBlocker();
     Q_DISABLE_COPY(TrackerBlocker)
 
     // Domain suffix trie for O(k) blocked host lookup (k = domain parts)
@@ -63,6 +70,7 @@ private:
     void buildDomainTrie();
     void deleteTrie(TrieNode* node);
     bool isBlockedHost(const QString &host) const;
+    bool isBlockedByExtensionRules(const QString &url) const;
     bool isIncognito() const;
     int blockedLastNDays(int days) const;
     QList<QDate> daysInWindow(int days) const;
@@ -77,6 +85,8 @@ private:
     QMap<QString, QMap<QString, int>> m_hostCounts;    // day -> host -> blocked count
     QMap<QString, QMap<QString, QSet<QString>>> m_hostSites; // day -> host -> distinct sites
     QMap<QString, QSet<QString>> m_sitesByDay;         // day -> distinct visited sites
+
+    ExtensionManager *m_extensionManager = nullptr;
 };
 
 #endif

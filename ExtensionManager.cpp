@@ -20,8 +20,8 @@ QString extRoot()
 }
 
 // Accept only safe relative paths from a manifest "js" entry: no absolute
-// paths, no drive/colon references, no backslashes, no ".." traversal. The
-// result is further verified by a canonical containment check in
+// paths, no drive/colon references, no backslashes, no ".." traversal.
+// The result is further verified by a canonical containment check in
 // buildScripts() so even symlinked or cleaned paths cannot escape the
 // extension directory.
 bool isSafeRelativePath(const QString &p)
@@ -34,6 +34,12 @@ bool isSafeRelativePath(const QString &p)
         return false;                 // Windows separators / drive letters
     if (p.contains(QStringLiteral("..")))
         return false;                 // parent traversal (also covers "a/../b")
+
+    // Check for URL-encoded traversal attempts (e.g., %2e%2e%2f = ../)
+    QString decoded = QUrl::fromPercentEncoding(p.toUtf8());
+    if (decoded.contains(QStringLiteral("..")))
+        return false;
+
     return true;
 }
 
@@ -90,6 +96,35 @@ QString patternToRegex(const QString &pattern)
 
     return QStringLiteral("^") + schemeRe2 + QStringLiteral("://") + hostRe + pathRe + QStringLiteral("$");
 }
+
+// Parse blocking rules from manifest JSON
+BlockingRule parseBlockingRules(const QJsonObject &m)
+{
+    BlockingRule rule;
+    if (m.contains(QStringLiteral("blocking"))) {
+        const QJsonObject blocking = m.value(QStringLiteral("blocking")).toObject();
+        const QJsonArray hostsArray = blocking.value(QStringLiteral("blockedHosts")).toArray();
+        for (const QJsonValue &v : hostsArray) {
+            rule.blockedHosts.append(v.toString());
+        }
+        const QJsonArray pathsArray = blocking.value(QStringLiteral("blockedPaths")).toArray();
+        for (const QJsonValue &v : pathsArray) {
+            rule.blockedPaths.append(v.toString());
+        }
+        const QJsonArray typesArray = blocking.value(QStringLiteral("blockedTypes")).toArray();
+        for (const QJsonValue &v : typesArray) {
+            rule.blockedTypes.append(v.toString());
+        }
+    }
+    return rule;
+}
+
+}
+
+ExtensionManager &ExtensionManager::instance()
+{
+    static ExtensionManager manager;
+    return manager;
 }
 
 ExtensionManager::ExtensionManager(QObject *parent)
@@ -107,6 +142,18 @@ QString ExtensionManager::json() const
         o[QStringLiteral("name")] = e.name;
         o[QStringLiteral("version")] = e.version;
         o[QStringLiteral("description")] = e.description;
+        o[QStringLiteral("enabled")] = e.enabled;
+        QJsonObject blocking;
+        QStringList hosts;
+        for (const QString &h : e.blockingRules.blockedHosts) hosts.append(h);
+        QStringList paths;
+        for (const QString &p : e.blockingRules.blockedPaths) paths.append(p);
+        QStringList types;
+        for (const QString &t : e.blockingRules.blockedTypes) types.append(t);
+        blocking[QStringLiteral("blockedHosts")] = QJsonArray::fromStringList(hosts);
+        blocking[QStringLiteral("blockedPaths")] = QJsonArray::fromStringList(paths);
+        blocking[QStringLiteral("blockedTypes")] = QJsonArray::fromStringList(types);
+        o[QStringLiteral("blocking")] = blocking;
         array.append(o);
     }
     return QString::fromUtf8(QJsonDocument(array).toJson(QJsonDocument::Compact));
@@ -141,6 +188,8 @@ void ExtensionManager::scan()
         info.contentScripts = m.value(QStringLiteral("content_scripts")).toArray();
         if (info.contentScripts.isEmpty() && m.contains(QStringLiteral("content_scripts")))
             continue;
+        info.blockingRules = parseBlockingRules(m);
+        info.enabled = m.value(QStringLiteral("enabled")).toBool(true);
         m_extensions.append(info);
     }
 }
@@ -150,6 +199,8 @@ QList<QWebEngineScript> ExtensionManager::buildScripts() const
     QList<QWebEngineScript> scripts;
     const QString root = extRoot();
     for (const ExtensionInfo &e : m_extensions) {
+        if (!e.enabled)
+            continue;
         const QString extDir = QDir::cleanPath(root + QLatin1Char('/') + e.id);
         const QString extCanonical = QFileInfo(extDir).canonicalFilePath();
         int entryIndex = 0;
@@ -222,4 +273,15 @@ QList<QWebEngineScript> ExtensionManager::buildScripts() const
         }
     }
     return scripts;
+}
+
+QList<BlockingRule> ExtensionManager::activeBlockingRules() const
+{
+    QList<BlockingRule> rules;
+    for (const ExtensionInfo &e : m_extensions) {
+        if (e.enabled) {
+            rules.append(e.blockingRules);
+        }
+    }
+    return rules;
 }

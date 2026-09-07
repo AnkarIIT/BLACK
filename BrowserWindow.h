@@ -44,6 +44,8 @@ class PasswordStore;
 class ExtensionManager;
 class Account;
 class BookmarkImporter;
+class PermissionsBridge;
+#include "UpdateChecker.h"
 
 struct TabInfo {
     QWebEngineView* view = nullptr;
@@ -60,15 +62,8 @@ struct TabInfo {
     bool showingCrashPage = false; // persisted so a crashed tab restores to the crash page
 };
 
-struct DownloadItemInfo {
-    QString fileName;
-    QString filePath;
-    QString url;
-    qint64 receivedBytes = 0;
-    qint64 totalBytes = -1;
-    int state = 0; // 0 = in progress, 1 = completed, 2 = failed/cancelled
-    QPointer<QWebEngineDownloadRequest> request;
-};
+struct DownloadItemInfo;
+class DownloadManager;
 
 class BrowserWindow : public QMainWindow
 {
@@ -95,6 +90,7 @@ protected:
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
     void mouseDoubleClickEvent(QMouseEvent *event) override;
+    bool event(QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void changeEvent(QEvent *event) override;
     bool eventFilter(QObject *obj, QEvent *event) override;
@@ -125,8 +121,12 @@ private slots:
     void toggleTabOverview();
     void showTabOverview();
     void hideTabOverview();
+    void toggleReaderMode();
+    void translatePage();
+    void captureOverviewThumbnails();
     void showSettingsMenu();
     void openSettingsDialog();
+    void openDevTools();
     void showProfileMenu();
     void showConnectionInfo();
     void updateProfileButton();
@@ -152,6 +152,14 @@ private:
     QIcon createSvgIcon(const QString &svgData, int size = 18, const QString &color = "#1d1d1f");
     QIcon profileAvatarIcon(int size);
     QToolButton* createTrafficLight(const QString &color, const QString &hoverColor);
+    // Touch-aware icon size that scales up on tablet/phone so controls meet
+    // the recommended 44px+ touch-target guidelines on coarse-pointer devices.
+    int touchIconSize(int desktopSize) const;
+    bool isTouchDevice() const;
+
+#if defined(Q_OS_WIN)
+    void setupWindowsDwm();
+#endif
 
     SafariWebView* addTabView(const QUrl &url, QWebEngineNewWindowRequest *request);
     // activateOverride: -1 = follow activateNewTabs setting, 0 = background tab, 1 = force activate
@@ -224,6 +232,8 @@ private:
     QToolButton *m_downloadsButton;
     QToolButton *m_tabOverviewButton;
     QToolButton *m_addTabButton;
+    QToolButton *m_readerModeButton;
+    QToolButton *m_translateButton;
 
     QToolButton *m_closeButton;
     QToolButton *m_minimizeButton;
@@ -260,11 +270,18 @@ private:
     QList<QLabel*> m_sidebarItemTexts;
     QList<QLabel*> m_sidebarHeaders;
     QPushButton  *m_newGroupButton = nullptr;
+    QFrame       *m_downloadsSidebarItem = nullptr;
     bool          m_urlFocused;
     bool          m_urlMouseFocusPending;
 
     QPoint m_dragPosition;
     bool   m_isDragging;
+    bool   m_touchDragging = false;
+
+    // Tab drag-reorder state
+    bool   m_tabDragActive = false;
+    int    m_tabDragSourceIndex = -1;
+    QPoint m_tabDragStartPos;
 
     QList<TabInfo> m_tabs;
     int            m_currentTabIndex;
@@ -300,7 +317,7 @@ private:
     QList<QLabel*> m_tabItemIcons;
     QList<QLabel*> m_tabItemTexts;
     QList<QUrl>     m_closedTabs;
-    QList<DownloadItemInfo> m_downloadsList;
+    DownloadManager *m_downloads;
     QList<QString>  m_sidebarItemSvg;
 
     bool            m_incognito;
@@ -315,7 +332,27 @@ private:
     Account         *m_account;
     BookmarkImporter *m_bookmarkImporter;
     PermissionsBridge *m_permissionsBridge;
+    UpdateChecker *m_updateChecker;
     QMap<QString, bool> m_permissionChoices;
+
+    struct SiteSettings {
+        qreal zoomFactor = 1.0;
+        bool blockImages = false;
+        bool blockScripts = false;
+        QString userAgentOverride;
+    };
+    QMap<QString, SiteSettings> m_siteSettings;
+
+    void loadSiteSettings();
+    void saveSiteSettings();
+    void applySiteSettings(const QString &host);
+    SiteSettings getSiteSettings(const QString &host) const;
+    void setSiteSetting(const QString &host, const SiteSettings &settings);
+
+    // Favicon preloading
+    void preloadFavicon(const QUrl &url);
+    QNetworkAccessManager m_netManager;
+    QMap<QString, QPixmap> m_faviconCache;
 };
 
 #endif

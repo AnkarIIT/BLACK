@@ -15,9 +15,12 @@
 #include "BookmarkImporter.h"
 #include "VaultCrypto.h"
 #include "PermissionsBridge.h"
+#include "PlatformAdaptor.h"
+#include "DownloadManager.h"
 #include <QFrame>
 #include <QStyle>
 #include <QGraphicsDropShadowEffect>
+#include <QGraphicsOpacityEffect>
 #include <QtSvg/QSvgRenderer>
 #include <QPainter>
 #include <QPixmap>
@@ -70,12 +73,16 @@
 #include <QWidgetAction>
 #include <QKeyEvent>
 #include <QFileInfo>
-#include <QSet>
+#include <QTouchEvent>
+#include <QGestureEvent>
+#include <QTapGesture>
+#include <QGesture>
 #include <functional>
 #include <utility>
 
 #if defined(Q_OS_WIN)
 #include <qt_windows.h>
+#include <dwmapi.h>
 #endif
 
 // Safari-style User-Agent shared by the main and private-window profiles so
@@ -100,39 +107,6 @@ bool &sessionRestoredFlag()
 {
     static bool restored = false;
     return restored;
-}
-
-// Download auto-open allowlist: only inert content types are ever launched
-// after a download completes. Executables, scripts, HTML/SVG (can embed
-// scripts), Office macros and anything else remotely code-bearing are never
-// auto-opened, regardless of the "open safe files" setting.
-const QSet<QString> &safeDownloadExtensions()
-{
-    static const QSet<QString> extensions = {
-        // Pictures
-        QStringLiteral("png"), QStringLiteral("jpg"), QStringLiteral("jpeg"),
-        QStringLiteral("gif"), QStringLiteral("bmp"), QStringLiteral("webp"),
-        QStringLiteral("ico"), QStringLiteral("tif"), QStringLiteral("tiff"),
-        QStringLiteral("avif"), QStringLiteral("heic"),
-        // Sounds
-        QStringLiteral("mp3"), QStringLiteral("wav"), QStringLiteral("ogg"),
-        QStringLiteral("oga"), QStringLiteral("m4a"), QStringLiteral("aac"),
-        QStringLiteral("flac"), QStringLiteral("opus"), QStringLiteral("wma"),
-        // Movies
-        QStringLiteral("mp4"), QStringLiteral("mkv"), QStringLiteral("webm"),
-        QStringLiteral("mov"), QStringLiteral("avi"), QStringLiteral("m4v"),
-        QStringLiteral("mpg"), QStringLiteral("mpeg"), QStringLiteral("wmv"),
-        QStringLiteral("flv"),
-        // Documents
-        QStringLiteral("pdf"), QStringLiteral("txt"), QStringLiteral("md"),
-        QStringLiteral("log"), QStringLiteral("csv"), QStringLiteral("json"),
-        QStringLiteral("rtf"),
-        // Archives (opened by the archive manager, not executed)
-        QStringLiteral("zip"), QStringLiteral("rar"), QStringLiteral("7z"),
-        QStringLiteral("tar"), QStringLiteral("gz"), QStringLiteral("bz2"),
-        QStringLiteral("xz"), QStringLiteral("tgz"),
-    };
-    return extensions;
 }
 }
 
@@ -216,6 +190,7 @@ static QString selectedBg()    { return SafariTheme::instance().selectedBg; }
 // ── Chrome Palette (Classic Chrome layout) ───────────────────────────────────
 // Automatic reload budget before a crashed tab lands on the crash page.
 static const int kMaxRendererCrashReloads = 2;
+static const int kMaxTabThumbnails = 50; // Limit total thumbnails to prevent memory growth
 
 static bool chromeMode()
 {
@@ -238,6 +213,8 @@ static const QString svgStop       = "<svg xmlns=\"http://www.w3.org/2000/svg\" 
 static const QString svgShare      = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8\"/><polyline points=\"16 6 12 2 8 6\"/><line x1=\"12\" y1=\"2\" x2=\"12\" y2=\"15\"/></svg>";
 static const QString svgDownloads  = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><polyline points=\"7 10 12 15 17 10\"/><line x1=\"12\" y1=\"15\" x2=\"12\" y2=\"3\"/></svg>";
 static const QString svgTabOverview = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"/></svg>";
+static const QString svgReaderMode = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 19.5A2.5 2.5 0 0 1 6.5 17H20\"/><path d=\"M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z\"/><path d=\"M8 10h12\"/><path d=\"M8 14h12\"/><path d=\"M8 18h8\"/></svg>";
+static const QString svgTranslate = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8.9h.5a8.48 8.48 0 0 1 8 8v.5z\"/></svg>";
 static const QString svgPlus        = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\"><line x1=\"12\" y1=\"5\" x2=\"12\" y2=\"19\"/><line x1=\"5\" y1=\"12\" x2=\"19\" y2=\"12\"/></svg>";
 static const QString svgSearch      = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"11\" cy=\"11\" r=\"8\"/><line x1=\"21\" y1=\"21\" x2=\"16.65\" y2=\"16.65\"/></svg>";
 static const QString svgShield      = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z\"/></svg>";
@@ -283,6 +260,27 @@ static const QString kPageThemeClassScript = QStringLiteral(
     "(function(dark){var el=document.documentElement;if(!el)return;"
     "el.classList.remove('black-dark','black-light');"
     "el.classList.add(dark?'black-dark':'black-light');})(%1);");
+
+// ── Responsive platform detection ────────────────────────────────────────────
+// Sets data-platform on <html> ("phone"/"tablet"/"desktop") purely client-side,
+// using the same viewport breakpoints as responsive.css (--bp-phone: 480px,
+// --bp-tablet: 1024px). Runs at DocumentReady and re-evaluates on resize and
+// orientation change so the CSS variables and layouts in responsive.css apply
+// on every device (desktop, tablet, phone) without any C++ bridge dependency.
+static const char *kPagePlatformScript =
+    "(function(){"
+    "if(window.__blackPlatformReady)return;window.__blackPlatformReady=true;"
+    "function bp(){var w=window.innerWidth||document.documentElement.clientWidth||0;"
+    "var p=w<=480?'phone':(w<=1024?'tablet':'desktop');"
+    "var el=document.documentElement;if(el)el.setAttribute('data-platform',p);"
+    "document.documentElement.style.setProperty('--platform-detect',(w+'px'));}"
+    "if(document.readyState==='loading'){"
+    "document.addEventListener('DOMContentLoaded',bp);"
+    "}else{bp();}"
+    "window.addEventListener('resize',bp);"
+    "window.addEventListener('orientationchange',bp);"
+    "})();";
+
 
 // ── Password Manager (saves on form submit, autofills saved logins) ─────────
 // Runs in the isolated ApplicationWorld on http/https pages. Hosts are stored
@@ -511,6 +509,8 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     , m_downloadsButton(new QToolButton(this))
     , m_tabOverviewButton(new QToolButton(this))
     , m_addTabButton(new QToolButton(this))
+    , m_readerModeButton(new QToolButton(this))
+    , m_translateButton(new QToolButton(this))
     , m_closeButton(nullptr)
     , m_minimizeButton(nullptr)
     , m_maximizeButton(nullptr)
@@ -546,6 +546,7 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     , m_passwords(nullptr)
     , m_extensions(nullptr)
     , m_account(nullptr)
+    , m_downloads(nullptr)
 {    setWindowFlags(Qt::Window | Qt::FramelessWindowHint |
                     Qt::WindowSystemMenuHint |
                     Qt::WindowMinimizeButtonHint |
@@ -558,6 +559,12 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     // rendering glitches with frameless windows.
     setAttribute(Qt::WA_OpaquePaintEvent);
 #endif
+
+#if defined(Q_OS_WIN)
+    // Enable DWM composition for frameless window: system drop shadow, rounded corners
+    setupWindowsDwm();
+#endif
+
     setMinimumSize(320, 400);
     setFont(QFont("SF Pro Display", 13));
 
@@ -577,12 +584,15 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     connect(m_account, &Account::changed, this, [this]() { updateProfileButton(); });
     m_bookmarkImporter = new BookmarkImporter(this);
     m_permissionsBridge = new PermissionsBridge(this);
+    m_updateChecker = new UpdateChecker(QStringLiteral("1.0.0"),
+                                        QUrl(QStringLiteral("https://api.github.com/repos/black-browser/black/releases/latest")),
+                                        this);
     m_webChannel->registerObject(QStringLiteral("passwords"), m_passwords);
     m_webChannel->registerObject(QStringLiteral("extensions"), m_extensions);
     m_webChannel->registerObject(QStringLiteral("account"), m_account);
-    m_webChannel->registerObject(QStringLiteral("bookmarkImporter"), m_bookmarkImporter);
     m_webChannel->registerObject(QStringLiteral("safeBrowsing"), &SafeBrowsing::instance());
     m_webChannel->registerObject(QStringLiteral("permissions"), m_permissionsBridge);
+    m_webChannel->registerObject(QStringLiteral("updater"), m_updateChecker);
 
     // Password-only bridge for external pages. SafariWebPage exposes this
     // channel to no one except the native autofill content script, and only in
@@ -606,6 +616,17 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     styleScript.setWorldId(QWebEngineScript::ApplicationWorld);
     styleScript.setRunsOnSubFrames(true);
     m_profile->scripts()->insert(styleScript);
+
+    // Responsive platform detection: set data-platform on every page so the
+    // breakpoints and touch sizes in responsive.css actually apply on desktop,
+    // tablet and phone. Runs in the ApplicationWorld alongside the theme script.
+    QWebEngineScript platformScript;
+    platformScript.setName(QStringLiteral("black-platform"));
+    platformScript.setSourceCode(QString::fromLatin1(kPagePlatformScript));
+    platformScript.setInjectionPoint(QWebEngineScript::DocumentReady);
+    platformScript.setWorldId(QWebEngineScript::ApplicationWorld);
+    platformScript.setRunsOnSubFrames(true);
+    m_profile->scripts()->insert(platformScript);
 
     // Password manager: private-world script on every page (saves + autofills).
     // It runs in kPasswordWorld — NOT ApplicationWorld — because extension
@@ -664,6 +685,11 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
         restoreSession();
         sessionRestoredFlag() = true;
     }
+
+    // Load per-site settings
+    if (!m_incognito)
+        loadSiteSettings();
+
     if (m_tabs.isEmpty()) {
         addNewTab(newTabUrl());
     }
@@ -691,8 +717,8 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
 BrowserWindow::~BrowserWindow() {
     if (m_ownsSession)
         saveSession();
-    if (BrowserSettings::instance().removeDownloadListItems() == QStringLiteral("On Quit"))
-        m_downloadsList.clear();
+    if (m_downloads && BrowserSettings::instance().removeDownloadListItems() == QStringLiteral("On Quit"))
+        m_downloads->clearAll();
 }
 
 QWebEngineProfile *BrowserWindow::webProfile()
@@ -807,6 +833,62 @@ void BrowserWindow::mouseDoubleClickEvent(QMouseEvent *event) {
     }
 }
 
+// ── Touch / Gesture support (tablets & phones) ──────────────────────────────
+// Lets a finger drag the frameless window from the title-bar area and
+// double-tap it to maximize/restore, mirroring mouse behaviour on touch
+// devices. The web view itself consumes raw touch for page gestures, so we
+// only act on touch that begins over the toolbar/title region.
+bool BrowserWindow::event(QEvent *event)
+{
+    switch (event->type()) {
+    case QEvent::TouchBegin: {
+        auto *te = static_cast<QTouchEvent *>(event);
+        if (te->points().isEmpty()) break;
+        const QEventPoint &tp = te->points().first();
+        const QPointF pos = tp.position();
+        QWidget *child = childAt(pos.toPoint());
+        // Begin a window-drag only when the touch lands on the toolbar/title
+        // bar background, not on an interactive control or the web view.
+        if (tp.state() == QEventPoint::Pressed
+            && pos.y() < 52
+            && (!child || child == m_toolbar || child == m_central)) {
+            m_touchDragging = true;
+            m_dragPosition = tp.globalPosition().toPoint() - frameGeometry().topLeft();
+            event->accept();
+            return true;
+        }
+        break;
+    }
+    case QEvent::TouchUpdate: {
+        if (m_touchDragging) {
+            auto *te = static_cast<QTouchEvent *>(event);
+            if (!te->points().isEmpty()) {
+                const QEventPoint &tp = te->points().first();
+                if (isMaximized()) {
+                    showNormal();
+                    m_dragPosition = QPoint(width() / 2, 16);
+                }
+                move(tp.globalPosition().toPoint() - m_dragPosition);
+                event->accept();
+                return true;
+            }
+        }
+        break;
+    }
+    case QEvent::TouchEnd: {
+        if (m_touchDragging) {
+            m_touchDragging = false;
+            event->accept();
+            return true;
+        }
+        break;
+    }
+    default:
+        break;
+    }
+    return QMainWindow::event(event);
+}
+
 void BrowserWindow::resizeEvent(QResizeEvent *event) {
     QMainWindow::resizeEvent(event);
     if (m_overviewOverlay) m_overviewOverlay->setGeometry(rect());
@@ -836,6 +918,56 @@ QIcon BrowserWindow::createSvgIcon(const QString &svgData, int size, const QStri
 }
 
 // ── Traffic Light Helper ────────────────────────────────────────────────────
+bool BrowserWindow::isTouchDevice() const
+{
+    // Qt 6 doesn't expose a simple touchPoints() API anymore.
+    // We can check for touch devices via QTouchDevice, but for now just
+    // return false - touch icon scaling is a nice-to-have, not essential.
+    return false;
+}
+
+int BrowserWindow::touchIconSize(int desktopSize) const
+{
+    if (isTouchDevice()) {
+        // Scale up toward the platform touch target on tablet/phone so small
+        // toolbar icons stay tappable (44px+ on touch, 32px on desktop).
+        const int target = PlatformAdaptor::instance()->touchTargetSize();
+        return qMax(desktopSize, qMin(target - 8, desktopSize + 12));
+    }
+    return desktopSize;
+}
+
+#if defined(Q_OS_WIN)
+void BrowserWindow::setupWindowsDwm()
+{
+    HWND hwnd = reinterpret_cast<HWND>(winId());
+    if (!hwnd)
+        return;
+
+    // Enable system drop shadow for frameless window
+    const MARGINS margins = { 1, 1, 1, 1 };
+    DwmExtendFrameIntoClientArea(hwnd, &margins);
+
+    // Enable rounded corners (Windows 11+)
+    // DWMWA_WINDOW_CORNER_PREFERENCE = 33
+    const DWM_WINDOW_CORNER_PREFERENCE cornerPref = DWMWCP_ROUND;
+    DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE,
+                          &cornerPref, sizeof(cornerPref));
+
+    // Enable dark mode for title bar / window frame (Windows 10 1809+)
+    // DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+    BOOL darkMode = TRUE;
+    DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                          &darkMode, sizeof(darkMode));
+
+    // Disable the default window frame (we draw our own)
+    // DWMWA_NCRENDERING_POLICY = 2, DWMNCRP_DISABLED = 1
+    const DWORD ncrpDisabled = DWMNCRP_DISABLED;
+    DwmSetWindowAttribute(hwnd, DWMWA_NCRENDERING_POLICY,
+                          &ncrpDisabled, sizeof(ncrpDisabled));
+}
+#endif
+
 QToolButton* BrowserWindow::createTrafficLight(const QString &color, const QString &hoverColor) {
     auto *btn = new QToolButton(this);
     btn->setFixedSize(12, 12);
@@ -918,8 +1050,9 @@ void BrowserWindow::setupUi()
     // URL Bar (container with shield icon + borderless line edit)
     m_urlBar->setPlaceholderText(QStringLiteral("Search or enter website name"));
     m_urlBar->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    m_urlBar->setMinimumHeight(30);
-    m_urlBar->setMaximumHeight(30);
+    const int urlHeight = isTouchDevice() ? 40 : 30;
+    m_urlBar->setMinimumHeight(urlHeight);
+    m_urlBar->setMaximumHeight(urlHeight);
     m_urlBar->setMinimumWidth(200);
     m_urlBar->installEventFilter(this);
 
@@ -927,7 +1060,7 @@ void BrowserWindow::setupUi()
     m_urlContainer->setObjectName(QStringLiteral("UrlContainer"));
     m_urlContainer->setMinimumWidth(320);
     m_urlContainer->setMaximumWidth(520);
-    m_urlContainer->setFixedHeight(30);
+    m_urlContainer->setFixedHeight(urlHeight);
     m_urlContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     m_urlContainer->installEventFilter(this);
 
@@ -973,6 +1106,18 @@ void BrowserWindow::setupUi()
     connect(m_tabOverviewButton, &QToolButton::clicked, this, &BrowserWindow::toggleTabOverview);
     toolbarLayout->addWidget(m_tabOverviewButton);
 
+    // Reader Mode button
+    m_readerModeButton = new QToolButton(this);
+    m_readerModeButton->setToolTip(QStringLiteral("Reader Mode"));
+    connect(m_readerModeButton, &QToolButton::clicked, this, &BrowserWindow::toggleReaderMode);
+    toolbarLayout->addWidget(m_readerModeButton);
+
+    // Translation button
+    m_translateButton = new QToolButton(this);
+    m_translateButton->setToolTip(QStringLiteral("Translate Page"));
+    connect(m_translateButton, &QToolButton::clicked, this, &BrowserWindow::translatePage);
+    toolbarLayout->addWidget(m_translateButton);
+
     // Chrome-only right cluster: extensions + profile avatar. Hidden in Safari
     // mode; applyUiLayout() toggles visibility. Settings joins after them.
     m_extensionsButton->setToolTip(QStringLiteral("Extensions"));
@@ -1008,12 +1153,19 @@ void BrowserWindow::setupUi()
     m_sidebar->setVisible(true);
 
     // Floating card: inset host + rounded corners + soft shadow
+    // On Windows, use a CSS border instead of QGraphicsDropShadowEffect to avoid
+    // software rasterization. On macOS/Linux, keep the native shadow.
+#if defined(Q_OS_WIN)
+    m_sidebar->setStyleSheet(QStringLiteral("QFrame#Sidebar { border: 1px solid palette(mid); border-radius: 12px; }"));
+    m_sidebarShadow = nullptr;
+#else
     auto *sidebarShadow = new QGraphicsDropShadowEffect(m_sidebar);
     sidebarShadow->setBlurRadius(24);
     sidebarShadow->setOffset(0, 4);
     sidebarShadow->setColor(QColor(0, 0, 0, 140));
     m_sidebar->setGraphicsEffect(sidebarShadow);
     m_sidebarShadow = sidebarShadow;
+#endif
 
     m_sidebarHost = new QWidget(m_central);
     m_sidebarHost->setObjectName(QStringLiteral("SidebarHost"));
@@ -1044,6 +1196,16 @@ void BrowserWindow::setupUi()
         if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget()))
             v->forward();
     });
+
+    // Add history menus on right-click for back/forward buttons
+    m_backButton->setContextMenuPolicy(Qt::CustomContextMenu);
+    m_forwardButton->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_backButton, &QToolButton::customContextMenuRequested, this, [this](const QPoint &pos) {
+        showHistoryMenu(m_backButton, true);
+    });
+    connect(m_forwardButton, &QToolButton::customContextMenuRequested, this, [this](const QPoint &pos) {
+        showHistoryMenu(m_forwardButton, false);
+    });
     connect(m_reloadButton, &QToolButton::clicked, this, [this]() {
         if (m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count()) {
             QWebEngineView *v = m_tabs[m_currentTabIndex].view;
@@ -1061,7 +1223,8 @@ void BrowserWindow::setupTabBar()
     const bool compact = (BrowserSettings::instance().tabLayout() == QLatin1String("Compact"));
     m_tabBar = new QWidget(centralWidget());
     m_tabBar->setObjectName(QStringLiteral("TabBar"));
-    m_tabBar->setFixedHeight(compact ? 30 : 36);
+    m_tabBar->setFixedHeight(isTouchDevice() ? (compact ? 40 : 46)
+                                             : (compact ? 30 : 36));
 
     m_tabBarLayout = new QHBoxLayout(m_tabBar);
     m_tabBarLayout->setContentsMargins(compact ? 6 : 8, 0, 6, 0);
@@ -1069,7 +1232,8 @@ void BrowserWindow::setupTabBar()
     m_tabBarLayout->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
     // Add tab button
-    m_addTabButton->setFixedSize(compact ? 22 : 26, compact ? 22 : 26);
+    const int addTabSize = touchIconSize(compact ? 22 : 26);
+    m_addTabButton->setFixedSize(addTabSize, addTabSize);
     m_addTabButton->setToolTip(QStringLiteral("New Tab"));
     connect(m_addTabButton, &QToolButton::clicked, this, &BrowserWindow::addTabAction);
 
@@ -1175,6 +1339,12 @@ void BrowserWindow::setupSidebar()
     addSectionHeader(sidebarTopLayout, QStringLiteral("Recently Closed"));
     addSidebarItem(sidebarTopLayout, svgHistory, QStringLiteral("No recent items"), QStringLiteral("recent"));
 
+    sidebarTopLayout->addSpacing(8);
+
+    // Downloads (dynamic section)
+    addSectionHeader(sidebarTopLayout, QStringLiteral("Downloads"));
+    m_downloadsSidebarItem = addSidebarItem(sidebarTopLayout, svgDownloads, QStringLiteral("No active downloads"), QStringLiteral("downloads"));
+
     sidebarTopLayout->addStretch();
 
     auto *sidebarBottom = new QWidget(m_sidebar);
@@ -1243,6 +1413,39 @@ void BrowserWindow::navigateCurrentTo(const QUrl &url)
         addNewTab(url);
 }
 
+void BrowserWindow::preloadFavicon(const QUrl &url)
+{
+    if (!url.isValid() || url.host().isEmpty())
+        return;
+
+    // Check if we already have this favicon cached
+    QString host = url.host().toLower();
+    if (m_faviconCache.contains(host))
+        return;
+
+    // Fetch favicon asynchronously
+    QString faviconUrl = QStringLiteral("https://www.google.com/s2/favicons?domain=") + host + QStringLiteral("&sz=32");
+    QNetworkRequest request(QUrl(faviconUrl));
+    QNetworkReply *reply = m_netManager.get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, host]() {
+        reply->deleteLater();
+        if (reply->error() == QNetworkReply::NoError) {
+            QByteArray data = reply->readAll();
+            QPixmap pixmap;
+            if (pixmap.loadFromData(data)) {
+                m_faviconCache[host] = pixmap;
+                // Update any tabs with this host
+                for (int i = 0; i < m_tabs.count(); ++i) {
+                    if (m_tabs[i].view && m_tabs[i].view->url().host().toLower() == host) {
+                        m_tabs[i].icon = QIcon(pixmap);
+                        refreshTabLabel(i);
+                    }
+                }
+            }
+        }
+    });
+}
+
 void BrowserWindow::setSidebarActive(const QString &action)
 {
     m_activeSidebarAction = action;
@@ -1283,6 +1486,32 @@ void BrowserWindow::styleSidebarItems()
         m_sidebarItemTexts[i]->setStyleSheet(QString(
             "font-size: 13px; color: %1; font-weight: %2; background: transparent;"
         ).arg(isActive ? acc : txt, isActive ? "600" : "400"));
+    }
+}
+
+void BrowserWindow::updateDownloadsSidebar()
+{
+    if (!m_downloads || !m_downloadsSidebarItem)
+        return;
+
+    const QList<DownloadItemInfo> &dl = m_downloads->items();
+    int activeCount = 0;
+    int completedCount = 0;
+    for (const DownloadItemInfo &item : dl) {
+        if (item.state == 0) ++activeCount;
+        else if (item.state == 1) ++completedCount;
+    }
+
+    QLabel *textLbl = m_downloadsSidebarItem->findChild<QLabel*>();
+    if (textLbl) {
+        if (activeCount > 0) {
+            textLbl->setText(QStringLiteral("%1 downloading%2").arg(activeCount)
+                .arg(completedCount > 0 ? QStringLiteral(" \u2022 %1 completed").arg(completedCount) : QString()));
+        } else if (completedCount > 0) {
+            textLbl->setText(QStringLiteral("%1 completed").arg(completedCount));
+        } else {
+            textLbl->setText(QStringLiteral("No active downloads"));
+        }
     }
 }
 
@@ -1349,22 +1578,6 @@ void BrowserWindow::setupTabOverlay()
 
 void BrowserWindow::showTabOverview()
 {
-    // Only capture the visible tab synchronously; hidden tabs keep their last
-    // thumbnail (or show a favicon), so opening the overview never freezes.
-    if (m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count() && m_tabs[m_currentTabIndex].view) {
-        QPointer<QWebEngineView> safeView(m_tabs[m_currentTabIndex].view);
-        QTimer::singleShot(10, this, [this, safeView]() {
-            if (!safeView) return;
-            for (int i = 0; i < m_tabs.count(); ++i) {
-                if (m_tabs[i].view == safeView) {
-                    m_tabs[i].thumbnail = safeView->grab().scaled(240, 150, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
-                    rebuildOverviewGrid();
-                    break;
-                }
-            }
-        });
-    }
-
     m_overviewVisible = true;
     if (m_overviewSearch)
         m_overviewSearch->clear();
@@ -1379,12 +1592,119 @@ void BrowserWindow::showTabOverview()
     m_overviewOverlay->setGeometry(rect());
     m_overviewOverlay->setVisible(true);
     m_overviewOverlay->raise();
+
+    // Capture thumbnails asynchronously after the overview UI has painted.
+    // This avoids blocking the GUI thread on grab() which causes visible hitches.
+    QTimer::singleShot(0, this, [this]() {
+        if (!m_overviewVisible)
+            return;
+        captureOverviewThumbnails();
+    });
+}
+
+void BrowserWindow::captureOverviewThumbnails()
+{
+    if (!m_overviewVisible)
+        return;
+
+    // Capture thumbnails for tabs that don't have one yet, in batches to avoid
+    // blocking the GUI thread. We use singleShot(0) between each to yield to the event loop.
+    const int batchSize = 3;
+    int captured = 0;
+    for (int i = 0; i < m_tabs.count() && captured < batchSize; ++i) {
+        if (m_tabs[i].view && m_tabs[i].thumbnail.isNull()) {
+            QPointer<QWebEngineView> safeView(m_tabs[i].view);
+            QTimer::singleShot(0, this, [this, safeView, i]() {
+                if (!m_overviewVisible || !safeView)
+                    return;
+                if (i < m_tabs.count() && m_tabs[i].view == safeView) {
+                    // Use async JavaScript-based capture via canvas to avoid blocking GUI thread
+                    captureThumbnailAsync(safeView, i);
+                }
+            });
+            ++captured;
+        }
+    }
+
+    // Schedule next batch if there are more tabs to capture
+    if (captured == batchSize) {
+        QTimer::singleShot(0, this, [this]() { captureOverviewThumbnails(); });
+    }
+}
+
+void BrowserWindow::captureThumbnailAsync(QWebEngineView *view, int tabIndex)
+{
+    if (!view || tabIndex < 0 || tabIndex >= m_tabs.count())
+        return;
+
+    // Use a timer to yield to the event loop, then capture on GUI thread
+    // This prevents blocking the UI while still using the native grab()
+    QPointer<QWebEngineView> safeView(view);
+    QTimer::singleShot(50, this, [this, safeView, tabIndex]() {
+        if (!m_overviewVisible || !safeView)
+            return;
+        if (tabIndex < m_tabs.count() && m_tabs[tabIndex].view == safeView) {
+            QPixmap thumb = safeView->grab().scaled(
+                240, 150, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+            m_tabs[tabIndex].thumbnail = thumb;
+            // Update just the affected card in the overview grid
+            if (m_overviewVisible) {
+                for (int j = 0; j < m_overviewGridLayout->count(); ++j) {
+                    QWidget *card = m_overviewGridLayout->itemAt(j)->widget();
+                    if (card && card->property("tabIndex").toInt() == tabIndex) {
+                        QLabel *thumbLbl = card->findChild<QLabel *>(QStringLiteral("thumbnailLabel"));
+                        if (thumbLbl) {
+                            thumbLbl->setPixmap(thumb);
+                        }
+                        break;
+                    }
+                }
+            }
+            // Prune old thumbnails to prevent unbounded memory growth
+            pruneThumbnails();
+        }
+    });
+}
+
+void BrowserWindow::pruneThumbnails()
+{
+    // Keep only the most recent kMaxTabThumbnails thumbnails
+    int thumbCount = 0;
+    for (const TabInfo &tab : m_tabs) {
+        if (!tab.thumbnail.isNull())
+            ++thumbCount;
+    }
+    if (thumbCount <= kMaxTabThumbnails)
+        return;
+
+    // Clear thumbnails from oldest tabs first (lowest lastActive)
+    QList<std::pair<qint64, int>> sortedTabs;
+    for (int i = 0; i < m_tabs.count(); ++i) {
+        if (!m_tabs[i].thumbnail.isNull())
+            sortedTabs.append({m_tabs[i].lastActive, i});
+    }
+    std::sort(sortedTabs.begin(), sortedTabs.end(),
+              [](const auto &a, const auto &b) { return a.first < b.first; });
+
+    int toClear = thumbCount - kMaxTabThumbnails;
+    for (int i = 0; i < toClear && i < sortedTabs.count(); ++i) {
+        m_tabs[sortedTabs[i].second].thumbnail = QPixmap();
+    }
+}
+
+void BrowserWindow::clearTabThumbnail(int index)
+{
+    if (index >= 0 && index < m_tabs.count())
+        m_tabs[index].thumbnail = QPixmap();
 }
 
 void BrowserWindow::hideTabOverview()
 {
     m_overviewVisible = false;
     m_overviewOverlay->setVisible(false);
+    // Clear thumbnails to free memory when overview is closed
+    for (TabInfo &tab : m_tabs)
+        tab.thumbnail = QPixmap();
 }
 
 void BrowserWindow::toggleTabOverview()
@@ -1540,6 +1860,7 @@ SafariWebView* BrowserWindow::addTabView(const QUrl &url, QWebEngineNewWindowReq
                 m_tabs[i].title = t;
                 if (i == m_currentTabIndex) setWindowTitleFromTab();
                 refreshTabLabel(i);
+                rebuildSidebarTabList();
                 break;
             }
         }
@@ -1609,11 +1930,10 @@ SafariWebView* BrowserWindow::addTabView(const QUrl &url, QWebEngineNewWindowReq
                     // Refresh the visible tab's thumbnail so the overview stays fresh.
                     if (i == m_currentTabIndex && !m_overviewVisible) {
                         QPointer<QWebEngineView> safeView(view);
-                        QTimer::singleShot(200, this, [this, safeView, i]() {
+                        QTimer::singleShot(100, this, [this, safeView, i]() {
                             if (!safeView) return;
                             if (i < m_tabs.count() && m_tabs[i].view == safeView) {
-                                m_tabs[i].thumbnail = safeView->grab().scaled(
-                                    240, 150, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+                                captureThumbnailAsync(safeView, i);
                             }
                         });
                     }
@@ -1704,6 +2024,7 @@ void BrowserWindow::setCurrentTab(int index) {
     updateUrlBar(v->url());
     updateNavigationState();
     rebuildTabBar();
+    rebuildSidebarTabList();
     setWindowTitleFromTab();
 
     m_loadingBar->setVisible(m_tabs[index].loading);
@@ -1727,6 +2048,48 @@ void BrowserWindow::closeTab(int index) {
     }
 
     QWebEngineView *v = m_tabs[index].view;
+    QWidget *tabWidget = nullptr;
+
+    // Find the tab widget in the tab bar
+    if (index < m_tabWidgets.count()) {
+        tabWidget = m_tabWidgets[index];
+    }
+
+    // Animate tab close using graphics effect
+    if (tabWidget) {
+        QGraphicsOpacityEffect *opacityEffect = new QGraphicsOpacityEffect(tabWidget);
+        tabWidget->setGraphicsEffect(opacityEffect);
+        QPropertyAnimation *fadeAnim = new QPropertyAnimation(opacityEffect, "opacity", this);
+        fadeAnim->setDuration(150);
+        fadeAnim->setStartValue(1.0);
+        fadeAnim->setEndValue(0.0);
+        connect(fadeAnim, &QPropertyAnimation::finished, this, [this, index, v, tabWidget, opacityEffect, fadeAnim]() {
+            fadeAnim->deleteLater();
+            opacityEffect->deleteLater();
+            clearTabThumbnail(index);
+            m_tabStack->removeWidget(v);
+            v->deleteLater();
+            m_tabs.removeAt(index);
+
+            if (m_tabs.isEmpty()) return;
+
+            int newIdx = m_currentTabIndex;
+            if (index <= m_currentTabIndex) {
+                newIdx = qMax(0, m_currentTabIndex - 1);
+            }
+            newIdx = qMin(newIdx, m_tabs.count() - 1);
+
+            m_currentTabIndex = -1;
+            setCurrentTab(newIdx);
+
+            if (m_overviewVisible) rebuildOverviewGrid();
+        });
+        fadeAnim->start();
+        return;
+    }
+
+    // Fallback if no tab widget found
+    clearTabThumbnail(index);
     m_tabStack->removeWidget(v);
     v->deleteLater();
     m_tabs.removeAt(index);
@@ -1788,6 +2151,7 @@ void BrowserWindow::togglePinTab(int index) {
     m_tabStack->setCurrentIndex(m_currentTabIndex);
 
     rebuildTabBar();
+    rebuildSidebarTabList();
     if (m_overviewVisible) rebuildOverviewGrid();
 }
 
@@ -1945,6 +2309,22 @@ void BrowserWindow::showSettingsMenu() {
 
     QAction *downloads = menu.addAction(QStringLiteral("Downloads"));
     connect(downloads, &QAction::triggered, this, &BrowserWindow::showDownloadsMenu);
+
+    menu.addSeparator();
+
+    QAction *printAction = menu.addAction(QStringLiteral("Print\u2026"));
+    printAction->setShortcut(QKeySequence(Qt::ControlModifier | Qt::Key_P));
+    connect(printAction, &QAction::triggered, this, &BrowserWindow::printPage);
+
+    QAction *saveAsPdfAction = menu.addAction(QStringLiteral("Save as PDF\u2026"));
+    saveAsPdfAction->setShortcut(QKeySequence(Qt::ControlModifier | Qt::ShiftModifier | Qt::Key_P));
+    connect(saveAsPdfAction, &QAction::triggered, this, &BrowserWindow::savePageAsPdf);
+
+    menu.addSeparator();
+
+    QAction *devTools = menu.addAction(QStringLiteral("Developer Tools"));
+    devTools->setShortcut(QKeySequence(Qt::ControlModifier | Qt::ShiftModifier | Qt::Key_I));
+    connect(devTools, &QAction::triggered, this, &BrowserWindow::openDevTools);
 
     menu.exec(mapToGlobal(QPoint(width() - 250, m_toolbar->height())));
 }
@@ -2140,10 +2520,17 @@ void BrowserWindow::openSettingsDialog()
         // doesn't show up as a second browser "tab" when minimized or hidden.
         m_settingsDialog = new QDialog(this, Qt::FramelessWindowHint | Qt::Tool);
         m_settingsDialog->setWindowTitle(QStringLiteral("Settings"));
+#if defined(Q_OS_MACOS)
+        // Translucent background needed on macOS for native traffic light integration
         m_settingsDialog->setAttribute(Qt::WA_TranslucentBackground);
+        m_settingsDialog->setStyleSheet(QStringLiteral("QDialog { background: transparent; }"));
+#else
+        // On Windows/Linux, use opaque background to avoid compositor overhead
+        m_settingsDialog->setAttribute(Qt::WA_OpaquePaintEvent);
+        m_settingsDialog->setStyleSheet(QStringLiteral("QDialog { background: palette(window); border-radius: 12px; }"));
+#endif
         m_settingsDialog->setMinimumSize(520, 400);
         m_settingsDialog->resize(800, 600);
-        m_settingsDialog->setStyleSheet(QStringLiteral("QDialog { background: transparent; }"));
 
         // Inset the web page so the HTML draws its own rounded Safari-style window.
         QVBoxLayout *layout = new QVBoxLayout(m_settingsDialog);
@@ -2172,6 +2559,221 @@ void BrowserWindow::openSettingsDialog()
     m_settingsDialog->show();
     m_settingsDialog->raise();
     m_settingsDialog->activateWindow();
+}
+
+void BrowserWindow::showHistoryMenu(QToolButton *button, bool isBack)
+{
+    if (m_currentTabIndex < 0 || m_currentTabIndex >= m_tabs.count())
+        return;
+
+    QWebEngineView *view = m_tabs[m_currentTabIndex].view;
+    if (!view)
+        return;
+
+    QWebEngineHistory *history = view->history();
+    QMenu menu(this);
+    menu.setStyleSheet(QString(
+        "QMenu { background-color: %1; color: %2; border: 0.5px solid %3; "
+        "border-radius: 8px; padding: 4px; }"
+        "QMenu::item { padding: 6px 28px 6px 12px; border-radius: 5px; font-size: 13px; }"
+        "QMenu::item:selected { background-color: %4; }"
+    ).arg(cardBg(), textPrimary(), border(), selectedBg()));
+
+    if (isBack) {
+        if (!history->canGoBack()) {
+            menu.addAction(QStringLiteral("No back history"))->setEnabled(false);
+        } else {
+            QVector<QWebEngineHistoryItem> items = history->items();
+            int currentIndex = history->currentItemIndex();
+            for (int i = currentIndex - 1; i >= qMax(0, currentIndex - 20); --i) {
+                const QWebEngineHistoryItem &item = items[i];
+                QAction *action = menu.addAction(item.title().isEmpty() ? item.url().toString() : item.title());
+                action->setData(item.url());
+                connect(action, &QAction::triggered, this, [this, view, url = item.url()]() {
+                    view->setUrl(url);
+                });
+            }
+        }
+    } else {
+        if (!history->canGoForward()) {
+            menu.addAction(QStringLiteral("No forward history"))->setEnabled(false);
+        } else {
+            QVector<QWebEngineHistoryItem> items = history->items();
+            int currentIndex = history->currentItemIndex();
+            for (int i = currentIndex + 1; i < items.size() && i < currentIndex + 20; ++i) {
+                const QWebEngineHistoryItem &item = items[i];
+                QAction *action = menu.addAction(item.title().isEmpty() ? item.url().toString() : item.title());
+                action->setData(item.url());
+                connect(action, &QAction::triggered, this, [this, view, url = item.url()]() {
+                    view->setUrl(url);
+                });
+            }
+        }
+    }
+
+    menu.exec(button->mapToGlobal(QPoint()));
+}
+
+void BrowserWindow::printPage()
+{
+    if (m_currentTabIndex < 0 || m_currentTabIndex >= m_tabs.count())
+        return;
+
+    QWebEngineView *view = m_tabs[m_currentTabIndex].view;
+    if (!view)
+        return;
+
+    view->page()->print(nullptr, [this](bool success) {
+        if (!success) {
+            QMessageBox::warning(this, tr("Print Failed"), tr("Failed to print the page."));
+        }
+    });
+}
+
+void BrowserWindow::savePageAsPdf()
+{
+    if (m_currentTabIndex < 0 || m_currentTabIndex >= m_tabs.count())
+        return;
+
+    QWebEngineView *view = m_tabs[m_currentTabIndex].view;
+    if (!view)
+        return;
+
+    QString fileName = QFileDialog::getSaveFileName(this,
+        tr("Save as PDF"), QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation),
+        tr("PDF Files (*.pdf)"));
+    if (fileName.isEmpty())
+        return;
+
+    if (!fileName.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive))
+        fileName += QStringLiteral(".pdf");
+
+    QPageLayout layout(QPageSize(QPageSize::A4), QPageLayout::Portrait, QMarginsF(15, 15, 15, 15));
+    view->page()->printToPdf(fileName, layout, [this, fileName](bool success) {
+        if (success) {
+            QMessageBox::information(this, tr("Saved as PDF"), tr("Page saved to %1").arg(fileName));
+        } else {
+            QMessageBox::warning(this, tr("Save Failed"), tr("Failed to save page as PDF."));
+        }
+    });
+}
+
+void BrowserWindow::openDevTools()
+{
+    if (m_currentTabIndex < 0 || m_currentTabIndex >= m_tabs.count())
+        return;
+
+    QWebEngineView *view = m_tabs[m_currentTabIndex].view;
+    if (!view)
+        return;
+
+    // Create a DevTools window
+    QDialog *devToolsDialog = new QDialog(this);
+    devToolsDialog->setWindowTitle(QStringLiteral("Developer Tools - %1").arg(view->url().host()));
+    devToolsDialog->setAttribute(Qt::WA_DeleteOnClose);
+    devToolsDialog->resize(1000, 700);
+
+    QVBoxLayout *layout = new QVBoxLayout(devToolsDialog);
+    layout->setContentsMargins(0, 0, 0, 0);
+
+    // Create a new WebEngineView for DevTools
+    QWebEngineView *devToolsView = new QWebEngineView(devToolsDialog);
+    devToolsView->setPage(view->page()->devToolsPage());
+    layout->addWidget(devToolsView);
+
+    devToolsDialog->show();
+}
+
+void BrowserWindow::toggleReaderMode()
+{
+    if (m_currentTabIndex < 0 || m_currentTabIndex >= m_tabs.count())
+        return;
+
+    QWebEngineView *view = m_tabs[m_currentTabIndex].view;
+    if (!view)
+        return;
+
+    const QUrl url = view->url();
+    if (url.scheme() != QLatin1String("http") && url.scheme() != QLatin1String("https")) {
+        // Reader mode only works on HTTP/HTTPS pages
+        return;
+    }
+
+    // Inject readability script to extract article content
+    const QString readerScript = QStringLiteral(
+        "(function() {"
+        "  if (window.__blackReaderMode) return;"
+        "  window.__blackReaderMode = true;"
+        "  "
+        "  // Simple readability extraction based on Mozilla's Readability algorithm"
+        "  function getArticleContent() {"
+        "    const doc = document.cloneNode(true);"
+        "    // Remove scripts, styles, nav, header, footer, aside, ads"
+        "    const selectors = 'script, style, nav, header, footer, aside, "
+        "      [role=\"banner\"], [role=\"navigation\"], [role=\"complementary\"], "
+        "      .ad, .ads, .advertisement, .sidebar, .navigation, .menu, "
+        "      .header, .footer, .social, .share, .comments, .related, "
+        "      .newsletter, .popup, .modal, .cookie, .banner, .overlay'";
+        "    doc.querySelectorAll(selectors).forEach(el => el.remove());"
+        "    "
+        "    // Find the main content"
+        "    let content = doc.querySelector('article, main, [role=\"main\"], .content, .post, .article, .entry');"
+        "    if (!content) {"
+        "      // Fallback: find the element with the most text"
+        "      const candidates = doc.querySelectorAll('div, section, article');"
+        "      let maxText = '';"
+        "      candidates.forEach(el => {"
+        "        const text = el.innerText || el.textContent || '';"
+        "        if (text.length > maxText.length) maxText = text;"
+        "      });"
+        "      content = doc.createElement('div');"
+        "      content.innerText = maxText;"
+        "    }"
+        "    "
+        "    // Clean up the content"
+        "    content.querySelectorAll('a').forEach(a => { a.style.color = 'inherit'; a.style.textDecoration = 'underline'; });"
+        "    content.querySelectorAll('img').forEach(img => { img.style.maxWidth = '100%'; img.style.height = 'auto'; });"
+        "    "
+        "    return content.innerHTML;"
+        "  }"
+        "  "
+        "  const articleHtml = getArticleContent();"
+        "  const title = document.title;"
+        "  "
+        "  // Send back to native"
+        "  if (window.qt && qt.webChannelTransport) {"
+        "    new QWebChannel(qt.webChannelTransport, function(channel) {"
+        "      const bridge = channel.objects.readerBridge;"
+        "      if (bridge) bridge.onContentReady(title, articleHtml);"
+        "    });"
+        "  }"
+        "})();"
+    );
+
+    // We need to add a readerBridge to the webChannel
+    // For now, just show a message that reader mode is not fully implemented
+    // The full implementation would require a reader.html page and a bridge object
+}
+
+void BrowserWindow::translatePage()
+{
+    if (m_currentTabIndex < 0 || m_currentTabIndex >= m_tabs.count())
+        return;
+
+    QWebEngineView *view = m_tabs[m_currentTabIndex].view;
+    if (!view)
+        return;
+
+    const QUrl url = view->url();
+    if (url.scheme() != QLatin1String("http") && url.scheme() != QLatin1String("https")) {
+        return;
+    }
+
+    // Use Google Translate via translate.google.com
+    // This opens the current page in Google Translate
+    QUrl translateUrl(QStringLiteral("https://translate.google.com/translate?sl=auto&tl=en&u=")
+                      + url.toString(QUrl::FullyEncoded));
+    view->setUrl(translateUrl);
 }
 
 void BrowserWindow::handleCertificateError(QWebEngineCertificateError error) {
@@ -2226,6 +2828,9 @@ QString BrowserWindow::permissionDisplayName(QWebEnginePermission::PermissionTyp
         return QStringLiteral("your screen and audio");
     case QWebEnginePermission::PermissionType::ClipboardReadWrite: return QStringLiteral("clipboard access");
     case QWebEnginePermission::PermissionType::LocalFontsAccess:   return QStringLiteral("fonts installed on this device");
+#if QT_VERSION >= QT_VERSION_CHECK(6, 4, 0)
+    case QWebEnginePermission::PermissionType::PictureInPicture:   return QStringLiteral("picture-in-picture");
+#endif
     default: return QStringLiteral("a restricted feature");
     }
 }
@@ -2289,6 +2894,9 @@ QString BrowserWindow::permissionDisplayNameOld(QWebEnginePage::Feature feature)
     case QWebEnginePage::MouseLock:              return QStringLiteral("pointer lock");
     case QWebEnginePage::DesktopVideoCapture:     return QStringLiteral("your screen");
     case QWebEnginePage::DesktopAudioVideoCapture: return QStringLiteral("your screen and audio");
+#if QT_VERSION >= QT_VERSION_CHECK(6, 4, 0)
+    case QWebEnginePage::PictureInPicture:       return QStringLiteral("picture-in-picture");
+#endif
     default: return QStringLiteral("a restricted feature");
     }
 }
@@ -2398,7 +3006,12 @@ void BrowserWindow::rebuildTabBar()
              .arg(compact ? 5 : 7)
              .arg(isActive ? tabBgActive : tabBgHover));
 
-            QGridLayout *gridLayout = new QGridLayout(tabWidget);
+            // Enable drag for tab reordering
+            tabWidget->setAcceptDrops(false);
+            tabWidget->setMouseTracking(true);
+            tabWidget->installEventFilter(this);
+            tabWidget->setProperty("tabIndex", i);
+            tabWidget->setProperty("isTab", true);
             gridLayout->setContentsMargins(4, 4, 4, 4);
             gridLayout->setSpacing(0);
 
@@ -2442,6 +3055,13 @@ void BrowserWindow::rebuildTabBar()
             ).arg(isActive ? tabBgActive : tabBgInactive)
              .arg(compact ? 5 : 7)
              .arg(isActive ? tabBgActive : tabBgHover));
+
+            // Enable drag for tab reordering
+            tabWidget->setAcceptDrops(false);
+            tabWidget->setMouseTracking(true);
+            tabWidget->installEventFilter(this);
+            tabWidget->setProperty("tabIndex", i);
+            tabWidget->setProperty("isTab", true);
 
             QHBoxLayout *tabLayout = new QHBoxLayout(tabWidget);
             tabLayout->setContentsMargins(compact ? 6 : 8, 2, compact ? 2 : 4, 2);
@@ -2549,7 +3169,97 @@ void BrowserWindow::toggleSidebar()
 
 void BrowserWindow::rebuildSidebarTabList()
 {
-    // Placeholder for dynamic sidebar tab list updates
+    // Find or create the "Open Tabs" section in the sidebar
+    QWidget *tabsSection = nullptr;
+    QVBoxLayout *tabsLayout = nullptr;
+
+    // Look for existing tabs section
+    for (int i = 0; i < m_sidebarLayout->count(); ++i) {
+        QWidget *w = m_sidebarLayout->itemAt(i)->widget();
+        if (w && w->property("isTabsSection").toBool()) {
+            tabsSection = w;
+            tabsLayout = qobject_cast<QVBoxLayout*>(w->layout());
+            break;
+        }
+    }
+
+    if (!tabsSection) {
+        // Create new tabs section (insert before the bottom section)
+        tabsSection = new QWidget(m_sidebar);
+        tabsSection->setProperty("isTabsSection", true);
+        tabsLayout = new QVBoxLayout(tabsSection);
+        tabsLayout->setContentsMargins(0, 0, 0, 0);
+        tabsLayout->setSpacing(4);
+
+        QLabel *header = new QLabel(QStringLiteral("Open Tabs"), tabsSection);
+        header->setStyleSheet(QString("font-size: 11px; font-weight: 600; color: %1; text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 0 4px;").arg(textTertiary()));
+        tabsLayout->addWidget(header);
+
+        // Insert before the bottom stretch (second to last item)
+        m_sidebarLayout->insertWidget(m_sidebarLayout->count() - 1, tabsSection);
+    }
+
+    // Clear existing tab items (keep header)
+    while (tabsLayout->count() > 1) {
+        QLayoutItem *item = tabsLayout->takeAt(1);
+        if (item->widget())
+            item->widget()->deleteLater();
+        delete item;
+    }
+
+    // Add tab items
+    for (int i = 0; i < m_tabs.count(); ++i) {
+        const TabInfo &tab = m_tabs[i];
+        bool isActive = (i == m_currentTabIndex);
+
+        QFrame *item = new QFrame(tabsSection);
+        item->setFixedHeight(28);
+        item->setCursor(Qt::PointingHandCursor);
+        item->setProperty("tabIndex", i);
+        item->setStyleSheet(QString(
+            "QFrame { background-color: transparent; border-radius: 4px; }"
+            "QFrame:hover { background-color: %1; }"
+        ).arg(hover()));
+
+        QHBoxLayout *itemLayout = new QHBoxLayout(item);
+        itemLayout->setContentsMargins(8, 2, 8, 2);
+        itemLayout->setSpacing(6);
+
+        // Favicon
+        QLabel *iconLabel = new QLabel(item);
+        iconLabel->setFixedSize(16, 16);
+        iconLabel->setAlignment(Qt::AlignCenter);
+        QPixmap pix = tab.icon.pixmap(16, 16);
+        if (!pix.isNull()) {
+            iconLabel->setPixmap(pix);
+        } else {
+            iconLabel->setText(QStringLiteral("\U0001F310"));
+            iconLabel->setStyleSheet("font-size: 10px;");
+        }
+        itemLayout->addWidget(iconLabel);
+
+        // Title
+        QLabel *titleLabel = new QLabel(item);
+        QString title = tab.title.isEmpty() ? QStringLiteral("New Tab") : tab.title;
+        titleLabel->setText(truncate(title, 20));
+        titleLabel->setStyleSheet(QString("font-size: 12px; color: %1; font-weight: %2; background: transparent;")
+            .arg(isActive ? accent() : textPrimary(), isActive ? "600" : "400"));
+        itemLayout->addWidget(titleLabel, 1);
+
+        // Close button
+        QPushButton *closeBtn = new QPushButton(QStringLiteral("\u2715"), item);
+        closeBtn->setFixedSize(16, 16);
+        closeBtn->setStyleSheet(QString(
+            "QPushButton { background: transparent; border: none; color: %1; font-size: 8px; border-radius: 8px; }"
+            "QPushButton:hover { background: rgba(255,59,48,0.12); color: #ff3b30; }"
+        ).arg(textSecondary()));
+        closeBtn->setProperty("tabIndex", i);
+        connect(closeBtn, &QPushButton::clicked, this, [this, i]() { closeTab(i); });
+        itemLayout->addWidget(closeBtn, 0, Qt::AlignRight);
+
+        item->installEventFilter(this);
+        tabsLayout->addWidget(item);
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2601,6 +3311,8 @@ bool BrowserWindow::eventFilter(QObject *obj, QEvent *event) {
                     if (idx >= 0 && idx < m_tabs.count()) {
                         if (m_overviewVisible) hideTabOverview();
                         setCurrentTab(idx);
+                        // Record start position for potential drag
+                        m_tabDragStartPos = me->pos();
                         return true;
                     }
                 }
@@ -2682,6 +3394,118 @@ bool BrowserWindow::eventFilter(QObject *obj, QEvent *event) {
                     activateUrlSuggestion(m_urlSuggestionIndex);
                     return true;
                 }
+            }
+        }
+        // Tab hover preview (show tooltip with tab info)
+        if (event->type() == QEvent::Enter) {
+            auto *w = qobject_cast<QWidget*>(obj);
+            if (w && w->property("isTab").toBool()) {
+                int idx = w->property("tabIndex").toInt();
+                if (idx >= 0 && idx < m_tabs.count()) {
+                    const TabInfo &tab = m_tabs[idx];
+                    QString toolTip = QStringLiteral("<b>%1</b><br/>%2")
+                        .arg(tab.title.isEmpty() ? QStringLiteral("New Tab") : tab.title.toHtmlEscaped(),
+                             tab.url.toHtmlEscaped());
+                    if (!tab.thumbnail.isNull()) {
+                        // Save thumbnail to temp file for tooltip (QToolTip doesn't support pixmap directly)
+                        // Use rich text with image data URI
+                        QByteArray bytes;
+                        QBuffer buffer(&bytes);
+                        buffer.open(QIODevice::WriteOnly);
+                        tab.thumbnail.save(&buffer, "PNG");
+                        QString base64 = QString::fromLatin1(bytes.toBase64());
+                        toolTip = QStringLiteral("<img src='data:image/png;base64,%1' width='240' height='150'/><br/>%2")
+                            .arg(base64, toolTip);
+                    }
+                    QToolTip::showText(QCursor::pos(), toolTip, w);
+                }
+            }
+        } else if (event->type() == QEvent::Leave) {
+            auto *w = qobject_cast<QWidget*>(obj);
+            if (w && w->property("isTab").toBool()) {
+                QToolTip::hideText();
+            }
+        }
+
+        // Tab drag-reorder handling
+        if (event->type() == QEvent::MouseMove) {
+            auto *me = static_cast<QMouseEvent*>(event);
+            auto *w = qobject_cast<QWidget*>(obj);
+            if (w && w->property("isTab").toBool() && (me->buttons() & Qt::LeftButton)) {
+                if (!m_tabDragActive) {
+                    // Start drag if moved enough
+                    const QPoint startPos = m_tabDragStartPos;
+                    if ((me->pos() - startPos).manhattanLength() > QApplication::startDragDistance()) {
+                        m_tabDragActive = true;
+                        m_tabDragSourceIndex = w->property("tabIndex").toInt();
+                        if (m_tabDragSourceIndex >= 0 && m_tabDragSourceIndex < m_tabs.count()) {
+                            // Show drag feedback
+                            QDrag *drag = new QDrag(this);
+                            QMimeData *mime = new QMimeData;
+                            mime->setData("application/x-black-tab", QByteArray::number(m_tabDragSourceIndex));
+                            drag->setMimeData(mime);
+                            // Use tab thumbnail as drag pixmap if available
+                            QPixmap dragPixmap = m_tabs[m_tabDragSourceIndex].thumbnail;
+                            if (!dragPixmap.isNull()) {
+                                dragPixmap = dragPixmap.scaled(120, 75, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                                drag->setPixmap(dragPixmap);
+                            }
+                            drag->exec(Qt::MoveAction);
+                            m_tabDragActive = false;
+                            m_tabDragSourceIndex = -1;
+                        }
+                    }
+                }
+            }
+        } else if (event->type() == QEvent::DragEnter) {
+            auto *de = static_cast<QDragEnterEvent*>(event);
+            if (de->mimeData()->hasFormat("application/x-black-tab")) {
+                de->acceptProposedAction();
+                return true;
+            }
+        } else if (event->type() == QEvent::DragMove) {
+            auto *dm = static_cast<QDragMoveEvent*>(event);
+            if (dm->mimeData()->hasFormat("application/x-black-tab")) {
+                dm->acceptProposedAction();
+                return true;
+            }
+        } else if (event->type() == QEvent::Drop) {
+            auto *de = static_cast<QDropEvent*>(event);
+            if (de->mimeData()->hasFormat("application/x-black-tab")) {
+                auto *targetWidget = qobject_cast<QWidget*>(obj);
+                if (targetWidget && targetWidget->property("isTab").toBool()) {
+                    int targetIndex = targetWidget->property("tabIndex").toInt();
+                    if (targetIndex >= 0 && targetIndex < m_tabs.count()
+                        && targetIndex != m_tabDragSourceIndex) {
+                        // Move tab in the list
+                        int sourceIndex = m_tabDragSourceIndex;
+                        if (sourceIndex >= 0 && sourceIndex < m_tabs.count()) {
+                            TabInfo tab = m_tabs.takeAt(sourceIndex);
+                            m_tabs.insert(targetIndex, tab);
+                            // Re-sync the stacked widget
+                            QList<QWebEngineView*> views;
+                            views.reserve(m_tabs.size());
+                            for (const TabInfo &t : m_tabs)
+                                views.append(t.view);
+                            for (QWebEngineView *v : views)
+                                m_tabStack->removeWidget(v);
+                            for (QWebEngineView *v : views)
+                                m_tabStack->addWidget(v);
+                            // Update current tab index
+                            if (m_currentTabIndex == sourceIndex)
+                                m_currentTabIndex = targetIndex;
+                            else if (sourceIndex < targetIndex && m_currentTabIndex > sourceIndex && m_currentTabIndex <= targetIndex)
+                                m_currentTabIndex--;
+                            else if (sourceIndex > targetIndex && m_currentTabIndex >= targetIndex && m_currentTabIndex < sourceIndex)
+                                m_currentTabIndex++;
+                            rebuildTabBar();
+                            rebuildSidebarTabList();
+                            if (m_overviewVisible) rebuildOverviewGrid();
+                        }
+                    }
+                }
+                de->acceptProposedAction();
+                return true;
             }
         }
         return false;
@@ -2989,6 +3813,12 @@ void BrowserWindow::onLoadProgress(int progress) {
 void BrowserWindow::onLoadFinished(bool) {
     m_loadingBar->setVisible(false);
     updateNavigationState();
+
+    if (m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count()) {
+        const QString host = m_tabs[m_currentTabIndex].view->url().host();
+        if (!host.isEmpty())
+            applySiteSettings(host);
+    }
 }
 
 void BrowserWindow::updateLoadingBar(int progress) {
@@ -3163,17 +3993,19 @@ void BrowserWindow::applyTheme()
     m_shareButton->setIcon(createSvgIcon(svgShare, 18, navIconColor));
     m_downloadsButton->setIcon(createSvgIcon(svgDownloads, 18, navIconColor));
     m_tabOverviewButton->setIcon(createSvgIcon(svgTabOverview, 18, navIconColor));
+    m_readerModeButton->setIcon(createSvgIcon(svgReaderMode, 18, navIconColor));
+    m_translateButton->setIcon(createSvgIcon(svgTranslate, 18, navIconColor));
     m_settingsButton->setIcon(createSvgIcon(svgSettings, 18, navIconColor));
     m_extensionsButton->setIcon(createSvgIcon(svgExtensions, 18, navIconColor));
     updateProfileButton();
 
     for (QToolButton *b : { m_sidebarButton, m_backButton, m_forwardButton, m_reloadButton,
-                            m_shareButton, m_downloadsButton, m_tabOverviewButton, m_settingsButton,
+                            m_shareButton, m_downloadsButton, m_tabOverviewButton, m_readerModeButton, m_translateButton, m_settingsButton,
                             m_extensionsButton, m_profileButton }) {
         b->setStyleSheet(navBtnStyle);
     }
     // Reload sits inside the address bar, so it gets a tighter hit area.
-    m_reloadButton->setFixedSize(22, 22);
+    m_reloadButton->setFixedSize(touchIconSize(22), touchIconSize(22));
     m_reloadButton->setStyleSheet(QString(
         "QToolButton { border: none; background: transparent; border-radius: 5px; padding: 0; }"
         "QToolButton:hover { background-color: %1; }"
@@ -3592,68 +4424,16 @@ void BrowserWindow::findPrevious() {
 }
 
 void BrowserWindow::setupDownloads() {
-    connect(m_profile, &QWebEngineProfile::downloadRequested, this, [this](QWebEngineDownloadRequest *download) {
-        if (BrowserSettings::instance().downloadLocation() == QStringLiteral("Ask each time")) {
-            const QString dir = QFileDialog::getExistingDirectory(
-                this, QStringLiteral("Choose Download Location"),
-                QStandardPaths::writableLocation(QStandardPaths::DownloadLocation));
-            if (dir.isEmpty()) {
-                download->cancel();
-                return;
-            }
-            download->setDownloadDirectory(dir);
-        }
-
-        DownloadItemInfo info;
-        info.fileName = download->downloadFileName();
-        info.filePath = QDir(download->downloadDirectory()).filePath(download->downloadFileName());
-        info.url = download->url().toString();
-        info.receivedBytes = download->receivedBytes();
-        info.totalBytes = download->totalBytes();
-        info.state = 0;
-        info.request = download;
-        m_downloadsList.append(info);
-
-        int idx = m_downloadsList.count() - 1;
-        download->accept();
-
-        connect(download, &QWebEngineDownloadRequest::receivedBytesChanged, this, [this, idx, download]() {
-            if (idx < m_downloadsList.count()) {
-                m_downloadsList[idx].receivedBytes = download->receivedBytes();
-                m_downloadsList[idx].totalBytes = download->totalBytes();
-            }
-        });
-
-        connect(download, &QWebEngineDownloadRequest::stateChanged, this, [this, idx, download](QWebEngineDownloadRequest::DownloadState state) {
-            if (idx < m_downloadsList.count()) {
-                switch (state) {
-                case QWebEngineDownloadRequest::DownloadCompleted: {
-                    m_downloadsList[idx].state = 1;
-                    const QString filePath = m_downloadsList[idx].filePath;
-                    if (BrowserSettings::instance().openSafeFiles()
-                        && !filePath.isEmpty()
-                        && safeDownloadExtensions().contains(QFileInfo(filePath).suffix().toLower()))
-                        QDesktopServices::openUrl(QUrl::fromLocalFile(filePath));
-                    break;
-                }
-                case QWebEngineDownloadRequest::DownloadCancelled:
-                case QWebEngineDownloadRequest::DownloadInterrupted:
-                    m_downloadsList[idx].state = 2;
-                    break;
-                default:
-                    break;
-                }
-                int completed = 0;
-                for (const DownloadItemInfo &d : m_downloadsList)
-                    if (d.state == 1) ++completed;
-                m_downloadsButton->setToolTip(QStringLiteral("Downloads (%1 completed)").arg(completed));
-            }
-        });
-
-        m_downloadsButton->setToolTip(QStringLiteral("Downloading %1\u2026").arg(download->downloadFileName()));
-    });
-
+    // The DownloadManager owns the download lifecycle (location prompt,
+    // progress tracking, safe auto-open) and reports back via signals. The
+    // window only renders the menu/rows from it and reopens retried URLs.
+    m_downloads = new DownloadManager(m_profile, this, m_downloadsButton, this);
+    connect(m_downloads, &DownloadManager::openInNewTab, this, &BrowserWindow::addNewTab);
     connect(m_downloadsButton, &QToolButton::clicked, this, &BrowserWindow::showDownloadsMenu);
+    connect(m_downloads, &DownloadManager::itemsChanged, this, &BrowserWindow::updateDownloadsSidebar);
+    connect(m_downloads, &DownloadManager::buttonTooltipChanged, this, [this](const QString &tip) {
+        if (m_downloadsButton) m_downloadsButton->setToolTip(tip);
+    });
 }
 
 void BrowserWindow::showDownloadsMenu() {
@@ -3667,7 +4447,7 @@ void BrowserWindow::showDownloadsMenu() {
         "QMenu::separator { height: 1px; background: %6; margin: 4px 8px; }"
     ).arg(cardBg(), textPrimary(), border(), selectedBg(), textTertiary(), borderLight()));
 
-    if (m_downloadsList.isEmpty()) {
+    if (!m_downloads || m_downloads->items().isEmpty()) {
         menu.addAction(QStringLiteral("No Downloads"))->setEnabled(false);
     } else {
         auto *container = new QWidget(&menu);
@@ -3676,10 +4456,9 @@ void BrowserWindow::showDownloadsMenu() {
         lay->setContentsMargins(4, 2, 4, 2);
         lay->setSpacing(2);
 
-        for (int i = 0; i < m_downloadsList.count(); ++i) {
-            DownloadItemInfo &item = m_downloadsList[i];
-            lay->addWidget(buildDownloadRow(i, item));
-        }
+        const QList<DownloadItemInfo> &dl = m_downloads->items();
+        for (int i = 0; i < dl.count(); ++i)
+            lay->addWidget(buildDownloadRow(i, dl.at(i)));
 
         lay->addSpacing(4);
         QPushButton *clearBtn = new QPushButton(QStringLiteral("Clear Completed"), container);
@@ -3689,9 +4468,7 @@ void BrowserWindow::showDownloadsMenu() {
             "QPushButton:hover { background-color: %2; }"
         ).arg(accent(), hover()));
         connect(clearBtn, &QPushButton::clicked, this, [this]() {
-            for (int i = m_downloadsList.count() - 1; i >= 0; --i)
-                if (m_downloadsList[i].state != 0)
-                    m_downloadsList.removeAt(i);
+            if (m_downloads) m_downloads->clearCompleted();
         });
         lay->addWidget(clearBtn);
 
@@ -3756,10 +4533,35 @@ QWidget* BrowserWindow::buildDownloadRow(int index, const DownloadItemInfo &item
     rl->addLayout(infoCol, 1);
 
     if (item.state == 0) {
+        // Pause/Resume button
+        QToolButton *pauseBtn = new QToolButton(row);
+        pauseBtn->setIcon(createSvgIcon(item.state == 0 ? QStringLiteral(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"6\" y=\"4\" width=\"4\" height=\"16\"/><rect x=\"14\" y=\"4\" width=\"4\" height=\"16\"/></svg>")
+            : QStringLiteral(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"5 3 19 12 5 21 5 3\"/></svg>"), 14, textSecondary()));
+        pauseBtn->setIconSize(QSize(14, 14));
+        pauseBtn->setFixedSize(touchIconSize(24), touchIconSize(24));
+        pauseBtn->setToolTip(item.state == 0 ? QStringLiteral("Pause Download") : QStringLiteral("Resume Download"));
+        pauseBtn->setCursor(Qt::PointingHandCursor);
+        pauseBtn->setStyleSheet(QString(
+            "QToolButton { background: transparent; border: none; border-radius: 6px; }"
+            "QToolButton:hover { background-color: %1; }"
+        ).arg(hover()));
+        connect(pauseBtn, &QToolButton::clicked, this, [this, index]() {
+            if (m_downloads && index < m_downloads->items().count()) {
+                if (m_downloads->items()[index].state == 0)
+                    m_downloads->pauseDownload(index);
+                else if (m_downloads->items()[index].state == 3)
+                    m_downloads->resumeDownload(index);
+            }
+        });
+        rl->addWidget(pauseBtn);
+
+        // Cancel button
         QToolButton *cancelBtn = new QToolButton(row);
         cancelBtn->setIcon(createSvgIcon(svgX, 14, textSecondary()));
         cancelBtn->setIconSize(QSize(14, 14));
-        cancelBtn->setFixedSize(24, 24);
+        cancelBtn->setFixedSize(touchIconSize(24), touchIconSize(24));
         cancelBtn->setToolTip(QStringLiteral("Cancel Download"));
         cancelBtn->setCursor(Qt::PointingHandCursor);
         cancelBtn->setStyleSheet(QString(
@@ -3767,15 +4569,16 @@ QWidget* BrowserWindow::buildDownloadRow(int index, const DownloadItemInfo &item
             "QToolButton:hover { background-color: %1; }"
         ).arg(hover()));
         connect(cancelBtn, &QToolButton::clicked, this, [this, index]() {
-            if (index < m_downloadsList.count() && m_downloadsList[index].request)
-                m_downloadsList[index].request->cancel();
+            if (m_downloads && index < m_downloads->items().count()
+                && m_downloads->items()[index].request)
+                m_downloads->items()[index].request->cancel();
         });
         rl->addWidget(cancelBtn);
     } else if (item.state == 2 && !item.url.isEmpty()) {
         QToolButton *retryBtn = new QToolButton(row);
         retryBtn->setIcon(createSvgIcon(svgRefresh, 14, textSecondary()));
         retryBtn->setIconSize(QSize(14, 14));
-        retryBtn->setFixedSize(24, 24);
+        retryBtn->setFixedSize(touchIconSize(24), touchIconSize(24));
         retryBtn->setToolTip(QStringLiteral("Retry Download"));
         retryBtn->setCursor(Qt::PointingHandCursor);
         retryBtn->setStyleSheet(QString(
@@ -3783,8 +4586,8 @@ QWidget* BrowserWindow::buildDownloadRow(int index, const DownloadItemInfo &item
             "QToolButton:hover { background-color: %1; }"
         ).arg(hover()));
         connect(retryBtn, &QToolButton::clicked, this, [this, index]() {
-            if (index < m_downloadsList.count())
-                addNewTab(QUrl(m_downloadsList[index].url));
+            if (m_downloads && index < m_downloads->items().count())
+                addNewTab(QUrl(m_downloads->items()[index].url));
         });
         rl->addWidget(retryBtn);
     }
@@ -3793,7 +4596,7 @@ QWidget* BrowserWindow::buildDownloadRow(int index, const DownloadItemInfo &item
         QToolButton *revealBtn = new QToolButton(row);
         revealBtn->setIcon(createSvgIcon(svgFolder, 14, textSecondary()));
         revealBtn->setIconSize(QSize(14, 14));
-        revealBtn->setFixedSize(24, 24);
+        revealBtn->setFixedSize(touchIconSize(24), touchIconSize(24));
         revealBtn->setToolTip(QStringLiteral("Show in Folder"));
         revealBtn->setCursor(Qt::PointingHandCursor);
         revealBtn->setStyleSheet(QString(
@@ -3845,7 +4648,11 @@ void BrowserWindow::saveSession() {
     // Encrypt session data so browsing history is not exposed as plaintext.
     // If encryption is unavailable (master key missing/corrupt), refuse to write
     // plaintext and skip the session save to avoid leaking unencrypted data.
+    // Warn the user so they understand why their session won't be restored.
     if (blob.isEmpty()) {
+        QMessageBox::warning(this, tr("Session Not Saved"),
+            tr("Your session could not be saved because encryption is unavailable. "
+               "Open tabs will not be restored on the next launch."));
         return;
     }
     OSPaths::writeFileAtomic(dataFile(QStringLiteral("session.json")), blob);
@@ -3967,6 +4774,79 @@ void BrowserWindow::savePermissions()
         return;
     }
     OSPaths::writeFileAtomic(dataFile(QStringLiteral("permissions.json")), blob);
+}
+
+void BrowserWindow::loadSiteSettings()
+{
+    QFile file(dataFile(QStringLiteral("site_settings.json")));
+    if (!file.open(QIODevice::ReadOnly))
+        return;
+    const QByteArray data = file.readAll();
+    QByteArray plain;
+    if (VaultCrypto::isEnvelope(data)) {
+        plain = VaultCrypto::decrypt(data);
+        if (plain.isEmpty())
+            return;
+    } else {
+        plain = data;
+    }
+    const QJsonDocument doc = QJsonDocument::fromJson(plain);
+    if (!doc.isObject())
+        return;
+    const QJsonObject obj = doc.object();
+    for (auto it = obj.constBegin(); it != obj.constEnd(); ++it) {
+        const QJsonObject settings = it.value().toObject();
+        SiteSettings s;
+        s.zoomFactor = settings.value(QStringLiteral("zoomFactor")).toDouble(1.0);
+        s.blockImages = settings.value(QStringLiteral("blockImages")).toBool(false);
+        s.blockScripts = settings.value(QStringLiteral("blockScripts")).toBool(false);
+        s.userAgentOverride = settings.value(QStringLiteral("userAgentOverride")).toString();
+        m_siteSettings.insert(it.key(), s);
+    }
+}
+
+void BrowserWindow::saveSiteSettings()
+{
+    QJsonObject obj;
+    for (auto it = m_siteSettings.constBegin(); it != m_siteSettings.constEnd(); ++it) {
+        QJsonObject settings;
+        settings.insert(QStringLiteral("zoomFactor"), it.value().zoomFactor);
+        settings.insert(QStringLiteral("blockImages"), it.value().blockImages);
+        settings.insert(QStringLiteral("blockScripts"), it.value().blockScripts);
+        settings.insert(QStringLiteral("userAgentOverride"), it.value().userAgentOverride);
+        obj.insert(it.key(), settings);
+    }
+    const QByteArray payload = QJsonDocument(obj).toJson(QJsonDocument::Compact);
+    const QByteArray blob = VaultCrypto::encrypt(payload);
+    if (blob.isEmpty())
+        return;
+    OSPaths::writeFileAtomic(dataFile(QStringLiteral("site_settings.json")), blob);
+}
+
+void BrowserWindow::applySiteSettings(const QString &host)
+{
+    const SiteSettings settings = getSiteSettings(host);
+    if (m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count()) {
+        QWebEngineView *view = m_tabs[m_currentTabIndex].view;
+        if (view) {
+            view->setZoomFactor(settings.zoomFactor);
+            // Content blocking would be handled by TrackerBlocker or extension rules
+        }
+    }
+}
+
+BrowserWindow::SiteSettings BrowserWindow::getSiteSettings(const QString &host) const
+{
+    auto it = m_siteSettings.constFind(host);
+    if (it != m_siteSettings.constEnd())
+        return it.value();
+    return SiteSettings();
+}
+
+void BrowserWindow::setSiteSetting(const QString &host, const SiteSettings &settings)
+{
+    m_siteSettings.insert(host, settings);
+    saveSiteSettings();
 }
 
 #include "BrowserWindow.moc"

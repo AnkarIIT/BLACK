@@ -97,18 +97,59 @@ void ChromeLayer::setupUi(QWidget *central, QVBoxLayout *rootLayout)
     m_stripLayout->addLayout(m_trafficLayout);
     m_stripLayout->addSpacing(12);
 
-    // Tab area: [tabs...][new-tab button]. rebuildTabBar() fills the tabs.
-    m_tabLayout = new QHBoxLayout;
+    // Tab area: [scroll-left][tabs...][scroll-right][new-tab button].
+    // Wrap tab layout in a scroll area for overflow handling.
+    m_tabScrollArea = new QScrollArea(m_tabStrip);
+    m_tabScrollArea->setWidgetResizable(false);
+    m_tabScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_tabScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_tabScrollArea->setFrameShape(QFrame::NoFrame);
+    m_tabScrollArea->setStyleSheet("background: transparent; border: none;");
+
+    QWidget *tabContainer = new QWidget(m_tabScrollArea);
+    tabContainer->setStyleSheet("background: transparent;");
+    m_tabLayout = new QHBoxLayout(tabContainer);
     m_tabLayout->setContentsMargins(0, 0, 0, 0);
     m_tabLayout->setSpacing(1);
     m_tabLayout->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    m_stripLayout->addLayout(m_tabLayout, 1);
+    m_tabScrollArea->setWidget(tabContainer);
+
+    // Scroll buttons
+    m_scrollLeftBtn = new QToolButton(m_tabStrip);
+    m_scrollLeftBtn->setFixedSize(24, 24);
+    m_scrollLeftBtn->setToolTip("Scroll tabs left");
+    m_scrollLeftBtn->setIcon(chromeSvgIcon(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\"><polyline points=\"15 18 9 12 15 6\"/></svg>", 14, "transparent"));
+    m_scrollLeftBtn->setVisible(false);
+    connect(m_scrollLeftBtn, &QToolButton::clicked, this, [this]() {
+        if (m_tabScrollArea) {
+            m_tabScrollArea->horizontalScrollBar()->setValue(
+                m_tabScrollArea->horizontalScrollBar()->value() - 100);
+        }
+    });
+
+    m_scrollRightBtn = new QToolButton(m_tabStrip);
+    m_scrollRightBtn->setFixedSize(24, 24);
+    m_scrollRightBtn->setToolTip("Scroll tabs right");
+    m_scrollRightBtn->setIcon(chromeSvgIcon(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\"><polyline points=\"9 18 15 12 9 6\"/></svg>", 14, "transparent"));
+    m_scrollRightBtn->setVisible(false);
+    connect(m_scrollRightBtn, &QToolButton::clicked, this, [this]() {
+        if (m_tabScrollArea) {
+            m_tabScrollArea->horizontalScrollBar()->setValue(
+                m_tabScrollArea->horizontalScrollBar()->value() + 100);
+        }
+    });
+
+    m_stripLayout->addWidget(m_scrollLeftBtn);
+    m_stripLayout->addWidget(m_tabScrollArea, 1);
+    m_stripLayout->addWidget(m_scrollRightBtn);
 
     m_newTabButton = new QToolButton(m_tabStrip);
     m_newTabButton->setFixedSize(24, 24);
     m_newTabButton->setToolTip(QStringLiteral("New Tab"));
     connect(m_newTabButton, &QToolButton::clicked, m_window, &BrowserWindow::addTabAction);
-    m_tabLayout->addWidget(m_newTabButton);
+    m_stripLayout->addWidget(m_newTabButton);
 
     // Windows/Linux window controls sit on the far right of the strip
     // (Chrome titlebar geometry). Empty on macOS, where the traffic lights
@@ -123,6 +164,11 @@ void ChromeLayer::setupUi(QWidget *central, QVBoxLayout *rootLayout)
     rootLayout->insertWidget(0, m_tabStrip);
     m_tabStrip->setVisible(false);
 }
+
+private:
+    QScrollArea *m_tabScrollArea = nullptr;
+    QToolButton *m_scrollLeftBtn = nullptr;
+    QToolButton *m_scrollRightBtn = nullptr;
 
 void ChromeLayer::setChromeMode(bool chrome)
 {

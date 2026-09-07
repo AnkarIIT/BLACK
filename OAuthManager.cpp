@@ -394,7 +394,7 @@ void OAuthManager::startAuth(int providerEnum)
             profile.insert(QStringLiteral("picture"), QString());
         if (provider == Microsoft)
             profile.insert(QStringLiteral("avatar"), QString());
-        finishConnection(QString(), QString(), provider, profile);
+        finishConnection(QString(), QString(), provider, profile, 3600);
         return;
     }
 
@@ -499,6 +499,7 @@ void OAuthManager::exchangeCodeForToken(const QString &code, Provider provider)
         const QJsonObject json = QJsonDocument::fromJson(raw).object();
         const QString accessToken = json.value(QStringLiteral("access_token")).toString();
         const QString refreshToken = json.value(QStringLiteral("refresh_token")).toString();
+        const int expiresIn = json.value(QStringLiteral("expires_in")).toInt(3600);
 
         if (provider == Apple) {
             // Apple has no profile API: name/email live in the id_token and the
@@ -522,7 +523,7 @@ void OAuthManager::exchangeCodeForToken(const QString &code, Provider provider)
             QJsonObject userInfo;
             userInfo.insert(QStringLiteral("name"), displayName);
             userInfo.insert(QStringLiteral("email"), email);
-            finishConnection(accessToken, refreshToken, Apple, userInfo);
+            finishConnection(accessToken, refreshToken, Apple, userInfo, expiresIn);
             return;
         }
 
@@ -532,7 +533,7 @@ void OAuthManager::exchangeCodeForToken(const QString &code, Provider provider)
             QJsonObject userInfo;
             userInfo.insert(QStringLiteral("name"),
                             json.value(QStringLiteral("workspace_name")).toString());
-            finishConnection(accessToken, refreshToken, Notion, userInfo);
+            finishConnection(accessToken, refreshToken, Notion, userInfo, expiresIn);
             return;
         }
 
@@ -548,7 +549,7 @@ void OAuthManager::fetchUserProfile(const QString &accessToken, Provider provide
 {
     const ProviderInfo &info = kProviders[provider];
     if (!info.profileUrl || !*info.profileUrl) {
-        finishConnection(accessToken, QString(), provider, QJsonObject());
+        finishConnection(accessToken, QString(), provider, QJsonObject(), 3600);
         return;
     }
 
@@ -573,7 +574,7 @@ void OAuthManager::fetchUserProfile(const QString &accessToken, Provider provide
             userInfo.insert(QStringLiteral("name"), name.value(QStringLiteral("display_name")).toString());
             userInfo.insert(QStringLiteral("email"), raw.value(QStringLiteral("email")).toString());
             userInfo.insert(QStringLiteral("login"), name.value(QStringLiteral("abbreviated_name")).toString());
-            finishConnection(accessToken, QString(), Dropbox, userInfo);
+            finishConnection(accessToken, QString(), Dropbox, userInfo, 3600);
         });
         return;
     }
@@ -614,16 +615,16 @@ void OAuthManager::fetchUserProfile(const QString &accessToken, Provider provide
                                 QJsonObject merged = userInfo;
                                 merged.insert(QStringLiteral("email"),
                                               e.value(QStringLiteral("email")).toString());
-                                finishConnection(accessToken, QString(), GitHub, merged);
+                                finishConnection(accessToken, QString(), GitHub, merged, 3600);
                                 return;
                             }
                         }
                     }
-                    finishConnection(accessToken, QString(), GitHub, userInfo);
+                    finishConnection(accessToken, QString(), GitHub, userInfo, 3600);
                 });
                 return;
             }
-            finishConnection(accessToken, QString(), GitHub, userInfo);
+            finishConnection(accessToken, QString(), GitHub, userInfo, 3600);
         });
         return;
     }
@@ -672,12 +673,12 @@ void OAuthManager::fetchUserProfile(const QString &accessToken, Provider provide
         default:
             break;
         }
-        finishConnection(accessToken, QString(), provider, userInfo);
+        finishConnection(accessToken, QString(), provider, userInfo, 3600);
     });
 }
 
 void OAuthManager::finishConnection(const QString &accessToken, const QString &refreshToken,
-                                    Provider provider, const QJsonObject &user)
+                                    Provider provider, const QJsonObject &user, int expiresIn)
 {
     const ProviderInfo &info = kProviders[provider];
     const QString key = QLatin1String(info.key);
@@ -687,7 +688,8 @@ void OAuthManager::finishConnection(const QString &accessToken, const QString &r
     entry.insert(QStringLiteral("refreshToken"), refreshToken);
     entry.insert(QStringLiteral("accessToken"), accessToken);
     entry.insert(QStringLiteral("scopes"), QLatin1String(info.scopes ? info.scopes : ""));
-    entry.insert(QStringLiteral("expiresAt"), QDateTime::currentMSecsSinceEpoch() + 3600 * 1000);
+    entry.insert(QStringLiteral("expiresIn"), expiresIn);
+    entry.insert(QStringLiteral("expiresAt"), QDateTime::currentMSecsSinceEpoch() + expiresIn * 1000);
     entry.insert(QStringLiteral("user"), user);
     setConnectedEntry(key, entry);
 
@@ -770,4 +772,94 @@ void OAuthManager::saveConnected() const
     if (blob.isEmpty())
         return; // master key unavailable: never overwrite the vault with garbage
     OSPaths::writeFileAtomic(connectedFilePath(), blob);
+}
+
+QString OAuthManager::getValidAccessToken(int providerEnum)
+{
+    if (providerEnum < Google || providerEnum >= kProviderCount)
+        return QString();
+    const Provider provider = static_cast<Provider>(providerEnum);
+    const QString key = QLatin1String(kProviders[provider].key);
+    QJsonObject accountSet = connectedForCurrentAccount();
+    if (!accountSet.contains(key))
+        return QString();
+    QJsonObject entry = accountSet.value(key).toObject();
+    const QString refreshToken = entry.value(QStringLiteral("refreshToken")).toString();
+    if (refreshToken.isEmpty())
+        return QString(); // no refresh token, cannot refresh
+
+    // Check if current access token is still valid (with 5-minute buffer)
+    const qint64 expiresAt = entry.value(QStringLiteral("expiresAt")).toVariant().toLongLong();
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const qint64 buffer = 5 * 60 * 1000; // 5 minutes
+    const QString accessToken = entry.value(QStringLiteral("accessToken")).toString();
+    if (!accessToken.isEmpty() && now < (expiresAt - buffer)) {
+        return accessToken; // still valid
+    }
+
+    // Need to refresh
+    QString newAccessToken = refreshAccessToken(refreshToken, provider);
+    if (newAccessToken.isEmpty())
+        return QString();
+
+    // Update the stored token with new access token and expiry
+    entry.insert(QStringLiteral("accessToken"), newAccessToken);
+    // Use expires_in from provider if available, else default to 1 hour
+    const int expiresIn = entry.value(QStringLiteral("expiresIn")).toInt(3600);
+    entry.insert(QStringLiteral("expiresAt"), QDateTime::currentMSecsSinceEpoch() + expiresIn * 1000);
+    accountSet.insert(key, entry);
+    m_connected.insert(m_currentAccountId, accountSet);
+    saveConnected();
+    return newAccessToken;
+}
+
+QString OAuthManager::refreshAccessToken(const QString &refreshToken, Provider provider)
+{
+    const ProviderInfo &info = kProviders[provider];
+    const Config &cfg = m_configs[provider];
+    const QUrl tokenUrl(QLatin1String(info.tokenUrl));
+
+    QUrlQuery params;
+    params.addQueryItem(QStringLiteral("grant_type"), QStringLiteral("refresh_token"));
+    params.addQueryItem(QStringLiteral("refresh_token"), refreshToken);
+    params.addQueryItem(QStringLiteral("client_id"), cfg.clientId);
+    if (info.needsSecret && !cfg.clientSecret.isEmpty())
+        params.addQueryItem(QStringLiteral("client_secret"), cfg.clientSecret);
+
+    QNetworkRequest request(tokenUrl);
+    request.setHeader(QNetworkRequest::ContentTypeHeader,
+                      QStringLiteral("application/x-www-form-urlencoded"));
+    if (provider == GitHub)
+        request.setRawHeader("Accept", "application/json");
+
+    QNetworkReply *reply = m_net.post(request, params.toString(QUrl::FullyEncoded).toUtf8());
+    QEventLoop loop;
+    connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+    loop.exec();
+
+    if (reply->error() != QNetworkReply::NoError) {
+        reply->deleteLater();
+        return QString();
+    }
+    const QByteArray raw = reply->readAll();
+    reply->deleteLater();
+    const QJsonObject json = QJsonDocument::fromJson(raw).object();
+    const QString accessToken = json.value(QStringLiteral("access_token")).toString();
+    const QString newRefreshToken = json.value(QStringLiteral("refresh_token")).toString();
+    const int expiresIn = json.value(QStringLiteral("expires_in")).toInt(3600);
+
+    // Update the entry with new tokens
+    QJsonObject accountSet = connectedForCurrentAccount();
+    const QString key = QLatin1String(kProviders[provider].key);
+    QJsonObject entry = accountSet.value(key).toObject();
+    entry.insert(QStringLiteral("accessToken"), accessToken);
+    if (!newRefreshToken.isEmpty())
+        entry.insert(QStringLiteral("refreshToken"), newRefreshToken);
+    entry.insert(QStringLiteral("expiresIn"), expiresIn);
+    entry.insert(QStringLiteral("expiresAt"), QDateTime::currentMSecsSinceEpoch() + expiresIn * 1000);
+    accountSet.insert(key, entry);
+    m_connected.insert(m_currentAccountId, accountSet);
+    saveConnected();
+
+    return accessToken;
 }

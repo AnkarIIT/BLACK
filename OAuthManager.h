@@ -106,6 +106,10 @@ public:
     // already-connected services.
     Q_INVOKABLE QJsonArray connectedServicesJson() const;
 
+    // Returns a valid access token for the provider, refreshing if necessary.
+    // Returns empty string if no token stored, refresh failed, or not configured.
+    Q_INVOKABLE QString getValidAccessToken(int providerEnum);
+
     // Starts the authorization flow for providerEnum. Opens the provider
     // consent page in the system browser and waits for the loopback redirect.
     // Emits authSuccess(QJsonObject) or authFailed(QString).
@@ -119,6 +123,7 @@ signals:
     void decryptFailedChanged();
 
 private:
+    friend class TestOAuthManager;
     struct Config {
         QString clientId;
         QString clientSecret;
@@ -156,7 +161,7 @@ private:
     void exchangeCodeForToken(const QString &code, Provider provider);
     void fetchUserProfile(const QString &accessToken, Provider provider);
     void finishConnection(const QString &accessToken, const QString &refreshToken,
-                          Provider provider, const QJsonObject &user);
+                          Provider provider, const QJsonObject &user, int expiresIn = 3600);
 
     void loadConnected();
     void saveConnected() const;

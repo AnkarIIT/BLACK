@@ -16,10 +16,14 @@
 #if defined(Q_OS_WIN)
 #include <windows.h>
 #include <wincrypt.h>
+#elif defined(Q_OS_MACOS)
+#include <Security/Security.h>
+#include <CoreFoundation/CoreFoundation.h>
 #else
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <secret/secret.h>
 #endif
 
 #if defined(HAVE_OPENSSL)
@@ -143,8 +147,9 @@ QByteArray hmacTag(const QByteArray &key, const QByteArray &iv, const QByteArray
     return QMessageAuthenticationCode::hash(data, key, QCryptographicHash::Sha256).left(kTagSize);
 }
 
-// Non-Windows key source: a random 256-bit master key stored with owner-only
-// permissions. Not a hardware-backed secret store, but combined with PBKDF2 it
+// Non-Windows key source: try OS keychain first (macOS Keychain, Linux libsecret),
+// fall back to a random 256-bit master key stored with owner-only permissions.
+// Not a hardware-backed secret store, but combined with PBKDF2 it
 // is still a very large improvement over the previous hardcoded XOR key.
 //
 // Fail-safe: if the key file exists but is unreadable, empty, or the wrong
@@ -152,6 +157,28 @@ QByteArray hmacTag(const QByteArray &key, const QByteArray &iv, const QByteArray
 // would orphan every vault already encrypted with the old key; returning an
 // empty key makes callers abort the operation instead of destroying data.
 QByteArray loadOrCreateMasterKey()
+{
+#if defined(Q_OS_MACOS)
+    // Try to load from macOS Keychain first
+    QByteArray key = loadKeyFromMacOSKeychain();
+    if (!key.isEmpty())
+        return key;
+    // Fall back to file-based storage
+    return loadOrCreateMasterKeyFile();
+#elif defined(Q_OS_LINUX) && defined(HAVE_LIBSECRET)
+    // Try to load from libsecret first
+    QByteArray key = loadKeyFromLibsecret();
+    if (!key.isEmpty())
+        return key;
+    // Fall back to file-based storage
+    return loadOrCreateMasterKeyFile();
+#else
+    // Windows uses DPAPI, file-based storage not used for master key
+    return loadOrCreateMasterKeyFile();
+#endif
+}
+
+QByteArray loadOrCreateMasterKeyFile()
 {
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
                         + QLatin1String("/secrets");
@@ -178,6 +205,113 @@ QByteArray loadOrCreateMasterKey()
         return {};
     return key;
 }
+
+#if defined(Q_OS_MACOS)
+QByteArray loadKeyFromMacOSKeychain()
+{
+    const char *service = "BLACK Browser";
+    const char *account = "master_key";
+
+    CFStringRef serviceRef = CFStringCreateWithCString(kCFAllocatorDefault, service, kCFStringEncodingUTF8);
+    CFStringRef accountRef = CFStringCreateWithCString(kCFAllocatorDefault, account, kCFStringEncodingUTF8);
+
+    CFDictionaryRef query = CFDictionaryCreate(kCFAllocatorDefault,
+        (const void **)&kSecClass, (const void **)&kSecClassGenericPassword,
+        (const void **)&kSecAttrService, (const void **)&serviceRef,
+        (const void **)&kSecAttrAccount, (const void **)&accountRef,
+        (const void **)&kSecReturnData, (const void **)kCFBooleanTrue,
+        (const void **)&kSecMatchLimit, (const void **)kSecMatchLimitOne,
+        nullptr);
+
+    CFTypeRef result = nullptr;
+    OSStatus status = SecItemCopyMatching(query, &result);
+    CFRelease(query);
+    CFRelease(serviceRef);
+    CFRelease(accountRef);
+
+    if (status == errSecSuccess && result) {
+        CFDataRef dataRef = (CFDataRef)result;
+        QByteArray key(reinterpret_cast<const char *>(CFDataGetBytePtr(dataRef)), CFDataGetLength(dataRef));
+        CFRelease(dataRef);
+        if (key.size() == kKeySize)
+            return key;
+    }
+
+    // Key not found or wrong size, generate and store new one
+    QByteArray newKey = randomBytes(kKeySize);
+    CFDataRef dataRef = CFDataCreate(kCFAllocatorDefault,
+        reinterpret_cast<const UInt8 *>(newKey.constData()), newKey.size());
+
+    CFDictionaryRef addQuery = CFDictionaryCreate(kCFAllocatorDefault,
+        (const void **)&kSecClass, (const void **)&kSecClassGenericPassword,
+        (const void **)&kSecAttrService, (const void **)&serviceRef,
+        (const void **)&kSecAttrAccount, (const void **)&accountRef,
+        (const void **)&kSecValueData, (const void **)&dataRef,
+        (const void **)&kSecAttrAccessible, (const void **)kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+        nullptr);
+
+    status = SecItemAdd(addQuery, nullptr);
+    CFRelease(addQuery);
+    CFRelease(dataRef);
+    CFRelease(serviceRef);
+    CFRelease(accountRef);
+
+    if (status == errSecSuccess)
+        return newKey;
+
+    return {};
+}
+#if defined(Q_OS_LINUX) && defined(HAVE_LIBSECRET)
+QByteArray loadKeyFromLibsecret()
+{
+    GError *error = nullptr;
+    SecretSchema schema = {
+        "com.black.browser.master_key",
+        SECRET_SCHEMA_NONE,
+        {
+            { "service", SECRET_SCHEMA_ATTRIBUTE_STRING },
+            { "account", SECRET_SCHEMA_ATTRIBUTE_STRING },
+            { nullptr, SECRET_SCHEMA_ATTRIBUTE_STRING }
+        }
+    };
+
+    gchar *secret = secret_password_lookup_sync(&schema, nullptr, &error,
+        "service", "BLACK Browser",
+        "account", "master_key",
+        nullptr);
+
+    if (error) {
+        g_error_free(error);
+        return {};
+    }
+
+    if (secret) {
+        QByteArray key(secret);
+        g_free(secret);
+        if (key.size() == kKeySize)
+            return key;
+    }
+
+    // Key not found, generate and store new one
+    QByteArray newKey = randomBytes(kKeySize);
+    error = nullptr;
+    gboolean stored = secret_password_store_sync(&schema, nullptr, &error,
+        "service", "BLACK Browser",
+        "account", "master_key",
+        "secret", newKey.constData(),
+        nullptr);
+
+    if (error) {
+        g_error_free(error);
+        return {};
+    }
+
+    if (stored)
+        return newKey;
+
+    return {};
+}
+#endif
 
 QByteArray hmacCtrEncryptBlob(const QByteArray &plain)
 {
@@ -247,7 +381,7 @@ QByteArray dpapiEncrypt(const QByteArray &plain)
     entropy.pbData = reinterpret_cast<BYTE *>(const_cast<char *>(kDpapiEntropy));
     entropy.cbData = DWORD(sizeof(kDpapiEntropy) - 1);
 
-    DATA_BLOB out = { nullptr, 0 };
+    DATA_BLOB out = { 0, nullptr };
     if (!CryptProtectData(&in, L"BLACK password vault", &entropy, nullptr, nullptr,
                           CRYPTPROTECT_UI_FORBIDDEN, &out))
         return {};
@@ -266,7 +400,7 @@ QByteArray dpapiDecrypt(const QByteArray &blob)
     entropy.pbData = reinterpret_cast<BYTE *>(const_cast<char *>(kDpapiEntropy));
     entropy.cbData = DWORD(sizeof(kDpapiEntropy) - 1);
 
-    DATA_BLOB out = { nullptr, 0 };
+    DATA_BLOB out = { 0, nullptr };
     if (CryptUnprotectData(&in, nullptr, &entropy, nullptr, nullptr,
                             CRYPTPROTECT_UI_FORBIDDEN, &out)) {
         QByteArray result(reinterpret_cast<const char *>(out.pbData), int(out.cbData));
@@ -274,7 +408,7 @@ QByteArray dpapiDecrypt(const QByteArray &blob)
         return result;
     }
 
-    out = { nullptr, 0 };
+    out = { 0, nullptr };
     if (CryptUnprotectData(&in, nullptr, nullptr, nullptr, nullptr,
                             CRYPTPROTECT_UI_FORBIDDEN, &out)) {
         QByteArray result(reinterpret_cast<const char *>(out.pbData), int(out.cbData));

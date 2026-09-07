@@ -110,7 +110,6 @@ void PermissionsBridge::clearPermissions()
     emit changed();
 }
 
-#ifdef QT_DEBUG
 void PermissionsBridge::savePermissionsTest(const QJsonObject &obj)
 {
     const QString path = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
@@ -122,4 +121,3 @@ void PermissionsBridge::savePermissionsTest(const QJsonObject &obj)
         return;
     OSPaths::writeFileAtomic(path, blob);
 }
-#endif

@@ -1,0 +1,215 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    
+    strategy:
+      matrix:
+        qt_version: [6.8.0]
+        msvc_version: [2022]
+        
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Install Qt
+      uses: jurplel/install-qt-action@v3
+      with:
+        version: ${{ matrix.qt_version }}
+        host: windows
+        target: desktop
+        arch: win64_msvc${{ matrix.msvc_version }}_64
+        modules: qtwebengine
+        cache: true
+        
+    - name: Install OpenSSL
+      uses: awalsh128/cache-apt-pkgs-action@v1
+      with:
+        packages: openssl
+        version: 1.1
+        
+    - name: Configure CMake
+      run: |
+        cmake -S . -B build -G "Visual Studio 17 2022" \
+          -DCMAKE_PREFIX_PATH="C:/Qt/${{ matrix.qt_version }}/msvc${{ matrix.msvc_version }}_64" \
+          -DCMAKE_BUILD_TYPE=Release
+      shell: cmd
+      
+    - name: Build
+      run: |
+        cmake --build build --config Release --parallel
+      shell: cmd
+      
+    - name: Run Tests
+      run: |
+        ctest --test-dir build --output-on-failure -C Release
+      shell: cmd
+      
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: black-windows-${{ matrix.qt_version }}
+        path: build/Release/BLACK.exe
+        retention-days: 7
+
+  build-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    
+    strategy:
+      matrix:
+        qt_version: [6.8.0]
+        
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libgl1-mesa-dev \
+          libglib2.0-dev \
+          libnss3-dev \
+          libatk-bridge2.0-dev \
+          libdrm-dev \
+          libxkbcommon-dev \
+          libxcomposite-dev \
+          libxcursor-dev \
+          libxdamage-dev \
+          libxrandr-dev \
+          libgbm-dev \
+          libasound2-dev \
+          libpulse-dev \
+          libsecret-1-dev \
+          libssl-dev
+          
+    - name: Install Qt
+      uses: jurplel/install-qt-action@v3
+      with:
+        version: ${{ matrix.qt_version }}
+        host: linux
+        target: desktop
+        arch: gcc_64
+        modules: qtwebengine
+        cache: true
+        
+    - name: Configure CMake
+      run: |
+        cmake -S . -B build \
+          -DCMAKE_PREFIX_PATH="/opt/Qt/${{ matrix.qt_version }}/gcc_64" \
+          -DCMAKE_BUILD_TYPE=Release
+          
+    - name: Build
+      run: |
+        cmake --build build --parallel $(nproc)
+        
+    - name: Run Tests
+      run: |
+        ctest --test-dir build --output-on-failure
+        
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: black-linux-${{ matrix.qt_version }}
+        path: build/BLACK
+        retention-days: 7
+
+  build-macos:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    
+    strategy:
+      matrix:
+        qt_version: [6.8.0]
+        
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Install Qt
+      uses: jurplel/install-qt-action@v3
+      with:
+        version: ${{ matrix.qt_version }}
+        host: mac
+        target: desktop
+        arch: clang_64
+        modules: qtwebengine
+        cache: true
+        
+    - name: Install Dependencies
+      run: |
+        brew install openssl
+        
+    - name: Configure CMake
+      run: |
+        cmake -S . -B build \
+          -DCMAKE_PREFIX_PATH="/Users/runner/Qt/${{ matrix.qt_version }}/macos" \
+          -DCMAKE_BUILD_TYPE=Release
+          
+    - name: Build
+      run: |
+        cmake --build build --parallel $(sysctl -n hw.ncpu)
+        
+    - name: Run Tests
+      run: |
+        ctest --test-dir build --output-on-failure
+        
+    - name: Create App Bundle
+      run: |
+        cd build
+        macdeployqt BLACK.app
+        
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: black-macos-${{ matrix.qt_version }}
+        path: build/BLACK.app
+        retention-days: 7
+
+  # Release job - creates a GitHub Release with all artifacts
+  release:
+    needs: [build-windows, build-linux, build-macos]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      
+    steps:
+    - name: Download Windows Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: black-windows-6.8.0
+        path: artifacts/windows
+        
+    - name: Download Linux Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: black-linux-6.8.0
+        path: artifacts/linux
+        
+    - name: Download macOS Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: black-macos-6.8.0
+        path: artifacts/macos
+        
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          artifacts/windows/BLACK.exe
+          artifacts/linux/BLACK
+          artifacts/macos/BLACK.app
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

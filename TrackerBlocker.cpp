@@ -1,6 +1,7 @@
 #include "TrackerBlocker.h"
 #include "SafeBrowsing.h"
 #include "OSPaths.h"
+#include "ExtensionManager.h"
 #include <QWebEngineUrlRequestInfo>
 #include <QUrlQuery>
 #include <QStandardPaths>
@@ -20,6 +21,21 @@ QString dataFile(const QString &fileName)
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir().mkpath(dir);
     return dir + QLatin1Char('/') + fileName;
+}
+
+// Turn a glob-like token into regex source: '*' -> '.*', everything else escaped.
+QString globToRegex(const QString &s)
+{
+    QString out;
+    for (const QChar &ch : s) {
+        if (ch == QLatin1Char('*'))
+            out += QStringLiteral(".*");
+        else if (ch.isLetterOrNumber())
+            out += ch;
+        else
+            out += QRegularExpression::escape(QString(ch));
+    }
+    return out;
 }
 
 // Known advertising / tracking / analytics domains (EasyList/EasyPrivacy style).
@@ -261,6 +277,44 @@ bool TrackerBlocker::isBlockedHost(const QString &host) const
     return false;
 }
 
+void TrackerBlocker::setExtensionManager(ExtensionManager *manager)
+{
+    m_extensionManager = manager;
+}
+
+bool TrackerBlocker::isBlockedByExtensionRules(const QString &url) const
+{
+    if (!m_extensionManager)
+        return false;
+
+    const QList<BlockingRule> rules = m_extensionManager->activeBlockingRules();
+    if (rules.isEmpty())
+        return false;
+
+    const QUrl requestUrl(url);
+    const QString host = requestUrl.host().toLower();
+    const QString path = requestUrl.path();
+
+    for (const BlockingRule &rule : rules) {
+        // Check blocked hosts
+        for (const QString &blockedHost : rule.blockedHosts) {
+            if (host == blockedHost.toLower() || host.endsWith(QLatin1Char('.') + blockedHost.toLower())) {
+                return true;
+            }
+        }
+
+        // Check blocked paths (glob matching)
+        for (const QString &blockedPath : rule.blockedPaths) {
+            QRegularExpression pathRe(globToRegex(blockedPath));
+            if (pathRe.match(path).hasMatch()) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 bool TrackerBlocker::isIncognito() const
 {
     return m_incognito;
@@ -319,6 +373,12 @@ void TrackerBlocker::interceptRequest(QWebEngineUrlRequestInfo &info)
         if (SafeBrowsing::instance().isBlocked(requestUrl)) {
             info.redirect(SafeBrowsing::warningUrl(requestUrl));
         }
+        return;
+    }
+
+    // Check extension blocking rules first (declarative rules from extensions)
+    if (isBlockedByExtensionRules(info.requestUrl().toString())) {
+        info.block(true);
         return;
     }
 
