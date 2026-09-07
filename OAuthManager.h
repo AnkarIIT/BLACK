@@ -170,6 +170,8 @@ private:
     QJsonObject connectedForCurrentAccount() const;
     void setConnectedEntry(const QString &providerKey, const QJsonObject &entry);
 
+    QString refreshAccessToken(const QString &refreshToken, Provider provider);
+
     void fail(const QString &message);
     void finishSuccess(const QJsonObject &profile);
 

@@ -10,23 +10,10 @@
 #include <QList>
 #include <QMap>
 
+#include "BrowserWindow.h"
+
 class QWebEngineNewWindowRequest;
 class QWebChannel;
-
-struct TabInfo {
-    QWebEngineView* view = nullptr;
-    QString title;
-    QString url;
-    QIcon icon;
-    QPixmap thumbnail;
-    bool loading = false;
-    bool isPinned = false;
-    bool isAudible = false;
-    bool isMuted = false;
-    qint64 lastActive = 0;
-    int crashCount = 0;
-    bool showingCrashPage = false;
-};
 
 class TabManager : public QObject
 {

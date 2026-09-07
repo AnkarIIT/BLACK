@@ -10,6 +10,7 @@ class QWidget;
 class QHBoxLayout;
 class QVBoxLayout;
 class QToolButton;
+class QScrollArea;
 class BrowserWindow;
 
 // Classic Chrome UI layer. Built alongside the Safari layer so a single mode

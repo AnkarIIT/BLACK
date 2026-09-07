@@ -49,6 +49,10 @@ const int kPbkdf2Iterations = 150000;
 const char kDpapiEntropy[] = "BLACK_BROWSER_VAULT_ENTROPY_BLOCK_32";
 #endif
 
+// Forward declarations for functions in this namespace
+QByteArray loadOrCreateMasterKeyFile();
+QByteArray loadOrCreateMasterKey();
+
 QByteArray randomBytes(int n)
 {
     QByteArray out;
@@ -592,3 +596,4 @@ QByteArray decrypt(const QByteArray &envelope)
 }
 
 } // namespace VaultCrypto
+} // namespace

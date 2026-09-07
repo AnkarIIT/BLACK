@@ -7,6 +7,7 @@
 #include <QSet>
 #include <QReadWriteLock>
 #include <QTimer>
+#include <QNetworkAccessManager>
 
 // Offline Safe Browsing: blocks navigation to hosts on an embedded list plus
 // any extra domains in <AppDataLocation>/safebrowsing.json. No cloud Google

@@ -25,7 +25,7 @@ elseif(IOS)
         "An iOS port would need a native WKWebView rendering layer.")
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets Svg WebChannel Network)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets Svg WebChannel Network Positioning)
 
 # OpenSSL is only required on non-Windows for AES-GCM in VaultCrypto
 # On Windows, DPAPI is used which doesn't require OpenSSL
@@ -129,6 +129,7 @@ target_link_libraries(BLACK PRIVATE
     Qt6::Svg
     Qt6::WebChannel
     Qt6::Network
+    Qt6::Positioning
 )
 
 if(WIN32)

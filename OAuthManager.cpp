@@ -15,6 +15,7 @@
 #include <QTcpSocket>
 #include <QHostAddress>
 #include <QDateTime>
+#include <QEventLoop>
 
 #include "VaultCrypto.h"
 #include "OSPaths.h"

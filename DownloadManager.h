@@ -6,6 +6,7 @@
 #include <QString>
 #include <QPointer>
 #include <QUrl>
+#include <QDateTime>
 
 class QWebEngineProfile;
 class QWebEngineDownloadRequest;
@@ -64,11 +65,10 @@ public:
     Q_INVOKABLE void cancelDownload(int index);
     Q_INVOKABLE void retryDownload(int index);
     Q_INVOKABLE void showInFolder(int index);
-    Q_INVOKABLE void clearCompleted();
-    Q_INVOKABLE void clearAll();
 
 private:
     void updateButtonTooltip();
+    void calculateSpeedAndEta(int idx);
 
     QWebEngineProfile *m_profile;
     QPointer<QWidget> m_parentWidget;
