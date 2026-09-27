@@ -40,6 +40,10 @@ public:
     // { "id", "name", "count", "found" } objects.
     Q_INVOKABLE QJsonArray scanBrowsersJson() const;
 
+    // Import all bookmarks from a browser into the internal bookmarks store
+    // Returns number of imported bookmarks
+    Q_INVOKABLE int importBookmarksToStore(const QString &browserId);
+
 private:
     // Reads <profile>/Bookmarks via a temporary safe copy. Returns false if
     // the browser is not installed or the file cannot be parsed.

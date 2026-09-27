@@ -1,5 +1,6 @@
 #include "BookmarkImporter.h"
 #include "OSPaths.h"
+#include "ShelfStore.h"
 
 #include <QFile>
 #include <QFileInfo>
@@ -135,3 +136,32 @@ void BookmarkImporter::walkNode(const QJsonObject &node, QJsonArray &out) const
     for (const QJsonValue &child : children)
         walkNode(child.toObject(), out);
 }
+
+int BookmarkImporter::importBookmarksToStore(const QString &browserId)
+{
+    QJsonArray items;
+    if (!loadBookmarks(browserId, items)) {
+        return 0;
+    }
+    // The actual import to ShelfStore is done by the caller (BrowserWindow)
+    // which has access to the bookmarks ShelfStore
+    return items.size();
+}
+
+QJsonArray BookmarkImporter::availableBrowsers() const
+{
+    QJsonArray out;
+    const QList<BrowserInfo> browsers = scanBrowsers();
+    for (const BrowserInfo &browser : browsers) {
+        if (browser.found) {
+            QJsonObject entry;
+            entry[QStringLiteral("id")] = browser.id;
+            entry[QStringLiteral("name")] = browser.name;
+            entry[QStringLiteral("count")] = browser.count;
+            out.append(entry);
+        }
+    }
+    return out;
+}
+
+#include "BookmarkImporter.moc"
