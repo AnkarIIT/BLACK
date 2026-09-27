@@ -10,24 +10,20 @@
 #include <QList>
 #include <QMap>
 
-#include "BrowserWindow.h"
-
 class QWebEngineNewWindowRequest;
 class QWebChannel;
+class TabController;
 
 class TabManager : public QObject
 {
     Q_OBJECT
 
 public:
-    explicit TabManager(QWebEngineProfile *profile, QWebChannel *webChannel, QWebChannel *passwordChannel, QObject *parent = nullptr);
+    explicit TabManager(TabController *tabController, QObject *parent = nullptr);
     ~TabManager();
 
-    // Tab creation
-    QWebEngineView* addTab(const QUrl &url, QWebEngineNewWindowRequest *request = nullptr, int activateOverride = -1);
-    QWebEngineView* addTab(const QUrl &url, int activateOverride);
-
-    // Tab operations
+    // Delegate to TabController
+    QWebEngineView* addTab(const QUrl &url, int activateOverride = -1);
     void closeTab(int index);
     void setCurrentTab(int index);
     void togglePinTab(int index);
@@ -35,10 +31,10 @@ public:
     void moveTab(int fromIndex, int toIndex);
 
     // Getters
-    int tabCount() const { return m_tabs.count(); }
-    int currentTabIndex() const { return m_currentTabIndex; }
+    int tabCount() const;
+    int currentTabIndex() const;
     QWebEngineView* currentView() const;
-    const QList<TabInfo>& tabs() const { return m_tabs; }
+    const QList<TabInfo>& tabs() const;
     QWebEngineView* viewAt(int index) const;
     TabInfo tabInfo(int index) const;
 
@@ -54,15 +50,15 @@ public:
     QList<QVariantMap> sessionData() const;
 
     // History for recently closed
-    QList<QUrl> recentlyClosed() const { return m_closedTabs; }
+    QList<QUrl> recentlyClosed() const;
     void addToClosedTabs(const QUrl &url);
     void clearClosedTabs();
 
     // Settings
-    void setActivateNewTabs(bool activate) { m_activateNewTabs = activate; }
-    void setNewTabUrl(const QUrl &url) { m_newTabUrl = url; }
+    void setActivateNewTabs(bool activate);
+    void setNewTabUrl(const QUrl &url);
 
-signals:
+    // TabController signals (forwarded)
     void tabAdded(int index);
     void tabRemoved(int index);
     void currentTabChanged(int index);
@@ -77,22 +73,9 @@ signals:
     void tabMoved(int fromIndex, int toIndex);
 
 private:
-    void setupTabConnections(QWebEngineView *view, int index);
-    QWebEngineView* createTabView(const QUrl &url, QWebEngineNewWindowRequest *request);
-    int nextTabIndex(int index) const;
-    int previousTabIndex(int index) const;
-    void rebuildTabOrder();
+    TabController *m_tabController = nullptr;
 
-    QWebEngineProfile *m_profile = nullptr;
-    QWebChannel *m_webChannel = nullptr;
-    QWebChannel *m_passwordChannel = nullptr;
-    QList<TabInfo> m_tabs;
-    int m_currentTabIndex = -1;
-    QList<QUrl> m_closedTabs;
-    QUrl m_newTabUrl;
-    bool m_activateNewTabs = true;
-    bool m_overviewVisible = false;
-    static const int kMaxTabThumbnails = 50;
+    void connectSignals();
 };
 
 #endif // TABMANAGER_H
