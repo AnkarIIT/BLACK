@@ -210,6 +210,19 @@ QByteArray loadOrCreateMasterKeyFile()
     return key;
 }
 
+bool storeKeyToFile(const QByteArray &key)
+{
+    if (key.size() != kKeySize)
+        return false;
+
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                        + QLatin1String("/secrets");
+    QDir().mkpath(dir);
+    const QString path = dir + QLatin1String("/black_vault.key");
+
+    return OSPaths::writeFileAtomic(path, key, QFile::ReadOwner | QFile::WriteOwner);
+}
+
 #if defined(Q_OS_MACOS)
 QByteArray loadKeyFromMacOSKeychain()
 {
@@ -265,6 +278,68 @@ QByteArray loadKeyFromMacOSKeychain()
 
     return {};
 }
+
+bool storeKeyToMacOSKeychain(const QByteArray &key)
+{
+    if (key.size() != kKeySize)
+        return false;
+
+    const char *service = "BLACK Browser";
+    const char *account = "master_key";
+
+    CFStringRef serviceRef = CFStringCreateWithCString(kCFAllocatorDefault, service, kCFStringEncodingUTF8);
+    CFStringRef accountRef = CFStringCreateWithCString(kCFAllocatorDefault, account, kCFStringEncodingUTF8);
+
+    // Delete existing first
+    CFDictionaryRef deleteQuery = CFDictionaryCreate(kCFAllocatorDefault,
+        (const void **)&kSecClass, (const void **)&kSecClassGenericPassword,
+        (const void **)&kSecAttrService, (const void **)&serviceRef,
+        (const void **)&kSecAttrAccount, (const void **)&accountRef,
+        nullptr);
+    SecItemDelete(deleteQuery);
+    CFRelease(deleteQuery);
+
+    CFDataRef dataRef = CFDataCreate(kCFAllocatorDefault,
+        reinterpret_cast<const UInt8 *>(key.constData()), key.size());
+
+    CFDictionaryRef addQuery = CFDictionaryCreate(kCFAllocatorDefault,
+        (const void **)&kSecClass, (const void **)&kSecClassGenericPassword,
+        (const void **)&kSecAttrService, (const void **)&serviceRef,
+        (const void **)&kSecAttrAccount, (const void **)&accountRef,
+        (const void **)&kSecValueData, (const void **)&dataRef,
+        (const void **)&kSecAttrAccessible, (const void **)kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+        nullptr);
+
+    OSStatus status = SecItemAdd(addQuery, nullptr);
+    CFRelease(addQuery);
+    CFRelease(dataRef);
+    CFRelease(serviceRef);
+    CFRelease(accountRef);
+
+    return status == errSecSuccess;
+}
+
+bool removeKeyFromMacOSKeychain()
+{
+    const char *service = "BLACK Browser";
+    const char *account = "master_key";
+
+    CFStringRef serviceRef = CFStringCreateWithCString(kCFAllocatorDefault, service, kCFStringEncodingUTF8);
+    CFStringRef accountRef = CFStringCreateWithCString(kCFAllocatorDefault, account, kCFStringEncodingUTF8);
+
+    CFDictionaryRef deleteQuery = CFDictionaryCreate(kCFAllocatorDefault,
+        (const void **)&kSecClass, (const void **)&kSecClassGenericPassword,
+        (const void **)&kSecAttrService, (const void **)&serviceRef,
+        (const void **)&kSecAttrAccount, (const void **)&accountRef,
+        nullptr);
+
+    OSStatus status = SecItemDelete(deleteQuery);
+    CFRelease(deleteQuery);
+    CFRelease(serviceRef);
+    CFRelease(accountRef);
+
+    return status == errSecSuccess || status == errSecItemNotFound;
+}
 #if defined(Q_OS_LINUX) && defined(HAVE_LIBSECRET)
 QByteArray loadKeyFromLibsecret()
 {
@@ -314,6 +389,62 @@ QByteArray loadKeyFromLibsecret()
         return newKey;
 
     return {};
+}
+
+bool storeKeyToLibsecret(const QByteArray &key)
+{
+    if (key.size() != kKeySize)
+        return false;
+
+    GError *error = nullptr;
+    SecretSchema schema = {
+        "com.black.browser.master_key",
+        SECRET_SCHEMA_NONE,
+        {
+            { "service", SECRET_SCHEMA_ATTRIBUTE_STRING },
+            { "account", SECRET_SCHEMA_ATTRIBUTE_STRING },
+            { nullptr, SECRET_SCHEMA_ATTRIBUTE_STRING }
+        }
+    };
+
+    gboolean stored = secret_password_store_sync(&schema, nullptr, &error,
+        "service", "BLACK Browser",
+        "account", "master_key",
+        "secret", key.constData(),
+        nullptr);
+
+    if (error) {
+        g_error_free(error);
+        return false;
+    }
+
+    return stored;
+}
+
+bool removeKeyFromLibsecret()
+{
+    GError *error = nullptr;
+    SecretSchema schema = {
+        "com.black.browser.master_key",
+        SECRET_SCHEMA_NONE,
+        {
+            { "service", SECRET_SCHEMA_ATTRIBUTE_STRING },
+            { "account", SECRET_SCHEMA_ATTRIBUTE_STRING },
+            { nullptr, SECRET_SCHEMA_ATTRIBUTE_STRING }
+        }
+    };
+
+    gboolean cleared = secret_password_clear_sync(&schema, nullptr, &error,
+        "service", "BLACK Browser",
+        "account", "master_key",
+        nullptr);
+
+    if (error) {
+        g_error_free(error);
+        return false;
+    }
+
+    return cleared;
 }
 #endif
 
@@ -593,6 +724,150 @@ QByteArray decrypt(const QByteArray &envelope)
     if (cipher == kCipherHmacCtr)
         return hmacCtrDecryptBlob(payload);
     return {};
+}
+
+QByteArray exportMasterKey()
+{
+#if defined(Q_OS_WIN)
+    // DPAPI keys are not exportable - they're derived from user credentials
+    return {};
+#else
+    const QByteArray master = loadOrCreateMasterKey();
+    if (master.isEmpty() || master.size() != kKeySize)
+        return {};
+    return master.toBase64();
+#endif
+}
+
+bool importMasterKey(const QByteArray &base64Key)
+{
+#if defined(Q_OS_WIN)
+    Q_UNUSED(base64Key);
+    // DPAPI keys cannot be imported - they're derived from user credentials
+    return false;
+#else
+    const QByteArray key = QByteArray::fromBase64(base64Key);
+    if (key.size() != kKeySize)
+        return false;
+
+    // Store to keychain/file depending on platform
+#if defined(Q_OS_MACOS)
+    return storeKeyToMacOSKeychain(key);
+#elif defined(Q_OS_LINUX) && defined(HAVE_LIBSECRET)
+    return storeKeyToLibsecret(key);
+#else
+    return storeKeyToFile(key);
+#endif
+#endif
+}
+
+bool rotateMasterKey()
+{
+    // Not yet implemented - requires coordination with all stores
+    // to re-encrypt their data with the new key
+    Q_UNUSED(kKeySize);
+    return false;
+}
+
+QString getKeySource()
+{
+#if defined(Q_OS_WIN)
+    return QStringLiteral("dpapi");
+#elif defined(Q_OS_MACOS)
+    // Check if keychain has the key
+    if (!loadKeyFromMacOSKeychain().isEmpty())
+        return QStringLiteral("keychain");
+    // Check file fallback
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                        + QLatin1String("/secrets");
+    const QString path = dir + QLatin1String("/black_vault.key");
+    if (QFileInfo::exists(path))
+        return QStringLiteral("file");
+    return QStringLiteral("none");
+#elif defined(Q_OS_LINUX) && defined(HAVE_LIBSECRET)
+    if (!loadKeyFromLibsecret().isEmpty())
+        return QStringLiteral("libsecret");
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                        + QLatin1String("/secrets");
+    const QString path = dir + QLatin1String("/black_vault.key");
+    if (QFileInfo::exists(path))
+        return QStringLiteral("file");
+    return QStringLiteral("none");
+#else
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                        + QLatin1String("/secrets");
+    const QString path = dir + QLatin1String("/black_vault.key");
+    if (QFileInfo::exists(path))
+        return QStringLiteral("file");
+    return QStringLiteral("none");
+#endif
+}
+
+bool testKeychainAvailability()
+{
+#if defined(Q_OS_WIN)
+    // DPAPI is always available on Windows
+    return true;
+#elif defined(Q_OS_MACOS)
+    // Test by storing and retrieving a test key
+    const QByteArray testKey = randomBytes(kKeySize);
+    if (!storeKeyToMacOSKeychain(testKey))
+        return false;
+    // Verify we can read it back
+    const QByteArray retrieved = loadKeyFromMacOSKeychain();
+    // Clean up test key
+    removeKeyFromMacOSKeychain();
+    return retrieved == testKey;
+#elif defined(Q_OS_LINUX) && defined(HAVE_LIBSECRET)
+    const QByteArray testKey = randomBytes(kKeySize);
+    if (!storeKeyToLibsecret(testKey))
+        return false;
+    const QByteArray retrieved = loadKeyFromLibsecret();
+    removeKeyFromLibsecret();
+    return retrieved == testKey;
+#else
+    // File-based fallback - test write/read
+    const QByteArray testKey = randomBytes(kKeySize);
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                        + QLatin1String("/secrets");
+    const QString path = dir + QLatin1String("/black_vault.key");
+    QDir().mkpath(dir);
+    if (!OSPaths::writeFileAtomic(path, testKey, QFile::ReadOwner | QFile::WriteOwner))
+        return false;
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return false;
+    const QByteArray retrieved = file.readAll();
+    QFile::remove(path);
+    return retrieved == testKey;
+#endif
+}
+
+bool hasMasterKey()
+{
+#if defined(Q_OS_WIN)
+    // DPAPI always "has" a key (derived from user)
+    return true;
+#else
+    return !loadOrCreateMasterKey().isEmpty();
+#endif
+}
+
+bool removeMasterKey()
+{
+#if defined(Q_OS_WIN)
+    // DPAPI keys cannot be removed
+    return false;
+#elif defined(Q_OS_MACOS)
+    return removeKeyFromMacOSKeychain();
+#elif defined(Q_OS_LINUX) && defined(HAVE_LIBSECRET)
+    return removeKeyFromLibsecret();
+#else
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                        + QLatin1String("/secrets");
+    const QString path = dir + QLatin1String("/black_vault.key");
+    return QFile::remove(path);
+#endif
 }
 
 } // namespace VaultCrypto
