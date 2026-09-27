@@ -45,6 +45,25 @@ class ExtensionManager;
 class Account;
 class BookmarkImporter;
 class PermissionsBridge;
+class WebAuthnManager;
+class ReaderMode;
+class FingerprintProtection;
+class CookiePartition;
+class TranslationManager;
+class TabGroupManager;
+class SyncManager;
+class SyncEngine;
+class SyncCrypto;
+class AIManager;
+class WalletManager;
+class RewardsManager;
+class SearchAffiliation;
+class PerformanceManager;
+class WasmExtensionSupport;
+class WebRTCManager;
+class DeveloperTools;
+class I18nManager;
+class ShelfStore;
 #include "UpdateChecker.h"
 
 struct TabInfo {
@@ -74,6 +93,7 @@ public:
     ~BrowserWindow() override;
 
     static QWebEngineProfile *webProfile();
+    static void setWebProfile(QWebEngineProfile *profile);
 
     // Public methods for tab management
     void loadStartPage();
@@ -123,6 +143,8 @@ private slots:
     void hideTabOverview();
     void toggleReaderMode();
     void translatePage();
+    void togglePictureInPicture();
+    void toggleAIAssistant();
     void captureOverviewThumbnails();
     void showSettingsMenu();
     void openSettingsDialog();
@@ -132,6 +154,7 @@ private slots:
     void updateProfileButton();
     void updateWebViewTheme();
     void installExtensionScripts();
+    void openP2PDashboard();
 
 private:
     void setupUi();
@@ -234,6 +257,7 @@ private:
     QToolButton *m_addTabButton;
     QToolButton *m_readerModeButton;
     QToolButton *m_translateButton;
+    QToolButton *m_pipButton;
 
     QToolButton *m_closeButton;
     QToolButton *m_minimizeButton;
@@ -333,6 +357,26 @@ private:
     BookmarkImporter *m_bookmarkImporter;
     PermissionsBridge *m_permissionsBridge;
     UpdateChecker *m_updateChecker;
+    WebAuthnManager *m_webAuthnManager;
+    ReaderMode *m_readerMode;
+    FingerprintProtection *m_fingerprintProtection;
+    CookiePartition *m_cookiePartition;
+    TranslationManager *m_translationManager;
+    TabGroupManager *m_tabGroupManager;
+    SyncManager *m_syncManager;
+    AIManager *m_aiManager;
+    WalletManager *m_walletManager;
+    RewardsManager *m_rewardsManager;
+    SearchAffiliation *m_searchAffiliation;
+    PerformanceManager *m_performanceManager;
+    WebRTCManager *m_webRTCManager;
+    I18nManager *m_i18nManager;
+    CollaborationManager *m_collaborationManager;
+    AIAgentManager *m_aiAgentManager;
+    VoiceInterface *m_voiceInterface;
+    ProductivityManager *m_productivityManager;
+    AdvancedSecurity *m_advancedSecurity;
+    ShelfStore *m_readingList;
     QMap<QString, bool> m_permissionChoices;
 
     struct SiteSettings {

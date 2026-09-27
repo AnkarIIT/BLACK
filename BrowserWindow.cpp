@@ -7,7 +7,8 @@
 #include "BrowserSettings.h"
 #include "ShelfStore.h"
 #include "PasswordStore.h"
-#include "ExtensionManager.h"
+// ExtensionManager is used via singleton instance()
+class ExtensionManager;
 #include "Account.h"
 #include "AppearanceManager.h"
 #include "SafeBrowsing.h"
@@ -17,6 +18,23 @@
 #include "PermissionsBridge.h"
 #include "PlatformAdaptor.h"
 #include "DownloadManager.h"
+#include "MacOSWindowHelper.h"
+#include "AIManager.h"
+#include "WalletManager.h"
+#include "RewardsManager.h"
+#include "SearchAffiliation.h"
+#include "PerformanceManager.h"
+#include "WasmExtensionSupport.h"
+#include "WebRTCManager.h"
+#include "I18nManager.h"
+#include "CollaborationManager.h"
+#include "version.h"
+#include "AIAgentManager.h"
+#include "VoiceInterface.h"
+#include "ProductivityManager.h"
+#include "AdvancedSecurity.h"
+#include "DeveloperTools.h"
+#include <QFrame>
 #include <QFrame>
 #include <QStyle>
 #include <QGraphicsDropShadowEffect>
@@ -215,6 +233,8 @@ static const QString svgDownloads  = "<svg xmlns=\"http://www.w3.org/2000/svg\" 
 static const QString svgTabOverview = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"/></svg>";
 static const QString svgReaderMode = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 19.5A2.5 2.5 0 0 1 6.5 17H20\"/><path d=\"M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z\"/><path d=\"M8 10h12\"/><path d=\"M8 14h12\"/><path d=\"M8 18h8\"/></svg>";
 static const QString svgTranslate = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8.9h.5a8.48 8.48 0 0 1 8 8v.5z\"/></svg>";
+static const QString svgPip = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"2\" width=\"12\" height=\"12\" rx=\"2\"/><rect x=\"10\" y=\"10\" width=\"12\" height=\"12\" rx=\"2\"/></svg>";
+static const QString svgAI = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z\"/><path d=\"M12 6v4\"/><path d=\"M12 14v4\"/><path d=\"M6 12h4\"/><path d=\"M14 12h4\"/><path d=\"M18.5 5.5l-2.8 2.8\"/><path d=\"M15.5 8.5l-2.8 2.8\"/><path d=\"M5.5 18.5l2.8-2.8\"/><path d=\"M8.5 15.5l2.8-2.8\"/></svg>";
 static const QString svgPlus        = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\"><line x1=\"12\" y1=\"5\" x2=\"12\" y2=\"19\"/><line x1=\"5\" y1=\"12\" x2=\"19\" y2=\"12\"/></svg>";
 static const QString svgSearch      = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"11\" cy=\"11\" r=\"8\"/><line x1=\"21\" y1=\"21\" x2=\"16.65\" y2=\"16.65\"/></svg>";
 static const QString svgShield      = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z\"/></svg>";
@@ -554,9 +574,15 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
 #if defined(Q_OS_MACOS)
     // Translucent background needed on macOS for native traffic light integration
     setAttribute(Qt::WA_TranslucentBackground);
-#else
-    // On Windows/Linux, opaque background avoids compositor overhead and
+    setAttribute(Qt::WA_NoSystemBackground, true);
+    // Configure macOS window for native traffic lights
+    MacOSWindowHelper::configureMacOSWindow(this);
+#elif defined(Q_OS_WIN)
+    // On Windows, opaque background avoids compositor overhead and
     // rendering glitches with frameless windows.
+    setAttribute(Qt::WA_OpaquePaintEvent);
+#else
+    // Linux
     setAttribute(Qt::WA_OpaquePaintEvent);
 #endif
 
@@ -579,12 +605,14 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     m_webChannel->registerObject(QStringLiteral("bookmarks"), m_bookmarks);
     m_webChannel->registerObject(QStringLiteral("history"), m_history);
     m_passwords = new PasswordStore(this);
-    m_extensions = new ExtensionManager(this);
+    m_extensions = &ExtensionManager::instance(); // Use singleton
     m_account = new Account(this);
     connect(m_account, &Account::changed, this, [this]() { updateProfileButton(); });
     m_bookmarkImporter = new BookmarkImporter(this);
     m_permissionsBridge = new PermissionsBridge(this);
-    m_updateChecker = new UpdateChecker(QStringLiteral("1.0.0"),
+    #include "version.h"
+
+m_updateChecker = new UpdateChecker(QStringLiteral(BLACK_VERSION_STRING),
                                         QUrl(QStringLiteral("https://api.github.com/repos/black-browser/black/releases/latest")),
                                         this);
     m_webChannel->registerObject(QStringLiteral("passwords"), m_passwords);
@@ -593,6 +621,21 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     m_webChannel->registerObject(QStringLiteral("safeBrowsing"), &SafeBrowsing::instance());
     m_webChannel->registerObject(QStringLiteral("permissions"), m_permissionsBridge);
     m_webChannel->registerObject(QStringLiteral("updater"), m_updateChecker);
+    m_webChannel->registerObject(QStringLiteral("webauthn"), m_webAuthnManager);
+    m_webChannel->registerObject(QStringLiteral("profileManager"), &ProfileManager::instance());
+    m_webChannel->registerObject(QStringLiteral("syncManager"), m_syncManager);
+    m_webChannel->registerObject(QStringLiteral("walletManager"), m_walletManager);
+    m_webChannel->registerObject(QStringLiteral("rewardsManager"), m_rewardsManager);
+    m_webChannel->registerObject(QStringLiteral("searchAffiliation"), m_searchAffiliation);
+    m_webChannel->registerObject(QStringLiteral("performanceManager"), m_performanceManager);
+    m_webChannel->registerObject(QStringLiteral("wasmExtensionSupport"), m_wasmExtensionSupport);
+    m_webChannel->registerObject(QStringLiteral("developerTools"), m_developerTools);
+    m_webChannel->registerObject(QStringLiteral("i18nManager"), m_i18nManager);
+    m_webChannel->registerObject(QStringLiteral("collaborationManager"), m_collaborationManager);
+    m_webChannel->registerObject(QStringLiteral("aiAgentManager"), m_aiAgentManager);
+    m_webChannel->registerObject(QStringLiteral("voiceInterface"), m_voiceInterface);
+    m_webChannel->registerObject(QStringLiteral("productivityManager"), m_productivityManager);
+    m_webChannel->registerObject(QStringLiteral("advancedSecurity"), m_advancedSecurity);
 
     // Password-only bridge for external pages. SafariWebPage exposes this
     // channel to no one except the native autofill content script, and only in
@@ -607,6 +650,8 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     // Google render their official dark/light themes via prefers-color-scheme.
 #if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
     m_profile->settings()->setAttribute(QWebEngineSettings::ForceDarkMode, false);
+    // Enable Picture-in-Picture
+    m_profile->settings()->setAttribute(QWebEngineSettings::PictureInPictureEnabled, true);
 #endif
 
     QWebEngineScript styleScript;
@@ -652,6 +697,98 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     installExtensionScripts();
     connect(m_extensions, &ExtensionManager::changed, this, &BrowserWindow::installExtensionScripts);
 
+    // Fingerprinting protection
+    m_fingerprintProtection = new FingerprintProtection(this);
+    m_fingerprintProtection->install(m_profile);
+
+    // Cookie partitioning / Total Cookie Protection
+    m_cookiePartition = new CookiePartition(this);
+    m_cookiePartition->install(m_profile);
+
+    // Translation manager
+    m_translationManager = new TranslationManager(this);
+
+    // Tab Group Manager
+    m_tabGroupManager = new TabGroupManager(this);
+    m_tabGroupManager->setBrowserWindow(this);
+
+    // Sync Manager
+    m_syncManager = new SyncManager(this);
+    m_syncManager->initialize(this, m_passwords, m_bookmarks, m_history,
+                              &BrowserSettings::instance(), m_extensions, m_account);
+
+    // AI Manager
+    m_aiManager = new AIManager(this);
+    m_aiManager->setProvider(AIManager::Provider::Ollama);
+    m_webChannel->registerObject(QStringLiteral("aiManager"), m_aiManager);
+
+    // Wallet Manager
+    m_walletManager = new WalletManager(this);
+    m_walletManager->registerWeb3Provider(m_webChannel);
+
+    // Rewards Manager
+    m_rewardsManager = new RewardsManager(this);
+    m_webChannel->registerObject(QStringLiteral("rewardsManager"), m_rewardsManager);
+
+    // Search Affiliation
+    m_searchAffiliation = new SearchAffiliation(this);
+    m_searchAffiliation->setProvider(SearchAffiliation::Provider::Brave);
+    m_webChannel->registerObject(QStringLiteral("searchAffiliation"), m_searchAffiliation);
+
+    // WebRTC Manager
+    m_webRTCManager = new WebRTCManager(this);
+    m_webRTCManager->setSignalingServer("wss://signaling.black-browser.org");
+    m_webChannel->registerObject(QStringLiteral("webRTCManager"), m_webRTCManager);
+
+    // Performance Manager
+    m_performanceManager = new PerformanceManager(this);
+    m_performanceManager->setWebEngineProfile(m_profile);
+    m_performanceManager->setOptimizationLevel(PerformanceManager::OptimizationLevel::Balanced);
+    m_performanceManager->startProfiling();
+
+    // WASM Extension Support
+    m_wasmExtensionSupport = new WasmExtensionSupport(this);
+    m_webChannel->registerObject(QStringLiteral("wasmExtensionSupport"), m_wasmExtensionSupport);
+
+    // Developer Tools
+    m_developerTools = new DeveloperTools(this);
+    m_webChannel->registerObject(QStringLiteral("developerTools"), m_developerTools);
+
+    // I18n Manager
+    m_i18nManager = new I18nManager(this);
+    m_i18nManager->initialize();
+    m_webChannel->registerObject(QStringLiteral("i18nManager"), m_i18nManager);
+
+    // Voice Interface
+    m_voiceInterface = new VoiceInterface(this);
+    m_webChannel->registerObject(QStringLiteral("voiceInterface"), m_voiceInterface);
+
+    // Productivity Manager
+    m_productivityManager = new ProductivityManager(this);
+    m_webChannel->registerObject(QStringLiteral("productivityManager"), m_productivityManager);
+
+    // Advanced Security
+    m_advancedSecurity = new AdvancedSecurity(this);
+    m_webChannel->registerObject(QStringLiteral("advancedSecurity"), m_advancedSecurity);
+
+    // Collaboration Manager
+    m_collaborationManager = new CollaborationManager(this);
+    m_collaborationManager->setWebRTCManager(m_webRTCManager);
+    m_collaborationManager->setSyncManager(m_syncManager);
+    m_webChannel->registerObject(QStringLiteral("collaborationManager"), m_collaborationManager);
+
+    // AI Agent Manager
+    m_aiAgentManager = new AIAgentManager(this);
+    m_webChannel->registerObject(QStringLiteral("aiAgentManager"), m_aiAgentManager);
+
+    // Reading List
+    m_readingList = new ShelfStore(QStringLiteral("readinglist.json"), this);
+    m_webChannel->registerObject(QStringLiteral("readingList"), m_readingList);
+
+    // Bookmark Importer
+    m_bookmarkImporter = new BookmarkImporter(this);
+    m_webChannel->registerObject(QStringLiteral("bookmarkImporter"), m_bookmarkImporter);
+
     if (m_incognito) {
         QWebEngineSettings *s = m_profile->settings();
         s->setAttribute(QWebEngineSettings::JavascriptEnabled, true);
@@ -679,6 +816,21 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     applyTheme();
     loadPermissions();
 
+    // Initialize WebAuthn manager
+    m_webAuthnManager = new WebAuthnManager(this);
+
+    // Initialize Reader Mode
+    m_readerMode = new ReaderMode(this);
+    connect(m_readerMode, &ReaderMode::extractionFailed, this, [this](const QString &error) {
+        qWarning() << "Reader mode extraction failed:" << error;
+    });
+    connect(m_readerMode, &ReaderMode::readerModeToggled, this, [this](bool enabled) {
+        if (m_readerModeButton) {
+            m_readerModeButton->setChecked(enabled);
+            m_readerModeButton->setToolTip(enabled ? QStringLiteral("Exit Reader Mode") : QStringLiteral("Enter Reader Mode"));
+        }
+    });
+
     if (!m_incognito && !sessionRestoredFlag())
         m_ownsSession = true;
     if (m_ownsSession) {
@@ -702,6 +854,7 @@ BrowserWindow::BrowserWindow(bool incognito, QWidget *parent)
     connect(&BrowserSettings::instance(), &BrowserSettings::settingsChanged, this, [this]() {
         m_history->setRetentionDays(retentionDaysFor(BrowserSettings::instance().removeHistoryItems()));
         applyUiLayout();
+        setupKeyboardShortcuts(); // Re-bind shortcuts when settings change
     });
 
     connect(&SafariTheme::instance(), &SafariTheme::schemeChanged, this, [this]() {
@@ -721,12 +874,22 @@ BrowserWindow::~BrowserWindow() {
         m_downloads->clearAll();
 }
 
+static QWebEngineProfile *s_customWebProfile = nullptr;
+
 QWebEngineProfile *BrowserWindow::webProfile()
 {
+    if (s_customWebProfile) {
+        return s_customWebProfile;
+    }
     static QWebEngineProfile *profile = []() {
         return new QWebEngineProfile(QStringLiteral("BLACK"), nullptr);
     }();
     return profile;
+}
+
+void BrowserWindow::setWebProfile(QWebEngineProfile *profile)
+{
+    s_customWebProfile = profile;
 }
 
 // ── Public Page Loading Methods ─────────────────────────────────────────────
@@ -811,6 +974,15 @@ bool BrowserWindow::nativeEvent(const QByteArray &eventType, void *message, qint
             else return QMainWindow::nativeEvent(eventType, message, result);
             return true;
         }
+    }
+    return QMainWindow::nativeEvent(eventType, message, result);
+#elif defined(Q_OS_MACOS)
+    // On macOS, the Cocoa plugin handles most native events automatically
+    // We just need to ensure proper hit testing for our custom traffic lights
+    if (eventType == QByteArrayLiteral("mac_generic_NSEvent")) {
+        // macOS native events are handled by the Cocoa plugin
+        // The traffic lights are managed by the Cocoa plugin automatically
+        // when WA_TranslucentBackground and FramelessWindowHint are set
     }
     return QMainWindow::nativeEvent(eventType, message, result);
 #else
@@ -903,6 +1075,13 @@ void BrowserWindow::changeEvent(QEvent *event) {
     if (event->type() == QEvent::ThemeChange) {
         SafariTheme::instance().refreshScheme();
     }
+#if defined(Q_OS_MACOS)
+    // Handle macOS-specific window state changes
+    if (event->type() == QEvent::WindowStateChange) {
+        // Update traffic lights for fullscreen/maximized state
+        // The Cocoa plugin handles this automatically
+    }
+#endif
 }
 
 // ── Icon Helper ─────────────────────────────────────────────────────────────
@@ -1071,6 +1250,8 @@ void BrowserWindow::setupUi()
     m_shieldInside = new QToolButton(m_urlContainer);
     m_shieldInside->setFixedSize(18, 18);
     m_shieldInside->setToolTip(QStringLiteral("Privacy Report"));
+    m_shieldInside->setAccessibleName(QStringLiteral("Privacy Report"));
+    m_shieldInside->setAccessibleDescription(QStringLiteral("Shows privacy protection status for this site"));
     urlLayout->addWidget(m_shieldInside);
 
     // Chrome padlock chip: hidden in Safari mode, shown in Chrome mode via
@@ -1078,6 +1259,8 @@ void BrowserWindow::setupUi()
     m_lockButton = new QToolButton(m_urlContainer);
     m_lockButton->setFixedSize(18, 18);
     m_lockButton->setToolTip(QStringLiteral("Connection details"));
+    m_lockButton->setAccessibleName(QStringLiteral("Connection Security"));
+    m_lockButton->setAccessibleDescription(QStringLiteral("Shows connection security details for this site"));
     m_lockButton->setVisible(false);
     connect(m_lockButton, &QToolButton::clicked, this, &BrowserWindow::showConnectionInfo);
     urlLayout->addWidget(m_lockButton);
@@ -1086,6 +1269,8 @@ void BrowserWindow::setupUi()
 
     m_reloadButton->setFixedSize(22, 22);
     m_reloadButton->setToolTip(QStringLiteral("Reload"));
+    m_reloadButton->setAccessibleName(QStringLiteral("Reload Page"));
+    m_reloadButton->setAccessibleDescription(QStringLiteral("Reloads the current page"));
     urlLayout->addWidget(m_reloadButton);
 
     toolbarLayout->addWidget(m_urlContainer, 2);
@@ -1096,31 +1281,52 @@ void BrowserWindow::setupUi()
 
     // Right side buttons
     m_shareButton->setToolTip(QStringLiteral("Share"));
+    m_shareButton->setAccessibleName(QStringLiteral("Share Page"));
+    m_shareButton->setAccessibleDescription(QStringLiteral("Share this page with other apps"));
     connect(m_shareButton, &QToolButton::clicked, this, &BrowserWindow::shareAction);
     toolbarLayout->addWidget(m_shareButton);
 
     m_downloadsButton->setToolTip(QStringLiteral("Downloads"));
+    m_downloadsButton->setAccessibleName(QStringLiteral("Downloads"));
+    m_downloadsButton->setAccessibleDescription(QStringLiteral("Show downloaded files"));
     toolbarLayout->addWidget(m_downloadsButton);
 
     m_tabOverviewButton->setToolTip(QStringLiteral("Tab Overview"));
+    m_tabOverviewButton->setAccessibleName(QStringLiteral("Tab Overview"));
+    m_tabOverviewButton->setAccessibleDescription(QStringLiteral("Show all open tabs in a grid"));
     connect(m_tabOverviewButton, &QToolButton::clicked, this, &BrowserWindow::toggleTabOverview);
     toolbarLayout->addWidget(m_tabOverviewButton);
 
     // Reader Mode button
     m_readerModeButton = new QToolButton(this);
-    m_readerModeButton->setToolTip(QStringLiteral("Reader Mode"));
+    m_readerModeButton->setToolTip(QStringLiteral("Enter Reader Mode"));
+    m_readerModeButton->setAccessibleName(QStringLiteral("Reader Mode"));
+    m_readerModeButton->setAccessibleDescription(QStringLiteral("Toggle simplified reading view for this page"));
+    m_readerModeButton->setCheckable(true);
     connect(m_readerModeButton, &QToolButton::clicked, this, &BrowserWindow::toggleReaderMode);
     toolbarLayout->addWidget(m_readerModeButton);
 
     // Translation button
     m_translateButton = new QToolButton(this);
     m_translateButton->setToolTip(QStringLiteral("Translate Page"));
+    m_translateButton->setAccessibleName(QStringLiteral("Translate"));
+    m_translateButton->setAccessibleDescription(QStringLiteral("Translate this page to your preferred language"));
     connect(m_translateButton, &QToolButton::clicked, this, &BrowserWindow::translatePage);
     toolbarLayout->addWidget(m_translateButton);
+
+    // Picture-in-Picture button
+    m_pipButton = new QToolButton(this);
+    m_pipButton->setToolTip(QStringLiteral("Picture-in-Picture"));
+    m_pipButton->setAccessibleName(QStringLiteral("Picture in Picture"));
+    m_pipButton->setAccessibleDescription(QStringLiteral("Enter picture-in-picture mode for videos on this page"));
+    connect(m_pipButton, &QToolButton::clicked, this, &BrowserWindow::togglePictureInPicture);
+    toolbarLayout->addWidget(m_pipButton);
 
     // Chrome-only right cluster: extensions + profile avatar. Hidden in Safari
     // mode; applyUiLayout() toggles visibility. Settings joins after them.
     m_extensionsButton->setToolTip(QStringLiteral("Extensions"));
+    m_extensionsButton->setAccessibleName(QStringLiteral("Extensions"));
+    m_extensionsButton->setAccessibleDescription(QStringLiteral("Manage browser extensions"));
     m_extensionsButton->setVisible(false);
     connect(m_extensionsButton, &QToolButton::clicked, this, [this]() {
         navigateCurrentTo(QUrl(QStringLiteral("qrc:/settings.html?tab=extensions")));
@@ -1128,6 +1334,8 @@ void BrowserWindow::setupUi()
     toolbarLayout->addWidget(m_extensionsButton);
 
     m_profileButton->setToolTip(QStringLiteral("Profile"));
+    m_profileButton->setAccessibleName(QStringLiteral("Profile"));
+    m_profileButton->setAccessibleDescription(QStringLiteral("Manage your profile and account settings"));
     m_profileButton->setVisible(false);
     connect(m_profileButton, &QToolButton::clicked, this, &BrowserWindow::showProfileMenu);
     toolbarLayout->addWidget(m_profileButton);
@@ -1223,6 +1431,8 @@ void BrowserWindow::setupTabBar()
     const bool compact = (BrowserSettings::instance().tabLayout() == QLatin1String("Compact"));
     m_tabBar = new QWidget(centralWidget());
     m_tabBar->setObjectName(QStringLiteral("TabBar"));
+    m_tabBar->setAccessibleName(QStringLiteral("Tab Bar"));
+    m_tabBar->setAccessibleDescription(QStringLiteral("Shows open tabs, allows switching between tabs"));
     m_tabBar->setFixedHeight(isTouchDevice() ? (compact ? 40 : 46)
                                              : (compact ? 30 : 36));
 
@@ -1235,6 +1445,8 @@ void BrowserWindow::setupTabBar()
     const int addTabSize = touchIconSize(compact ? 22 : 26);
     m_addTabButton->setFixedSize(addTabSize, addTabSize);
     m_addTabButton->setToolTip(QStringLiteral("New Tab"));
+    m_addTabButton->setAccessibleName(QStringLiteral("New Tab"));
+    m_addTabButton->setAccessibleDescription(QStringLiteral("Open a new tab"));
     connect(m_addTabButton, &QToolButton::clicked, this, &BrowserWindow::addTabAction);
 
     // Insert tab bar into root layout (between toolbar and tab stack)
@@ -1258,6 +1470,8 @@ void BrowserWindow::setupSidebar()
     // Sidebar search
     m_sidebarSearch = new QLineEdit(m_sidebar);
     m_sidebarSearch->setPlaceholderText(QStringLiteral("Search tabs, bookmarks\u2026"));
+    m_sidebarSearch->setAccessibleName(QStringLiteral("Sidebar Search"));
+    m_sidebarSearch->setAccessibleDescription(QStringLiteral("Search through tabs and bookmarks"));
     m_sidebarSearch->setFixedHeight(28);
     m_sidebarLayout->addWidget(m_sidebarSearch);
     m_sidebarLayout->addSpacing(8);
@@ -1274,6 +1488,8 @@ void BrowserWindow::setupSidebar()
 
     auto addSectionHeader = [this](QVBoxLayout *lay, const QString &title) {
         QLabel *lbl = new QLabel(title, m_sidebar);
+        lbl->setAccessibleName(title);
+        lbl->setAccessibleDescription(QStringLiteral("Section header: %1").arg(title));
         lay->addWidget(lbl);
         m_sidebarHeaders.append(lbl);
     };
@@ -1284,6 +1500,8 @@ void BrowserWindow::setupSidebar()
         item->setCursor(Qt::PointingHandCursor);
         item->setProperty("sidebarActive", isActive);
         item->setProperty("sidebarAction", action);
+        item->setAccessibleName(text);
+        item->setAccessibleDescription(QStringLiteral("Navigate to %1").arg(text));
         item->installEventFilter(this);
 
         QHBoxLayout *itemLay = new QHBoxLayout(item);
@@ -1297,6 +1515,7 @@ void BrowserWindow::setupSidebar()
         itemLay->addWidget(iconLbl);
 
         QLabel *textLbl = new QLabel(text, item);
+        textLbl->setAccessibleName(text);
         itemLay->addWidget(textLbl, 1);
 
         lay->addWidget(item);
@@ -1415,6 +1634,9 @@ void BrowserWindow::navigateCurrentTo(const QUrl &url)
 
 void BrowserWindow::preloadFavicon(const QUrl &url)
 {
+    if (!BrowserSettings::instance().preloadFavicons())
+        return;
+
     if (!url.isValid() || url.host().isEmpty())
         return;
 
@@ -1423,9 +1645,11 @@ void BrowserWindow::preloadFavicon(const QUrl &url)
     if (m_faviconCache.contains(host))
         return;
 
-    // Fetch favicon asynchronously
-    QString faviconUrl = QStringLiteral("https://www.google.com/s2/favicons?domain=") + host + QStringLiteral("&sz=32");
+    // Fetch favicon asynchronously using DuckDuckGo's favicon service (privacy-friendly)
+    // DuckDuckGo doesn't track users and provides a simple favicon API
+    QString faviconUrl = QStringLiteral("https://icons.duckduckgo.com/ip3/") + host + QStringLiteral(".ico");
     QNetworkRequest request(QUrl(faviconUrl));
+    request.setRawHeader("User-Agent", "BLACK Browser");
     QNetworkReply *reply = m_netManager.get(request);
     connect(reply, &QNetworkReply::finished, this, [this, reply, host]() {
         reply->deleteLater();
@@ -1842,6 +2066,12 @@ SafariWebView* BrowserWindow::addTabView(const QUrl &url, QWebEngineNewWindowReq
     view->setWebChannelObject(m_webChannel);
     view->setPasswordChannelObject(m_passwordChannel);
     view->page()->setBackgroundColor(QColor(SafariTheme::instance().pageBackground));
+    
+    // Register page with WebAuthn manager
+    if (m_webAuthnManager) {
+        m_webAuthnManager->registerPage(view->page());
+    }
+    
     m_tabStack->addWidget(view);
 
     TabInfo info;
@@ -2053,6 +2283,11 @@ void BrowserWindow::closeTab(int index) {
     // Find the tab widget in the tab bar
     if (index < m_tabWidgets.count()) {
         tabWidget = m_tabWidgets[index];
+    }
+
+    // Unregister page from WebAuthn manager
+    if (m_webAuthnManager) {
+        m_webAuthnManager->unregisterPage(v->page());
     }
 
     // Animate tab close using graphics effect
@@ -2561,6 +2796,14 @@ void BrowserWindow::openSettingsDialog()
     m_settingsDialog->activateWindow();
 }
 
+void BrowserWindow::openP2PDashboard()
+{
+    if (m_webRTCManager) {
+        // Open a new tab with the P2P/WebRTC dashboard
+        addNewTab(QUrl(QStringLiteral("qrc:/p2p_dashboard.html")));
+    }
+}
+
 void BrowserWindow::showHistoryMenu(QToolButton *button, bool isBack)
 {
     if (m_currentTabIndex < 0 || m_currentTabIndex >= m_tabs.count())
@@ -2699,60 +2942,134 @@ void BrowserWindow::toggleReaderMode()
         return;
     }
 
-    // Inject readability script to extract article content
-    const QString readerScript = QStringLiteral(
-        "(function() {"
-        "  if (window.__blackReaderMode) return;"
-        "  window.__blackReaderMode = true;"
-        "  "
-        "  // Simple readability extraction based on Mozilla's Readability algorithm"
-        "  function getArticleContent() {"
-        "    const doc = document.cloneNode(true);"
-        "    // Remove scripts, styles, nav, header, footer, aside, ads"
-        "    const selectors = 'script, style, nav, header, footer, aside, "
-        "      [role=\"banner\"], [role=\"navigation\"], [role=\"complementary\"], "
-        "      .ad, .ads, .advertisement, .sidebar, .navigation, .menu, "
-        "      .header, .footer, .social, .share, .comments, .related, "
-        "      .newsletter, .popup, .modal, .cookie, .banner, .overlay'";
-        "    doc.querySelectorAll(selectors).forEach(el => el.remove());"
-        "    "
-        "    // Find the main content"
-        "    let content = doc.querySelector('article, main, [role=\"main\"], .content, .post, .article, .entry');"
-        "    if (!content) {"
-        "      // Fallback: find the element with the most text"
-        "      const candidates = doc.querySelectorAll('div, section, article');"
-        "      let maxText = '';"
-        "      candidates.forEach(el => {"
-        "        const text = el.innerText || el.textContent || '';"
-        "        if (text.length > maxText.length) maxText = text;"
-        "      });"
-        "      content = doc.createElement('div');"
-        "      content.innerText = maxText;"
-        "    }"
-        "    "
-        "    // Clean up the content"
-        "    content.querySelectorAll('a').forEach(a => { a.style.color = 'inherit'; a.style.textDecoration = 'underline'; });"
-        "    content.querySelectorAll('img').forEach(img => { img.style.maxWidth = '100%'; img.style.height = 'auto'; });"
-        "    "
-        "    return content.innerHTML;"
-        "  }"
-        "  "
-        "  const articleHtml = getArticleContent();"
-        "  const title = document.title;"
-        "  "
-        "  // Send back to native"
-        "  if (window.qt && qt.webChannelTransport) {"
-        "    new QWebChannel(qt.webChannelTransport, function(channel) {"
-        "      const bridge = channel.objects.readerBridge;"
-        "      if (bridge) bridge.onContentReady(title, articleHtml);"
-        "    });"
-        "  }"
-        "})();"
-    );
+    // Use the new ReaderMode class
+    if (m_readerMode) {
+        // Check if we're entering or exiting reader mode
+        const bool wasInReaderMode = m_readerMode->isInReaderMode(view);
+        
+        m_readerMode->toggleReaderMode(view);
+        
+        // If exiting reader mode, offer to save to reading list
+        if (wasInReaderMode && m_readingList) {
+            QTimer::singleShot(500, this, [this, view, url]() {
+                QString title = view->title();
+                if (title.isEmpty())
+                    title = url.host();
+                m_readingList->add(title, url.toString());
+            });
+        }
+    }
+}
 
-    // We need to add a readerBridge to the webChannel
-    // For now, just show a message that reader mode is not fully implemented
-    // The full implementation would require a reader.html page and a bridge object
+void BrowserWindow::togglePictureInPicture()
+{
+    if (m_currentTabIndex < 0 || m_currentTabIndex >= m_tabs.count())
+        return;
+
+    QWebEngineView *view = m_tabs[m_currentTabIndex].view;
+    if (!view)
+        return;
+
+    // Trigger PiP via JavaScript
+    view->page()->runJavaScript(
+        "var videos = document.querySelectorAll('video');"
+        "if (videos.length === 0) { console.log('No video element found'); }"
+        "else { videos[0].requestPictureInPicture().catch(function(e) { console.log('PiP failed:', e); }); }"
+    );
+}
+
+void BrowserWindow::toggleAIAssistant()
+{
+    if (m_currentTabIndex < 0 || m_currentTabIndex >= m_tabs.count())
+        return;
+
+    QWebEngineView *view = m_tabs[m_currentTabIndex].view;
+    if (!view)
+        return;
+
+    // Toggle AI Assistant sidebar panel
+    if (m_aiManager) {
+        // Inject AI Assistant panel into the page
+        view->page()->runJavaScript(R"(
+            (function() {
+                if (window.__blackAIAssistantVisible) {
+                    // Hide AI Assistant
+                    var panel = document.getElementById('black-ai-assistant-panel');
+                    if (panel) {
+                        panel.style.display = 'none';
+                    }
+                    window.__blackAIAssistantVisible = false;
+                } else {
+                    // Show AI Assistant
+                    if (!document.getElementById('black-ai-assistant-panel')) {
+                        var panel = document.createElement('div');
+                        panel.id = 'black-ai-assistant-panel';
+                        panel.style.cssText = 'position:fixed;top:60px;right:0;width:400px;height:calc(100vh-60px);background:#fff;box-shadow:-4px 0 20px rgba(0,0,0,0.15);z-index:10000;display:flex;flex-direction:column;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;';
+                        panel.innerHTML = 
+                            '<div style="padding:16px;border-bottom:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center;">' +
+                            '<h3 style="margin:0;font-size:16px;font-weight:600;">AI Assistant</h3>' +
+                            '<button id="close-ai" style="background:none;border:none;font-size:20px;cursor:pointer;">&times;</button>' +
+                            '</div>' +
+                            '<div style="flex:1;overflow-y:auto;padding:16px;">' +
+                            '<div id="ai-messages" style="display:flex;flex-direction:column;gap:12px;"></div>' +
+                            '</div>' +
+                            '<div style="padding:16px;border-top:1px solid #e0e0e0;">' +
+                            '<div style="display:flex;gap:8px;">' +
+                            '<input type="text" id="ai-input" placeholder="Ask me anything..." style="flex:1;padding:10px 12px;border:1px solid #e0e0e0;border-radius:20px;font-size:14px;">' +
+                            '<button id="ai-send" style="padding:10px 20px;background:#0066cc;color:#fff;border:none;border-radius:20px;cursor:pointer;font-weight:500;">Send</button>' +
+                            '</div>' +
+                            '</div>';
+                        document.body.appendChild(panel);
+                        
+                        // Event listeners
+                        document.getElementById('close-ai').onclick = function() {
+                            window.__blackAIAssistantVisible = false;
+                            document.getElementById('black-ai-assistant-panel').style.display = 'none';
+                        };
+                        document.getElementById('ai-send').onclick = function() {
+                            var input = document.getElementById('ai-input');
+                            var message = input.value.trim();
+                            if (!message) return;
+                            input.value = '';
+                            addMessage('user', message);
+                            sendToAI(message);
+                        };
+                        input.addEventListener('keypress', function(e) {
+                            if (e.key === 'Enter') document.getElementById('ai-send').click();
+                        });
+                        
+                        function addMessage(role, content) {
+                            var container = document.getElementById('ai-messages');
+                            var msg = document.createElement('div');
+                            msg.style.cssText = 'max-width:80%;padding:10px 14px;border-radius:12px;' + 
+                                (role === 'user' ? 'background:#0066cc;color:#fff;margin-left:auto;border-bottom-right-radius:4px;' : 'background:#f0f0f0;color:#1d1d1f;margin-right:auto;border-bottom-left-radius:4px;');
+                            msg.textContent = content;
+                            container.appendChild(msg);
+                            container.scrollTop = container.scrollHeight;
+                        }
+                        
+                        function sendToAI(message) {
+                            addMessage('assistant', 'Thinking...');
+                            fetch('/api/ai/chat', {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({message: message})
+                            }).then(r => r.json()).then(data => {
+                                var container = document.getElementById('ai-messages');
+                                container.lastChild.remove();
+                                addMessage('assistant', data.response || 'Error: ' + (data.error || 'Unknown'));
+                            }).catch(() => {
+                                var container = document.getElementById('ai-messages');
+                                container.lastChild.remove();
+                                addMessage('assistant', 'Error connecting to AI service');
+                            });
+                        }
+                        
+                        window.__blackAIAssistantVisible = true;
+                    })();
+        })();
+        """);
+    }
 }
 
 void BrowserWindow::translatePage()
@@ -2761,6 +3078,19 @@ void BrowserWindow::translatePage()
         return;
 
     QWebEngineView *view = m_tabs[m_currentTabIndex].view;
+    if (!view)
+        return;
+
+    // Use TranslationManager for translation
+    if (m_translationManager) {
+        // Show language picker dialog or use default target language
+        QString targetLang = BrowserSettings::instance().translationTargetLanguage();
+        if (targetLang.isEmpty()) {
+            targetLang = "en"; // Default to English
+        }
+        m_translationManager->translatePage(view, targetLang);
+    }
+}
     if (!view)
         return;
 
@@ -3855,95 +4185,113 @@ void BrowserWindow::setWindowTitleFromTab() {
 // ═══════════════════════════════════════════════════════════════════════════
 void BrowserWindow::setupKeyboardShortcuts()
 {
-    auto addShortcut = [this](const QString &key, std::function<void()> func) {
-        auto *s = new QShortcut(QKeySequence(key), this);
-        connect(s, &QShortcut::activated, this, std::move(func));
+    // Clear existing shortcuts
+    for (QShortcut *s : findChildren<QShortcut*>()) {
+        s->deleteLater();
+    }
+
+    auto shortcutFor = [this](const QString &action, const QString &defaultSeq) -> QString {
+        return BrowserSettings::instance().getShortcut(action);
     };
 
-    addShortcut(QStringLiteral("Ctrl+T"), [this]() { addTabAction(); });
-    for (int i = 1; i <= 8; ++i) {
-        addShortcut(QString("Ctrl+%1").arg(i), [this, i]() {
-            if (i - 1 < m_tabs.count())
-                setCurrentTab(i - 1);
-        });
+    // Default shortcuts map
+    static const QMap<QString, QString> defaults = {
+        { "newTab", "Ctrl+T" },
+        { "closeTab", "Ctrl+W" },
+        { "reopenClosedTab", "Ctrl+Shift+T" },
+        { "focusUrlBar", "Ctrl+L" },
+        { "findInPage", "Ctrl+F" },
+        { "reload", "Ctrl+R" },
+        { "hardReload", "Ctrl+Shift+R" },
+        { "newPrivateWindow", "Ctrl+Shift+N" },
+        { "toggleSidebar", "Ctrl+Shift+L" },
+        { "showSettings", "Ctrl+," },
+        { "nextTab", "Ctrl+Tab" },
+        { "prevTab", "Ctrl+Shift+Tab" },
+        { "zoomIn", "Ctrl+Plus" },
+        { "zoomOut", "Ctrl+Minus" },
+        { "zoomReset", "Ctrl+0" },
+        { "back", "Alt+Left" },
+        { "forward", "Alt+Right" },
+        { "home", "Alt+Home" },
+        { "fullscreen", "F11" },
+        { "print", "Ctrl+P" },
+        { "saveAsPdf", "Ctrl+Shift+P" },
+        { "devTools", "Ctrl+Shift+I" },
+        { "addBookmark", "Ctrl+D" },
+        { "nextTabNum1", "Ctrl+1" },
+        { "nextTabNum2", "Ctrl+2" },
+        { "nextTabNum3", "Ctrl+3" },
+        { "nextTabNum4", "Ctrl+4" },
+        { "nextTabNum5", "Ctrl+5" },
+        { "nextTabNum6", "Ctrl+6" },
+        { "nextTabNum7", "Ctrl+7" },
+        { "nextTabNum8", "Ctrl+8" },
+        { "nextTabNum9", "Ctrl+9" },
+        { "newPrivateWindow", "Ctrl+Shift+N" },
+        { "toggleSidebar", "Ctrl+Shift+L" },
+        { "toggleReaderMode", "F9" },
+        { "togglePictureInPicture", "Ctrl+Shift+P" },
+        { "translatePage", "Ctrl+Shift+T" },
+    };
+
+    // Track used key sequences to detect conflicts
+    QSet<QString> usedSequences;
+
+    for (auto it = defaults.constBegin(); it != defaults.constEnd(); ++it) {
+        const QString &action = it.key();
+        const QString &defaultSeq = it.value();
+        QString key = BrowserSettings::instance().getShortcut(action);
+        if (key.isEmpty()) key = defaultSeq;
+        
+        // Check for conflicts
+        if (usedSequences.contains(key)) {
+            qWarning() << "Shortcut conflict:" << action << "conflicts with existing shortcut:" << key;
+            continue; // Skip conflicting shortcut
+        }
+        usedSequences.insert(key);
+
+        // Map actions to functions
+        std::function<void()> func;
+        if (action == "newTab") func = [this]() { addTabAction(); };
+        else if (action == "closeTab") func = [this]() { closeTab(m_currentTabIndex); };
+        else if (action == "reopenClosedTab") func = [this]() { if (!m_closedTabs.isEmpty()) addNewTab(m_closedTabs.takeLast()); };
+        else if (action == "focusUrlBar") func = [this]() { m_urlBar->setFocus(); m_urlBar->selectAll(); };
+        else if (action == "findInPage") func = [this]() { showFindBar(); };
+        else if (action == "reload") func = [this]() { if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) v->reload(); };
+        else if (action == "hardReload") func = [this]() { if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) { v->page()->profile()->clearHttpCache(); v->reload(); } };
+        else if (action == "newPrivateWindow") func = [this]() { openPrivateWindow(); };
+        else if (action == "toggleSidebar") func = [this]() { toggleSidebar(); };
+        else if (action == "showSettings") func = [this]() { showSettingsMenu(); };
+        else if (action == "nextTab") func = [this]() { if (m_tabs.count() > 1) { int next = (m_currentTabIndex + 1) % m_tabs.count(); setCurrentTab(next); } };
+        else if (action == "prevTab") func = [this]() { if (m_tabs.count() > 1) { int prev = (m_currentTabIndex - 1 + m_tabs.count()) % m_tabs.count(); setCurrentTab(prev); } };
+        else if (action == "zoomIn") func = [this]() { if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) v->setZoomFactor(v->zoomFactor() + 0.1); };
+        else if (action == "zoomOut") func = [this]() { if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) v->setZoomFactor(qMax(0.25, v->zoomFactor() - 0.1)); };
+        else if (action == "zoomReset") func = [this]() { if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) v->setZoomFactor(1.0); };
+        else if (action == "back") func = [this]() { if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) v->back(); };
+        else if (action == "forward") func = [this]() { if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) v->forward(); };
+        else if (action == "home") func = [this]() { navigateCurrentTo(homepageUrl()); };
+        else if (action == "fullscreen") func = [this]() { if (isFullScreen()) showNormal(); else showFullScreen(); };
+        else if (action == "print") func = [this]() { printPage(); };
+        else if (action == "saveAsPdf") func = [this]() { savePageAsPdf(); };
+        else if (action == "devTools") func = [this]() { openDevTools(); };
+        else if (action == "addBookmark") func = [this]() { addBookmarkForCurrentTab(); };
+        else if (action == "newPrivateWindow") func = [this]() { openPrivateWindow(); };
+        else if (action == "toggleSidebar") func = [this]() { toggleSidebar(); };
+        else if (action == "toggleReaderMode") func = [this]() { toggleReaderMode(); };
+        else if (action == "togglePictureInPicture") func = [this]() { togglePictureInPicture(); };
+        else if (action == "translatePage") func = [this]() { translatePage(); };
+        else if (action.startsWith("nextTabNum")) {
+            int num = action.mid(10).toInt();
+            func = [this, num]() { if (num - 1 < m_tabs.count()) setCurrentTab(num - 1); };
+        }
+
+        if (!func) continue;
+        
+        auto *s = new QShortcut(QKeySequence(key), this);
+        s->setObjectName(QStringLiteral("shortcut_") + action);
+        connect(s, &QShortcut::activated, this, std::move(func));
     }
-    addShortcut(QStringLiteral("Ctrl+9"), [this]() { if (!m_tabs.isEmpty()) setCurrentTab(m_tabs.count() - 1); });
-    addShortcut(QStringLiteral("Ctrl+D"), [this]() { addBookmarkForCurrentTab(); });
-    addShortcut(QStringLiteral("Ctrl+Shift+N"), [this]() { openPrivateWindow(); });
-    addShortcut(QStringLiteral("Ctrl+W"), [this]() { closeTab(m_currentTabIndex); });
-    addShortcut(QStringLiteral("Ctrl+Shift+T"), [this]() {
-        if (m_closedTabs.isEmpty()) return;
-        addNewTab(m_closedTabs.takeLast());
-    });
-    addShortcut(QStringLiteral("Ctrl+L"), [this]() {
-        m_urlBar->setFocus();
-        m_urlBar->selectAll();
-    });
-    addShortcut(QStringLiteral("F6"), [this]() {
-        m_urlBar->setFocus();
-        m_urlBar->selectAll();
-    });
-    addShortcut(QStringLiteral("Ctrl+R"), [this]() {
-        if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) v->reload();
-    });
-    addShortcut(QStringLiteral("F5"), [this]() {
-        if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) v->reload();
-    });
-    addShortcut(QStringLiteral("Ctrl+Shift+R"), [this]() {
-        if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) {
-            v->page()->profile()->clearHttpCache();
-            v->reload();
-        }
-    });
-    addShortcut(QStringLiteral("Ctrl+F"), [this]() { showFindBar(); });
-    addShortcut(QStringLiteral("Escape"), [this]() {
-        if (m_findBar && m_findBar->isVisible()) hideFindBar();
-        else if (m_overviewVisible) hideTabOverview();
-        else if (m_sidebarVisible) toggleSidebar();
-    });
-    addShortcut(QStringLiteral("Ctrl+Shift+L"), [this]() { toggleSidebar(); });
-    addShortcut(QStringLiteral("Ctrl+,"), [this]() { showSettingsMenu(); });
-    addShortcut(QStringLiteral("Alt+Left"), [this]() {
-        if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) v->back();
-    });
-    addShortcut(QStringLiteral("Alt+Right"), [this]() {
-        if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) v->forward();
-    });
-    addShortcut(QStringLiteral("Alt+Home"), [this]() {
-        navigateCurrentTo(homepageUrl());
-    });
-    addShortcut(QStringLiteral("Ctrl+Tab"), [this]() {
-        if (m_tabs.count() > 1) {
-            int next = (m_currentTabIndex + 1) % m_tabs.count();
-            setCurrentTab(next);
-        }
-    });
-    addShortcut(QStringLiteral("Ctrl+Shift+Tab"), [this]() {
-        if (m_tabs.count() > 1) {
-            int prev = (m_currentTabIndex - 1 + m_tabs.count()) % m_tabs.count();
-            setCurrentTab(prev);
-        }
-    });
-    addShortcut(QStringLiteral("F11"), [this]() {
-        if (isFullScreen()) showNormal();
-        else showFullScreen();
-    });
-    addShortcut(QStringLiteral("Ctrl+Plus"), [this]() {
-        if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget()))
-            v->setZoomFactor(v->zoomFactor() + 0.1);
-    });
-    addShortcut(QStringLiteral("Ctrl+="), [this]() {
-        if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget()))
-            v->setZoomFactor(v->zoomFactor() + 0.1);
-    });
-    addShortcut(QStringLiteral("Ctrl+Minus"), [this]() {
-        if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget()))
-            v->setZoomFactor(qMax(0.25, v->zoomFactor() - 0.1));
-    });
-    addShortcut(QStringLiteral("Ctrl+0"), [this]() {
-        if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget()))
-            v->setZoomFactor(1.0);
-    });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -3995,12 +4343,13 @@ void BrowserWindow::applyTheme()
     m_tabOverviewButton->setIcon(createSvgIcon(svgTabOverview, 18, navIconColor));
     m_readerModeButton->setIcon(createSvgIcon(svgReaderMode, 18, navIconColor));
     m_translateButton->setIcon(createSvgIcon(svgTranslate, 18, navIconColor));
+    m_pipButton->setIcon(createSvgIcon(svgPip, 18, navIconColor));
     m_settingsButton->setIcon(createSvgIcon(svgSettings, 18, navIconColor));
     m_extensionsButton->setIcon(createSvgIcon(svgExtensions, 18, navIconColor));
     updateProfileButton();
 
     for (QToolButton *b : { m_sidebarButton, m_backButton, m_forwardButton, m_reloadButton,
-                            m_shareButton, m_downloadsButton, m_tabOverviewButton, m_readerModeButton, m_translateButton, m_settingsButton,
+                            m_shareButton, m_downloadsButton, m_tabOverviewButton, m_readerModeButton, m_translateButton, m_pipButton, m_settingsButton,
                             m_extensionsButton, m_profileButton }) {
         b->setStyleSheet(navBtnStyle);
     }
@@ -4655,7 +5004,10 @@ void BrowserWindow::saveSession() {
                "Open tabs will not be restored on the next launch."));
         return;
     }
-    OSPaths::writeFileAtomic(dataFile(QStringLiteral("session.json")), blob);
+    if (!OSPaths::writeFileAtomic(dataFile(QStringLiteral("session.json")), blob)) {
+        QMessageBox::warning(this, tr("Session Not Saved"),
+            tr("Failed to write session file to disk. Open tabs will not be restored on the next launch."));
+    }
 }
 
 void BrowserWindow::restoreSession() {
@@ -4773,7 +5125,10 @@ void BrowserWindow::savePermissions()
                "Permission prompts will reappear each time you start the browser."));
         return;
     }
-    OSPaths::writeFileAtomic(dataFile(QStringLiteral("permissions.json")), blob);
+    if (!OSPaths::writeFileAtomic(dataFile(QStringLiteral("permissions.json")), blob)) {
+        QMessageBox::warning(this, tr("Permissions Not Saved"),
+            tr("Failed to write permissions file to disk. Permission prompts will reappear on next launch."));
+    }
 }
 
 void BrowserWindow::loadSiteSettings()
@@ -4820,7 +5175,9 @@ void BrowserWindow::saveSiteSettings()
     const QByteArray blob = VaultCrypto::encrypt(payload);
     if (blob.isEmpty())
         return;
-    OSPaths::writeFileAtomic(dataFile(QStringLiteral("site_settings.json")), blob);
+    if (!OSPaths::writeFileAtomic(dataFile(QStringLiteral("site_settings.json")), blob)) {
+        qWarning() << "Failed to write site settings file";
+    }
 }
 
 void BrowserWindow::applySiteSettings(const QString &host)
