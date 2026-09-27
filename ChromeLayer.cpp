@@ -141,6 +141,26 @@ void ChromeLayer::setupUi(QWidget *central, QVBoxLayout *rootLayout)
         }
     });
 
+    // Connect scroll bar range changes to update button visibility
+    auto *hScrollBar = m_tabScrollArea->horizontalScrollBar();
+    connect(hScrollBar, &QScrollBar::rangeChanged, this, [this](int min, int max) {
+        if (m_scrollLeftBtn && m_scrollRightBtn) {
+            bool canScrollLeft = hScrollBar->value() > min;
+            bool canScrollRight = hScrollBar->value() < max;
+            m_scrollLeftBtn->setVisible(canScrollLeft);
+            m_scrollRightBtn->setVisible(canScrollRight);
+        }
+    });
+    // Also update on value change (for keyboard/automatic scrolling)
+    connect(hScrollBar, &QScrollBar::valueChanged, this, [this](int value) {
+        if (m_scrollLeftBtn && m_scrollRightBtn) {
+            int min = hScrollBar->minimum();
+            int max = hScrollBar->maximum();
+            m_scrollLeftBtn->setVisible(value > min);
+            m_scrollRightBtn->setVisible(value < max);
+        }
+    });
+
     m_stripLayout->addWidget(m_scrollLeftBtn);
     m_stripLayout->addWidget(m_tabScrollArea, 1);
     m_stripLayout->addWidget(m_scrollRightBtn);
