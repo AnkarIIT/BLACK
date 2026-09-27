@@ -1,5 +1,6 @@
 #include "Account.h"
 #include "OSPaths.h"
+#include "VaultCrypto.h"
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -27,7 +28,27 @@ QString firstRunMarker()
     QDir().mkpath(dir);
     return dir + QLatin1Char('/') + QStringLiteral(".first_run_done");
 }
+
+QByteArray readEncryptedFile(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    const QByteArray raw = file.readAll();
+    if (VaultCrypto::isEnvelope(raw)) {
+        return VaultCrypto::decrypt(raw);
+    }
+    return raw; // legacy plaintext
 }
+
+bool writeEncryptedFile(const QString &path, const QByteArray &plain)
+{
+    const QByteArray blob = VaultCrypto::encrypt(plain);
+    if (blob.isEmpty())
+        return false;
+    return OSPaths::writeFileAtomic(path, blob);
+}
+} // namespace
 
 Account::Account(QObject *parent)
     : QObject(parent)
@@ -128,15 +149,17 @@ void Account::signOut()
 
 void Account::completeOnboarding()
 {
-    OSPaths::writeFileAtomic(firstRunMarker(), QByteArrayLiteral("1"));
+    if (!OSPaths::writeFileAtomic(firstRunMarker(), QByteArrayLiteral("1"))) {
+        qWarning() << "Failed to write first-run marker";
+    }
 }
 
 void Account::load()
 {
-    QFile file(accountFile());
-    if (!file.open(QIODevice::ReadOnly))
+    const QByteArray data = readEncryptedFile(accountFile());
+    if (data.isEmpty())
         return;
-    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    const QJsonDocument doc = QJsonDocument::fromJson(data);
     if (!doc.isObject())
         return;
     const QJsonObject o = doc.object();
@@ -155,7 +178,11 @@ void Account::save()
     o[QStringLiteral("email")] = m_email;
     o[QStringLiteral("avatar")] = m_avatar;
     o[QStringLiteral("authMethod")] = m_authMethod;
-    OSPaths::writeFileAtomic(accountFile(), QJsonDocument(o).toJson());
+    const QByteArray payload = QJsonDocument(o).toJson();
+    if (!writeEncryptedFile(accountFile(), payload)) {
+        qWarning() << "Failed to save account data";
+        return;
+    }
 }
 
 QJsonObject Account::accountObject(const QString &id, const QString &provider,
@@ -173,15 +200,19 @@ QJsonObject Account::accountObject(const QString &id, const QString &provider,
 
 void Account::loadAccounts()
 {
-    QFile file(accountsFile());
-    if (!file.open(QIODevice::ReadOnly))
+    const QByteArray data = readEncryptedFile(accountsFile());
+    if (data.isEmpty())
         return;
-    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    const QJsonDocument doc = QJsonDocument::fromJson(data);
     if (doc.isArray())
         m_accounts = doc.array();
 }
 
 void Account::saveAccounts() const
 {
-    OSPaths::writeFileAtomic(accountsFile(), QJsonDocument(m_accounts).toJson());
+    const QByteArray payload = QJsonDocument(m_accounts).toJson();
+    if (!writeEncryptedFile(accountsFile(), payload)) {
+        qWarning() << "Failed to save accounts list";
+        return;
+    }
 }
