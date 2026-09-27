@@ -137,6 +137,73 @@ private slots:
         QJsonArray array = doc.array();
         QCOMPARE(array.count(), 2);
     }
+
+    void testMaxEntriesCap()
+    {
+        m_store->setMaxEntries(3);
+        
+        m_store->add("Item 1", "https://example.com/1");
+        m_store->add("Item 2", "https://example.com/2");
+        m_store->add("Item 3", "https://example.com/3");
+        m_store->add("Item 4", "https://example.com/4"); // Should truncate
+        
+        QVERIFY(m_store->wasTruncated());
+        QCOMPARE(m_store->truncatedCount(), 1);
+        
+        QString json = m_store->json();
+        QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8());
+        QJsonArray array = doc.array();
+        QCOMPARE(array.count(), 3); // Only 3 stored
+    }
+
+    void testTruncationSignal()
+    {
+        m_store->setMaxEntries(2);
+        
+        QSignalSpy spy(m_store, &ShelfStore::truncated);
+        
+        m_store->add("Item 1", "https://example.com/1");
+        m_store->add("Item 2", "https://example.com/2");
+        m_store->add("Item 3", "https://example.com/3"); // Should emit truncated
+        
+        QVERIFY(spy.count() >= 1);
+        QCOMPARE(spy.first().first().toInt(), 1);
+    }
+
+    void testSeparateMaxEntries()
+    {
+        ShelfStore bookmarks("bookmarks_test.json");
+        ShelfStore history("history_test.json");
+        
+        bookmarks.setMaxEntries(100);
+        history.setMaxEntries(1000);
+        
+        QCOMPARE(bookmarks.maxEntries(), 100);
+        QCOMPARE(history.maxEntries(), 1000);
+        
+        bookmarks.setMaxEntries(200);
+        QCOMPARE(bookmarks.maxEntries(), 200);
+        QCOMPARE(history.maxEntries(), 1000); // Unchanged
+    }
+
+    void testImportTruncation()
+    {
+        m_store->setMaxEntries(3);
+        
+        QJsonArray items;
+        for (int i = 0; i < 10; ++i) {
+            QJsonObject obj;
+            obj["title"] = QString("Import %1").arg(i);
+            obj["url"] = QString("https://import.example.com/%1").arg(i);
+            items.append(obj);
+        }
+        
+        int imported = m_store->importBookmarks(items);
+        QCOMPARE(imported, 10); // All imported in memory
+        
+        QVERIFY(m_store->wasTruncated());
+        QCOMPARE(m_store->truncatedCount(), 7);
+    }
 };
 
 QTEST_MAIN(TestShelfStore)
