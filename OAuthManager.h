@@ -187,6 +187,7 @@ private:
     QString m_codeChallenge;
     QString m_state;
     QJsonObject m_formPostUser; // Apple form_post "user" payload
+    QString m_pendingRefreshToken; // Refresh token from token exchange, used during profile fetch
     Provider m_activeProvider = Google;
     bool m_isAuthenticating = false;
     bool m_devMode = false;

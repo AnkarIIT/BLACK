@@ -502,6 +502,9 @@ void OAuthManager::exchangeCodeForToken(const QString &code, Provider provider)
         const QString refreshToken = json.value(QStringLiteral("refresh_token")).toString();
         const int expiresIn = json.value(QStringLiteral("expires_in")).toInt(3600);
 
+        // Store the refresh token for use in profile fetch
+        m_pendingRefreshToken = refreshToken;
+
         if (provider == Apple) {
             // Apple has no profile API: name/email live in the id_token and the
             // first-time form_post "user" payload.
@@ -542,15 +545,15 @@ void OAuthManager::exchangeCodeForToken(const QString &code, Provider provider)
             fail(QStringLiteral("No access token in the provider response."));
             return;
         }
-        fetchUserProfile(accessToken, provider);
+        fetchUserProfile(accessToken, refreshToken, provider);
     });
 }
 
-void OAuthManager::fetchUserProfile(const QString &accessToken, Provider provider)
+void OAuthManager::fetchUserProfile(const QString &accessToken, const QString &refreshToken, Provider provider)
 {
     const ProviderInfo &info = kProviders[provider];
     if (!info.profileUrl || !*info.profileUrl) {
-        finishConnection(accessToken, QString(), provider, QJsonObject(), 3600);
+        finishConnection(accessToken, refreshToken, provider, QJsonObject(), 3600);
         return;
     }
 
@@ -563,7 +566,7 @@ void OAuthManager::fetchUserProfile(const QString &accessToken, Provider provide
         request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
         QNetworkReply *reply = m_net.post(request, QByteArrayLiteral("{}"));
         connect(reply, &QNetworkReply::finished, this,
-                [this, reply, accessToken, provider]() {
+                [this, reply, accessToken, refreshToken, provider]() {
             reply->deleteLater();
             if (reply->error() != QNetworkReply::NoError) {
                 fail(QStringLiteral("Profile fetch failed: %1").arg(reply->errorString()));
@@ -575,7 +578,7 @@ void OAuthManager::fetchUserProfile(const QString &accessToken, Provider provide
             userInfo.insert(QStringLiteral("name"), name.value(QStringLiteral("display_name")).toString());
             userInfo.insert(QStringLiteral("email"), raw.value(QStringLiteral("email")).toString());
             userInfo.insert(QStringLiteral("login"), name.value(QStringLiteral("abbreviated_name")).toString());
-            finishConnection(accessToken, QString(), Dropbox, userInfo, 3600);
+            finishConnection(accessToken, refreshToken, Dropbox, userInfo, 3600);
         });
         return;
     }
@@ -585,7 +588,7 @@ void OAuthManager::fetchUserProfile(const QString &accessToken, Provider provide
         request.setRawHeader("X-GitHub-Api-Version", "2022-11-28");
         QNetworkReply *reply = m_net.get(request);
         connect(reply, &QNetworkReply::finished, this,
-                [this, reply, accessToken, profileUrl]() {
+                [this, reply, accessToken, refreshToken, profileUrl]() {
             reply->deleteLater();
             if (reply->error() != QNetworkReply::NoError) {
                 fail(QStringLiteral("Profile fetch failed: %1").arg(reply->errorString()));
@@ -606,7 +609,7 @@ void OAuthManager::fetchUserProfile(const QString &accessToken, Provider provide
                 emails.setRawHeader("X-GitHub-Api-Version", "2022-11-28");
                 QNetworkReply *emailsReply = m_net.get(emails);
                 connect(emailsReply, &QNetworkReply::finished, this,
-                        [this, emailsReply, accessToken, userInfo]() {
+                        [this, emailsReply, accessToken, refreshToken, userInfo]() {
                     emailsReply->deleteLater();
                     if (emailsReply->error() == QNetworkReply::NoError) {
                         const QJsonArray arr = QJsonDocument::fromJson(emailsReply->readAll()).array();
@@ -616,12 +619,12 @@ void OAuthManager::fetchUserProfile(const QString &accessToken, Provider provide
                                 QJsonObject merged = userInfo;
                                 merged.insert(QStringLiteral("email"),
                                               e.value(QStringLiteral("email")).toString());
-                                finishConnection(accessToken, QString(), GitHub, merged, 3600);
+                                finishConnection(accessToken, refreshToken, GitHub, merged, 3600);
                                 return;
                             }
                         }
                     }
-                    finishConnection(accessToken, QString(), GitHub, userInfo, 3600);
+                    finishConnection(accessToken, refreshToken, GitHub, userInfo, 3600);
                 });
                 return;
             }
@@ -631,7 +634,7 @@ void OAuthManager::fetchUserProfile(const QString &accessToken, Provider provide
     }
 
     QNetworkReply *reply = m_net.get(request);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, accessToken, provider]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, accessToken, refreshToken, provider]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
             fail(QStringLiteral("Profile fetch failed: %1").arg(reply->errorString()));
@@ -674,7 +677,7 @@ void OAuthManager::fetchUserProfile(const QString &accessToken, Provider provide
         default:
             break;
         }
-        finishConnection(accessToken, QString(), provider, userInfo, 3600);
+        finishConnection(accessToken, refreshToken, provider, userInfo, 3600);
     });
 }
 
@@ -772,7 +775,10 @@ void OAuthManager::saveConnected() const
     const QByteArray blob = VaultCrypto::encrypt(plain);
     if (blob.isEmpty())
         return; // master key unavailable: never overwrite the vault with garbage
-    OSPaths::writeFileAtomic(connectedFilePath(), blob);
+    if (!OSPaths::writeFileAtomic(connectedFilePath(), blob)) {
+        qWarning() << "Failed to save OAuth connections";
+        return;
+    }
 }
 
 QString OAuthManager::getValidAccessToken(int providerEnum)
@@ -785,9 +791,6 @@ QString OAuthManager::getValidAccessToken(int providerEnum)
     if (!accountSet.contains(key))
         return QString();
     QJsonObject entry = accountSet.value(key).toObject();
-    const QString refreshToken = entry.value(QStringLiteral("refreshToken")).toString();
-    if (refreshToken.isEmpty())
-        return QString(); // no refresh token, cannot refresh
 
     // Check if current access token is still valid (with 5-minute buffer)
     const qint64 expiresAt = entry.value(QStringLiteral("expiresAt")).toVariant().toLongLong();
@@ -797,6 +800,11 @@ QString OAuthManager::getValidAccessToken(int providerEnum)
     if (!accessToken.isEmpty() && now < (expiresAt - buffer)) {
         return accessToken; // still valid
     }
+
+    // Need to refresh - check if we have a refresh token
+    const QString refreshToken = entry.value(QStringLiteral("refreshToken")).toString();
+    if (refreshToken.isEmpty())
+        return QString(); // no refresh token, cannot refresh
 
     // Need to refresh
     QString newAccessToken = refreshAccessToken(refreshToken, provider);
