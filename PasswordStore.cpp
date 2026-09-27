@@ -26,6 +26,34 @@ QString neverSaveFile()
     return dir + QLatin1Char('/') + QStringLiteral("never_save.json");
 }
 
+// Normalize an origin to scheme+host+port (e.g., "https://example.com:443").
+// Strips path, query, fragment. Does NOT strip www. or default ports.
+QString normOrigin(const QString &urlOrOrigin)
+{
+    QString input = urlOrOrigin.trimmed();
+    if (input.isEmpty())
+        return QString();
+
+    QUrl url(input);
+    // If the input doesn't parse as a valid URL with scheme, assume it's just a host
+    if (!url.isValid() || url.scheme().isEmpty()) {
+        // Try with https:// prefix
+        url = QUrl(QStringLiteral("https://") + input);
+    }
+    if (!url.isValid() || url.host().isEmpty())
+        return QString();
+
+    QString origin = url.scheme().toLower() + QStringLiteral("://") + url.host().toLower();
+    int port = url.port();
+    // Include port only if non-standard (not 80 for http, not 443 for https)
+    if (port != -1 && !((port == 80 && url.scheme() == QLatin1String("http")) ||
+                        (port == 443 && url.scheme() == QLatin1String("https")))) {
+        origin += QLatin1Char(':') + QString::number(port);
+    }
+    return origin;
+}
+
+// Legacy host normalization (for never-save list which is host-based)
 QString normHost(const QString &host)
 {
     QString h = host.trimmed().toLower();
@@ -52,12 +80,12 @@ QVariantList PasswordStore::hosts() const
     const QJsonArray array = loadArray();
     for (const QJsonValue &value : array) {
         const QJsonObject o = value.toObject();
-        const QString host = normHost(o.value(QStringLiteral("host")).toString());
-        if (host.isEmpty() || seen.contains(host))
+        const QString origin = normOrigin(o.value(QStringLiteral("host")).toString());
+        if (origin.isEmpty() || seen.contains(origin))
             continue;
-        seen.insert(host);
+        seen.insert(origin);
         QVariantMap m;
-        m[QStringLiteral("host")] = host;
+        m[QStringLiteral("origin")] = origin;
         m[QStringLiteral("username")] = o.value(QStringLiteral("username")).toString();
         m[QStringLiteral("timestamp")] = o.value(QStringLiteral("timestamp")).toString();
         result.append(m);
@@ -65,35 +93,35 @@ QVariantList PasswordStore::hosts() const
     return result;
 }
 
-QString PasswordStore::passwordFor(const QString &host, const QString &username) const
+QString PasswordStore::passwordFor(const QString &origin, const QString &username) const
 {
-    const QString h = normHost(host);
-    if (h.isEmpty())
+    const QString o = normOrigin(origin);
+    if (o.isEmpty())
         return QString();
     const QJsonArray array = loadArray();
     for (const QJsonValue &value : array) {
-        const QJsonObject o = value.toObject();
-        if (normHost(o.value(QStringLiteral("host")).toString()) == h
-            && o.value(QStringLiteral("username")).toString() == username)
-            return o.value(QStringLiteral("password")).toString();
+        const QJsonObject obj = value.toObject();
+        if (normOrigin(obj.value(QStringLiteral("host")).toString()) == o
+            && obj.value(QStringLiteral("username")).toString() == username)
+            return obj.value(QStringLiteral("password")).toString();
     }
     return QString();
 }
 
-void PasswordStore::save(const QString &host, const QString &username, const QString &password)
+void PasswordStore::save(const QString &origin, const QString &username, const QString &password)
 {
-    const QString h = normHost(host);
-    if (h.isEmpty() || password.isEmpty())
+    const QString o = normOrigin(origin);
+    if (o.isEmpty() || password.isEmpty())
         return;
     QJsonArray array = loadArray();
     for (int i = array.size() - 1; i >= 0; --i) {
-        const QJsonObject o = array.at(i).toObject();
-        if (normHost(o.value(QStringLiteral("host")).toString()) == h
-            && o.value(QStringLiteral("username")).toString() == username)
+        const QJsonObject obj = array.at(i).toObject();
+        if (normOrigin(obj.value(QStringLiteral("host")).toString()) == o
+            && obj.value(QStringLiteral("username")).toString() == username)
             array.removeAt(i);
     }
     QJsonObject item;
-    item[QStringLiteral("host")] = h;
+    item[QStringLiteral("host")] = o;
     item[QStringLiteral("username")] = username;
     item[QStringLiteral("password")] = password;
     item[QStringLiteral("timestamp")] = QDateTime::currentDateTime().toString(Qt::ISODate);
@@ -102,17 +130,17 @@ void PasswordStore::save(const QString &host, const QString &username, const QSt
     emit changed();
 }
 
-void PasswordStore::remove(const QString &host, const QString &username)
+void PasswordStore::remove(const QString &origin, const QString &username)
 {
-    const QString h = normHost(host);
-    if (h.isEmpty())
+    const QString o = normOrigin(origin);
+    if (o.isEmpty())
         return;
     QJsonArray array = loadArray();
     for (int i = array.size() - 1; i >= 0; --i) {
-        const QJsonObject o = array.at(i).toObject();
-        if (normHost(o.value(QStringLiteral("host")).toString()) == h
+        const QJsonObject obj = array.at(i).toObject();
+        if (normOrigin(obj.value(QStringLiteral("host")).toString()) == o
             && (username.isEmpty()
-                || o.value(QStringLiteral("username")).toString() == username))
+                || obj.value(QStringLiteral("username")).toString() == username))
             array.removeAt(i);
     }
     saveArray(array);
@@ -125,19 +153,19 @@ void PasswordStore::clearAll()
     emit changed();
 }
 
-QVariantList PasswordStore::entriesFor(const QString &host) const
+QVariantList PasswordStore::entriesFor(const QString &origin) const
 {
-    const QString h = normHost(host);
-    if (h.isEmpty())
+    const QString o = normOrigin(origin);
+    if (o.isEmpty())
         return {};
     QVariantList result;
     const QJsonArray array = loadArray();
     for (const QJsonValue &value : array) {
-        const QJsonObject o = value.toObject();
-        if (normHost(o.value(QStringLiteral("host")).toString()) == h) {
+        const QJsonObject obj = value.toObject();
+        if (normOrigin(obj.value(QStringLiteral("host")).toString()) == o) {
             QVariantMap m;
-            m[QStringLiteral("username")] = o.value(QStringLiteral("username")).toString();
-            m[QStringLiteral("password")] = o.value(QStringLiteral("password")).toString();
+            m[QStringLiteral("username")] = obj.value(QStringLiteral("username")).toString();
+            m[QStringLiteral("password")] = obj.value(QStringLiteral("password")).toString();
             result.append(m);
         }
     }
