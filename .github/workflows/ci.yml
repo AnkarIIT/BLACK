@@ -9,12 +9,29 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     
     strategy:
       matrix:
-        qt_version: [6.5.3]
+        qt_version: [6.8.0]
         msvc_version: [2022]
+        build_type: [Release, Debug]
+        include:
+          - qt_version: 6.8.0
+            msvc_version: 2022
+            build_type: Release
+          - qt_version: 6.8.0
+            msvc_version: 2022
+            build_type: Debug
+          - qt_version: 6.8.0
+            msvc_version: 2022
+            build_type: ASAN
+          - qt_version: 6.8.0
+            msvc_version: 2022
+            build_type: UBSAN
+          - qt_version: 6.8.0
+            msvc_version: 2022
+            build_type: MSAN
         
     steps:
     - name: Checkout
@@ -32,35 +49,54 @@ jobs:
         
     - name: Configure CMake
       run: |
-        cmake -S . -B build -G "Visual Studio 17 2022" \
-          -DCMAKE_PREFIX_PATH="C:/Qt/${{ matrix.qt_version }}/msvc${{ matrix.msvc_version }}_64" \
-          -DCMAKE_BUILD_TYPE=Release
+        set "CMAKE_ARGS=-S . -B build -G \"Visual Studio 17 2022\" -DCMAKE_PREFIX_PATH=\"C:/Qt/${{ matrix.qt_version }}/msvc${{ matrix.msvc_version }}_64\""
+        if "${{ matrix.build_type }}" == "ASAN" (
+          set "CMAKE_ARGS=%CMAKE_ARGS% -DENABLE_ASAN=ON -DCMAKE_BUILD_TYPE=Debug"
+        ) else if "${{ matrix.build_type }}" == "UBSAN" (
+          set "CMAKE_ARGS=%CMAKE_ARGS% -DENABLE_UBSAN=ON -DCMAKE_BUILD_TYPE=Debug"
+        ) else if "${{ matrix.build_type }}" == "MSAN" (
+          set "CMAKE_ARGS=%CMAKE_ARGS% -DENABLE_MSAN=ON -DCMAKE_BUILD_TYPE=Debug"
+        ) else (
+          set "CMAKE_ARGS=%CMAKE_ARGS% -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}"
+        )
+        cmake %CMAKE_ARGS%
       shell: cmd
       
     - name: Build
       run: |
-        cmake --build build --config Release --parallel
+        cmake --build build --config ${{ matrix.build_type }} --parallel
+      shell: cmd
+      
+    - name: Deploy Qt Dependencies (Windows Release)
+      if: matrix.build_type == 'Release'
+      run: |
+        cd build/Release
+        windeployqt --no-translations --no-angle --no-system-d3d-compiler BLACK.exe
       shell: cmd
       
     - name: Run Tests
       run: |
-        ctest --test-dir build --output-on-failure -C Release
+        ctest --test-dir build --output-on-failure -C ${{ matrix.build_type }}
       shell: cmd
       
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: black-windows-${{ matrix.qt_version }}
-        path: build/Release/BLACK.exe
+        name: black-windows-${{ matrix.qt_version }}-${{ matrix.build_type }}
+        path: |
+          build/${{ matrix.build_type }}/BLACK.exe
+          build/${{ matrix.build_type }}/*.dll
+          build/${{ matrix.build_type }}/*.exe
         retention-days: 7
 
   build-linux:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     
     strategy:
       matrix:
-        qt_version: [6.5.3]
+        qt_version: [6.8.0]
+        build_type: [Release, Debug, ASAN, TSAN, UBSAN, MSAN]
         
     steps:
     - name: Checkout
@@ -84,7 +120,10 @@ jobs:
           libasound2-dev \
           libpulse-dev \
           libsecret-1-dev \
-          libssl-dev
+          libssl-dev \
+          llvm-15 \
+          clang-15 \
+          libfuzzer-15-dev
           
     - name: Install Qt
       uses: jurplel/install-qt-action@v3
@@ -97,11 +136,24 @@ jobs:
         cache: false
         
     - name: Configure CMake
+      env:
+        CC: ${{ matrix.build_type == 'ASAN' || matrix.build_type == 'TSAN' || matrix.build_type == 'MSAN' || matrix.build_type == 'UBSAN' && 'clang-15' || 'gcc' }}
+        CXX: ${{ matrix.build_type == 'ASAN' || matrix.build_type == 'TSAN' || matrix.build_type == 'MSAN' || matrix.build_type == 'UBSAN' && 'clang++-15' || 'g++' }}
       run: |
-        cmake -S . -B build \
-          -DCMAKE_PREFIX_PATH="/opt/Qt/${{ matrix.qt_version }}/gcc_64" \
-          -DCMAKE_BUILD_TYPE=Release
-          
+        CMAKE_ARGS="-S . -B build -DCMAKE_PREFIX_PATH=/opt/Qt/${{ matrix.qt_version }}/gcc_64"
+        if [ "${{ matrix.build_type }}" = "ASAN" ]; then
+          CMAKE_ARGS="$CMAKE_ARGS -DENABLE_ASAN=ON -DCMAKE_BUILD_TYPE=Debug"
+        elif [ "${{ matrix.build_type }}" = "TSAN" ]; then
+          CMAKE_ARGS="$CMAKE_ARGS -DENABLE_TSAN=ON -DCMAKE_BUILD_TYPE=Debug"
+        elif [ "${{ matrix.build_type }}" = "MSAN" ]; then
+          CMAKE_ARGS="$CMAKE_ARGS -DENABLE_MSAN=ON -DCMAKE_BUILD_TYPE=Debug"
+        elif [ "${{ matrix.build_type }}" = "UBSAN" ]; then
+          CMAKE_ARGS="$CMAKE_ARGS -DENABLE_UBSAN=ON -DCMAKE_BUILD_TYPE=Debug"
+        else
+          CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}"
+        fi
+        cmake $CMAKE_ARGS
+        
     - name: Build
       run: |
         cmake --build build --parallel $(nproc)
@@ -110,20 +162,90 @@ jobs:
       run: |
         ctest --test-dir build --output-on-failure
         
+    - name: Security Scan (Trivy)
+      if: matrix.build_type == 'Release'
+      run: |
+        # Install Trivy
+        wget -qO- https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+        echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list
+        sudo apt-get update
+        sudo apt-get install -y trivy
+        
+        # Scan filesystem for vulnerabilities
+        trivy fs --security-checks vuln,secret,config --severity HIGH,CRITICAL --exit-code 1 . || true
+        
+        # Scan the built binary
+        trivy fs --security-checks vuln --severity HIGH,CRITICAL build/BLACK || true
+      continue-on-error: true
+      
+    - name: Run Fuzzing (ASAN build only)
+      if: matrix.build_type == 'ASAN'
+      run: |
+        if [ -f build/fuzzer ]; then
+          mkdir -p corpus
+          timeout 60s ./build/fuzzer corpus -max_total_time=30 -rss_limit_mb=2048 || true
+        fi
+        
+- name: Build AppImage (Release)
+      if: matrix.build_type == 'Release'
+      env:
+        VERSION: ${{ github.ref_name == 'main' && 'dev' || github.ref_name }}
+      run: |
+        cd build
+        # Install linuxdeploy and linuxdeploy-plugin-qt
+        wget -q "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage" -O linuxdeploy
+        wget -q "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage" -O linuxdeploy-plugin-qt
+        chmod +x linuxdeploy linuxdeploy-plugin-qt
+        
+        # Use linuxdeploy to create AppImage with proper Qt dependencies
+        ./linuxdeploy --appdir BLACK.AppDir -e BLACK -i ./app.png -d ./black-browser.desktop \
+          --plugin qt \
+          --output appimage \
+          --verbosity=1
+          
+        # Rename to include version
+        mv BLACK-x86_64.AppImage "BLACK-${VERSION}-x86_64.AppImage" || true
+        ls -la *.AppImage
+      shell: bash
+        
+    - name: Build Flatpak (Release)
+      if: matrix.build_type == 'Release'
+      env:
+        VERSION: ${{ github.ref_name == 'main' && 'dev' || github.ref_name }}
+      run: |
+        # Install flatpak-builder
+        sudo apt-get update && sudo apt-get install -y flatpak-builder
+        
+        # Install KDE SDK
+        flatpak install --user -y flathub org.kde.Platform//6.8 org.kde.Sdk//6.8 || true
+        
+        # Build Flatpak
+        cd linux/packaging/flatpak
+        # Update the tag in the manifest to match the version
+        sed -i "s/tag: v1.0.0/tag: v${VERSION}/" org.black.Browser.yml
+        flatpak-builder --install --user --force-clean build-dir org.black.Browser.yml
+        flatpak build-export repo build-dir
+        flatpak build-bundle repo BLACK.flatpak org.black.Browser
+        mv BLACK.flatpak ../../../build/BLACK-${VERSION}-x86_64.flatpak
+        
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: black-linux-${{ matrix.qt_version }}
-        path: build/BLACK
+        name: black-linux-${{ matrix.qt_version }}-${{ matrix.build_type }}
+        path: |
+          build/BLACK
+          build/*.AppImage
+          build/*.flatpak
         retention-days: 7
 
   build-macos:
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     
     strategy:
       matrix:
-        qt_version: [6.5.3]
+        qt_version: [6.8.0]
+        build_type: [Release, Debug, ASAN, UBSAN]
         
     steps:
     - name: Checkout
@@ -141,14 +263,23 @@ jobs:
         
     - name: Install Dependencies
       run: |
-        brew install openssl
+        brew install openssl llvm
         
     - name: Configure CMake
+      env:
+        CC: ${{ matrix.build_type == 'ASAN' || matrix.build_type == 'UBSAN' && 'clang' || 'clang' }}
+        CXX: ${{ matrix.build_type == 'ASAN' || matrix.build_type == 'UBSAN' && 'clang++' || 'clang++' }}
       run: |
-        cmake -S . -B build \
-          -DCMAKE_PREFIX_PATH="/Users/runner/Qt/${{ matrix.qt_version }}/macos" \
-          -DCMAKE_BUILD_TYPE=Release
-          
+        CMAKE_ARGS="-S . -B build -DCMAKE_PREFIX_PATH=/Users/runner/Qt/${{ matrix.qt_version }}/macos"
+        if [ "${{ matrix.build_type }}" = "ASAN" ]; then
+          CMAKE_ARGS="$CMAKE_ARGS -DENABLE_ASAN=ON -DCMAKE_BUILD_TYPE=Debug"
+        elif [ "${{ matrix.build_type }}" = "UBSAN" ]; then
+          CMAKE_ARGS="$CMAKE_ARGS -DENABLE_UBSAN=ON -DCMAKE_BUILD_TYPE=Debug"
+        else
+          CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}"
+        fi
+        cmake $CMAKE_ARGS
+        
     - name: Build
       run: |
         cmake --build build --parallel $(sysctl -n hw.ncpu)
@@ -158,18 +289,112 @@ jobs:
         ctest --test-dir build --output-on-failure
         
     - name: Create App Bundle
+      if: matrix.build_type == 'Release'
       run: |
         cd build
         macdeployqt BLACK.app
         
+    - name: Code Sign and Notarize (macOS Release)
+      if: matrix.build_type == 'Release' && env.APPLE_ID != '' && env.TEAM_ID != '' && env.APP_PASSWORD != ''
+      env:
+        APPLE_ID: ${{ secrets.APPLE_ID }}
+        TEAM_ID: ${{ secrets.TEAM_ID }}
+        APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
+        SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+      run: |
+        cd build
+        chmod +x ../macos/scripts/notarize_and_sign.sh
+        ../macos/scripts/notarize_and_sign.sh BLACK.app "$APPLE_ID" "$TEAM_ID" "$APP_PASSWORD" "$SPARKLE_PRIVATE_KEY"
+        
+    - name: Create DMG for Distribution
+      if: matrix.build_type == 'Release'
+      run: |
+        cd build
+        create-dmg \
+          --volname "BLACK Browser" \
+          --window-pos 200 120 \
+          --window-size 800 400 \
+          --icon-size 100 \
+          --icon "BLACK.app" 200 190 \
+          --hide-extension "BLACK.app" \
+          --app-drop-link 600 185 \
+          "BLACK-macOS-${{ github.ref_name }}.dmg" \
+          .
+          
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: black-macos-${{ matrix.qt_version }}
-        path: build/BLACK.app
+        name: black-macos-${{ matrix.qt_version }}-${{ matrix.build_type }}
+        path: |
+          build/BLACK.app
+          build/*.dmg
         retention-days: 7
 
-  # Release job - creates a GitHub Release with all artifacts
+  fuzzing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    needs: build-linux
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libgl1-mesa-dev \
+          libglib2.0-dev \
+          libnss3-dev \
+          libatk-bridge2.0-dev \
+          libdrm-dev \
+          libxkbcommon-dev \
+          libxcomposite-dev \
+          libxcursor-dev \
+          libxdamage-dev \
+          libxrandr-dev \
+          libgbm-dev \
+          libasound2-dev \
+          libpulse-dev \
+          libsecret-1-dev \
+          libssl-dev \
+          llvm-15 \
+          clang-15 \
+          libfuzzer-15-dev
+          
+    - name: Install Qt
+      uses: jurplel/install-qt-action@v3
+      with:
+        version: 6.8.0
+        host: linux
+        target: desktop
+        arch: gcc_64
+        modules: qtwebengine qtwebchannel qtpositioning
+        cache: false
+        
+    - name: Configure CMake for Fuzzing
+      run: |
+        cmake -S . -B build-fuzz \
+          -DCMAKE_PREFIX_PATH=/opt/Qt/6.8.0/gcc_64 \
+          -DCMAKE_C_COMPILER=clang-15 \
+          -DCMAKE_CXX_COMPILER=clang++-15 \
+          -DENABLE_ASAN=ON \
+          -DENABLE_FUZZING=ON \
+          -DCMAKE_BUILD_TYPE=Debug
+          
+    - name: Build Fuzzers
+      run: |
+        cmake --build build-fuzz --parallel $(nproc)
+        
+    - name: Run Fuzzers
+      run: |
+        for fuzzer in build-fuzz/*_fuzzer; do
+          if [ -f "$fuzzer" ]; then
+            echo "Running $fuzzer..."
+            timeout 300s $fuzzer -max_total_time=60 -rss_limit_mb=4096 || true
+          fi
+        done
+
   release:
     needs: [build-windows, build-linux, build-macos]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
@@ -181,29 +406,77 @@ jobs:
     - name: Download Windows Artifact
       uses: actions/download-artifact@v4
       with:
-        name: black-windows-6.5.3
+        name: black-windows-6.8.0-Release
         path: artifacts/windows
         
     - name: Download Linux Artifact
       uses: actions/download-artifact@v4
       with:
-        name: black-linux-6.5.3
+        name: black-linux-6.8.0-Release
         path: artifacts/linux
         
     - name: Download macOS Artifact
       uses: actions/download-artifact@v4
       with:
-        name: black-macos-6.5.3
+        name: black-macos-6.8.0-Release
         path: artifacts/macos
+        
+    - name: Generate Sparkle Appcast
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/v}
+        cat > appcast.xml << EOF
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <channel>
+        <title>BLACK Browser Updates</title>
+        <link>https://github.com/black-browser/black/releases</link>
+        <description>BLACK Browser update feed</description>
+        <language>en</language>
+        
+        <item>
+            <title>Version $VERSION</title>
+            <sparkle:version>$VERSION</sparkle:version>
+            <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
+            <pubDate>$(date -R)</pubDate>
+            <enclosure
+                url="https://github.com/black-browser/black/releases/download/v$VERSION/BLACK-macOS-$VERSION.dmg"
+                sparkle:version="$VERSION"
+                sparkle:shortVersionString="$VERSION"
+                length="$(stat -f%z artifacts/macos/*.dmg 2>/dev/null || echo 0)"
+                type="application/octet-stream"
+                sparkle:edSignature=""
+            />
+        </item>
+    </channel>
+</rss>
+EOF
         
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
         files: |
           artifacts/windows/BLACK.exe
+          artifacts/windows/*.dll
+          artifacts/windows/*.exe
           artifacts/linux/BLACK
+          artifacts/linux/*.AppImage
+          artifacts/linux/*.flatpak
           artifacts/macos/BLACK.app
+          artifacts/macos/*.dmg
         draft: false
         prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Update Sparkle Appcast
+      if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+      run: |
+        # Update the appcast.xml in the repo
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        cp appcast.xml macos/sparkle/appcast.xml
+        git add macos/sparkle/appcast.xml
+        git commit -m "Update Sparkle appcast for v${VERSION}" || echo "No changes to appcast"
+        git push
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
