@@ -11,6 +11,7 @@
 #include <QHash>
 
 class ExtensionManager;
+class FilterListParser;
 
 class TrackerBlocker : public QWebEngineUrlRequestInterceptor
 {
@@ -33,6 +34,8 @@ public:
     static TrackerBlocker &privateInstance();
 
     void interceptRequest(QWebEngineUrlRequestInfo &info) override;
+    bool allow(QWebEngineUrlRequestInfo &info);
+    void changed();
 
     int trackersBlockedToday() const { rollDayIfNeeded(); return m_today; }
     int trackersBlockedThisWeek() const { return blockedLastNDays(7); }
@@ -49,6 +52,12 @@ public:
 
     // Set extension manager for declarative blocking rules
     void setExtensionManager(ExtensionManager *manager);
+    
+    // Set filter list parser for dynamic blocklists
+    void setFilterListParser(FilterListParser *parser);
+    
+    // Update filter lists from remote sources
+    Q_INVOKABLE void updateFilterLists();
 
 signals:
     void privacyChanged();
@@ -59,26 +68,18 @@ private:
     ~TrackerBlocker();
     Q_DISABLE_COPY(TrackerBlocker)
 
-    // Domain suffix trie for O(k) blocked host lookup (k = domain parts)
-    struct TrieNode {
-        QHash<QString, TrieNode*> children;
-        bool isTerminal = false;
-        QString terminalDomain;
-        TrieNode() = default;
-        ~TrieNode() { qDeleteAll(children); }
-    };
-    void buildDomainTrie();
-    void deleteTrie(TrieNode* node);
-    bool isBlockedHost(const QString &host) const;
-    bool isBlockedByExtensionRules(const QString &url) const;
     bool isIncognito() const;
     int blockedLastNDays(int days) const;
     QList<QDate> daysInWindow(int days) const;
     void rollDayIfNeeded() const;
+    
+    void recordBlockedRequest(const QString &host, const QString &firstPartyHost);
+    void recordVisitedSite(const QString &host);
 
     bool m_incognito = false;
-    QSet<QString> m_blockedHosts;
-    TrieNode* m_domainTrie = nullptr;
+    QSet<QString> m_legacyBlockedHosts;  // Legacy hardcoded list for backwards compat
+    FilterListParser *m_filterParser = nullptr;
+    
     mutable int m_today;
     mutable QDate m_lastDate;                          // last day m_today was rolled
     QMap<QString, int> m_daily;                        // day (ISO) -> blocked that day

@@ -2,6 +2,7 @@
 #include "SafeBrowsing.h"
 #include "OSPaths.h"
 #include "ExtensionManager.h"
+#include "FilterListParser.h"
 #include <QWebEngineUrlRequestInfo>
 #include <QUrlQuery>
 #include <QStandardPaths>
@@ -12,6 +13,7 @@
 #include <QJsonArray>
 #include <QDate>
 #include <QMetaObject>
+#include <QRegularExpression>
 #include <algorithm>
 
 namespace {
@@ -23,141 +25,8 @@ QString dataFile(const QString &fileName)
     return dir + QLatin1Char('/') + fileName;
 }
 
-// Turn a glob-like token into regex source: '*' -> '.*', everything else escaped.
-QString globToRegex(const QString &s)
-{
-    QString out;
-    for (const QChar &ch : s) {
-        if (ch == QLatin1Char('*'))
-            out += QStringLiteral(".*");
-        else if (ch.isLetterOrNumber())
-            out += ch;
-        else
-            out += QRegularExpression::escape(QString(ch));
-    }
-    return out;
-}
-
-// Known advertising / tracking / analytics domains (EasyList/EasyPrivacy style).
-const char *const kBlockedHosts[] = {
-    "2mdn.net",
-    "adform.net",
-    "adnxs.com",
-    "adroll.com",
-    "adsafeprotected.com",
-    "adsrvr.org",
-    "adsymptotic.com",
-    "adtechus.com",
-    "advertising.com",
-    "agkn.com",
-    "amobee.com",
-    "analytics.google.com",
-    "analytics.tiktok.com",
-    "analytics.twitter.com",
-    "analytics.yahoo.com",
-    "appnexus.com",
-    "atwola.com",
-    "bat.bing.com",
-    "bidr.io",
-    "bidswitch.net",
-    "bidvertiser.com",
-    "bluekai.com",
-    "bounceexchange.com",
-    "casalemedia.com",
-    "chartbeat.com",
-    "clarity.ms",
-    "clicktale.com",
-    "comscore.com",
-    "connect.facebook.net",
-    "contextweb.com",
-    "conversantmedia.com",
-    "crazyegg.com",
-    "criteo.com",
-    "criteo.net",
-    "crwdcntrl.net",
-    "ct.pinterest.com",
-    "demdex.net",
-    "doubleclick.net",
-    "everestads.com",
-    "everesttech.net",
-    "exelator.com",
-    "eyeota.net",
-    "facebook.net",
-    "flashtalking.com",
-    "fullstory.com",
-    "gmads.net",
-    "googlesyndication.com",
-    "googletagmanager.com",
-    "googletagservices.com",
-    "googleadservices.com",
-    "hotjar.com",
-    "imrworldwide.com",
-    "indexww.com",
-    "infolinks.com",
-    "inspctbox.com",
-    "kissmetrics.com",
-    "lijit.com",
-    "mathtag.com",
-    "mc.yandex.ru",
-    "media.net",
-    "mixpanel.com",
-    "moat.com",
-    "moatads.com",
-    "mouseflow.com",
-    "nuggad.net",
-    "omtrdc.net",
-    "onaudience.com",
-    "openx.net",
-    "optimizely.com",
-    "outbrain.com",
-    "pubmatic.com",
-    "px.ads.linkedin.com",
-    "quantcount.com",
-    "quantserve.com",
-    "realmedia.com",
-    "revcontent.com",
-    "rhythmone.com",
-    "rlcdn.com",
-    "rubiconproject.com",
-    "scorecardresearch.com",
-    "segment.io",
-    "sharethrough.com",
-    "simpli.fi",
-    "skimresources.com",
-    "smartadserver.com",
-    "sonobi.com",
-    "sovrn.com",
-    "spotxchange.com",
-    "stackadapt.com",
-    "statcounter.com",
-    "stickyadstv.com",
-    "taboola.com",
-    "taboolasyndication.com",
-    "tapad.com",
-    "tapjoy.com",
-    "teads.tv",
-    "tremormedia.com",
-    "triplelift.com",
-    "turn.com",
-    "tynt.com",
-    "umeng.com",
-    "underdogmedia.com",
-    "valueclick.com",
-    "viglink.com",
-    "weborama.fr",
-    "yieldmo.com",
-    "yldbt.com",
-    "zanox.com",
-    "zemanta.com",
-    "zergnet.com",
-    "zopim.com",
-};
-
 const int kMaxSitesPerDay = 200;
 
-// True for "localhost"/*.localhost/*.local hosts and IPv4/IPv6 literals.
-// These are exempted from the HTTPS-First upgrade because local and raw-IP
-// endpoints are usually self-hosted and often serve plain HTTP.
 bool isIpv4Literal(const QString &host)
 {
     const QStringList parts = host.split(QLatin1Char('.'));
@@ -201,6 +70,33 @@ bool isLocalOrIpAddress(const QString &host)
     return isIpv4Literal(host) || isIpv6Literal(host);
 }
 
+// Legacy hardcoded blocklist for backwards compatibility and offline use
+const char *const kLegacyBlockedHosts[] = {
+    "2mdn.net", "adform.net", "adnxs.com", "adroll.com", "adsafeprotected.com",
+    "adsrvr.org", "adsymptotic.com", "adtechus.com", "advertising.com", "agkn.com",
+    "amobee.com", "analytics.google.com", "analytics.tiktok.com", "analytics.twitter.com",
+    "analytics.yahoo.com", "appnexus.com", "atwola.com", "bat.bing.com", "bidr.io",
+    "bidswitch.net", "bidvertiser.com", "bluekai.com", "bounceexchange.com", "casalemedia.com",
+    "chartbeat.com", "clarity.ms", "clicktale.com", "comscore.com", "connect.facebook.net",
+    "contextweb.com", "conversantmedia.com", "crazyegg.com", "criteo.com", "criteo.net",
+    "crwdcntrl.net", "ct.pinterest.com", "demdex.net", "doubleclick.net", "everestads.com",
+    "everesttech.net", "exelator.com", "eyeota.net", "facebook.net", "flashtalking.com",
+    "fullstory.com", "gmads.net", "googlesyndication.com", "googletagmanager.com",
+    "googletagservices.com", "googleadservices.com", "hotjar.com", "imrworldwide.com",
+    "indexww.com", "infolinks.com", "inspctbox.com", "kissmetrics.com", "lijit.com",
+    "mathtag.com", "mc.yandex.ru", "media.net", "mixpanel.com", "moat.com", "moatads.com",
+    "mouseflow.com", "nuggad.net", "omtrdc.net", "onaudience.com", "openx.net",
+    "optimizely.com", "outbrain.com", "pubmatic.com", "px.ads.linkedin.com", "quantcount.com",
+    "quantserve.com", "realmedia.com", "revcontent.com", "rhythmone.com", "rlcdn.com",
+    "rubiconproject.com", "scorecardresearch.com", "segment.io", "sharethrough.com",
+    "simpli.fi", "skimresources.com", "smartadserver.com", "sonobi.com", "sovrn.com",
+    "spotxchange.com", "stackadapt.com", "statcounter.com", "stickyadstv.com", "taboola.com",
+    "taboolasyndication.com", "tapad.com", "tapjoy.com", "teads.tv", "tremormedia.com",
+    "triplelift.com", "turn.com", "tynt.com", "umeng.com", "underdogmedia.com",
+    "valueclick.com", "viglink.com", "weborama.fr", "yieldmo.com", "yldbt.com",
+    "zanox.com", "zemanta.com", "zergnet.com", "zopim.com"
+};
+
 } // namespace
 
 TrackerBlocker &TrackerBlocker::instance()
@@ -221,60 +117,13 @@ TrackerBlocker::TrackerBlocker(bool incognito)
     , m_today(0)
     , m_lastDate(QDate::currentDate())
 {
-    for (const char *host : kBlockedHosts)
-        m_blockedHosts.insert(QString::fromLatin1(host));
-    buildDomainTrie();
+    // Load legacy hardcoded hosts as fallback
+    for (const char *host : kLegacyBlockedHosts)
+        m_legacyBlockedHosts.insert(QString::fromLatin1(host));
 }
 
 TrackerBlocker::~TrackerBlocker()
 {
-    deleteTrie(m_domainTrie);
-}
-
-void TrackerBlocker::buildDomainTrie()
-{
-    m_domainTrie = new TrieNode();
-    for (const QString &domain : m_blockedHosts) {
-        TrieNode* node = m_domainTrie;
-        // Split domain into labels and reverse for suffix matching
-        const QStringList labels = domain.split(QLatin1Char('.'));
-        for (int i = labels.size() - 1; i >= 0; --i) {
-            const QString &label = labels[i];
-            if (!node->children.contains(label))
-                node->children[label] = new TrieNode();
-            node = node->children[label];
-        }
-        node->isTerminal = true;
-        node->terminalDomain = domain;
-    }
-}
-
-void TrackerBlocker::deleteTrie(TrieNode* node)
-{
-    if (node) {
-        qDeleteAll(node->children);
-        delete node;
-    }
-}
-
-bool TrackerBlocker::isBlockedHost(const QString &host) const
-{
-    if (host.isEmpty())
-        return false;
-
-    TrieNode* node = m_domainTrie;
-    const QStringList labels = host.split(QLatin1Char('.'));
-
-    // Walk the trie from the TLD towards the subdomain
-    for (int i = labels.size() - 1; i >= 0; --i) {
-        const QString &label = labels[i];
-        if (!node->children.contains(label))
-            break;
-        node = node->children[label];
-        if (node->isTerminal)
-            return true; // Found a blocked domain suffix
-    }
-    return false;
 }
 
 void TrackerBlocker::setExtensionManager(ExtensionManager *manager)
@@ -282,137 +131,21 @@ void TrackerBlocker::setExtensionManager(ExtensionManager *manager)
     m_extensionManager = manager;
 }
 
-bool TrackerBlocker::isBlockedByExtensionRules(const QString &url) const
+void TrackerBlocker::setFilterListParser(FilterListParser *parser)
 {
-    if (!m_extensionManager)
-        return false;
+    m_filterParser = parser;
+}
 
-    const QList<BlockingRule> rules = m_extensionManager->activeBlockingRules();
-    if (rules.isEmpty())
-        return false;
-
-    const QUrl requestUrl(url);
-    const QString host = requestUrl.host().toLower();
-    const QString path = requestUrl.path();
-
-    for (const BlockingRule &rule : rules) {
-        // Check blocked hosts
-        for (const QString &blockedHost : rule.blockedHosts) {
-            if (host == blockedHost.toLower() || host.endsWith(QLatin1Char('.') + blockedHost.toLower())) {
-                return true;
-            }
-        }
-
-        // Check blocked paths (glob matching)
-        for (const QString &blockedPath : rule.blockedPaths) {
-            QRegularExpression pathRe(globToRegex(blockedPath));
-            if (pathRe.match(path).hasMatch()) {
-                return true;
-            }
-        }
-    }
-
-    return false;
+void TrackerBlocker::updateFilterLists()
+{
+    // This will be called from the UI to trigger a filter list update
+    // The actual update is handled by FilterListUpdater
+    emit privacyChanged();
 }
 
 bool TrackerBlocker::isIncognito() const
 {
     return m_incognito;
-}
-
-void TrackerBlocker::rollDayIfNeeded() const
-{
-    // m_today is a cumulative counter, so roll it over the first time it is
-    // touched after midnight. Otherwise a multi-day session would carry
-    // yesterday's total into today and inflate the 7/30-day stats.
-    const QDate today = QDate::currentDate();
-    if (today != m_lastDate) {
-        m_today = 0;
-        m_lastDate = today;
-    }
-}
-
-void TrackerBlocker::interceptRequest(QWebEngineUrlRequestInfo &info)
-{
-    const bool incognito = isIncognito();
-
-    if (info.resourceType() == QWebEngineUrlRequestInfo::ResourceTypeMainFrame) {
-        // HTTPS-First: auto-upgrade insecure http:// main-frame loads to
-        // https://, except for local hosts and IP literals (typically
-        // self-hosted dev/test servers that do not speak TLS). The redirected
-        // https request is re-intercepted, so it still gets recorded and
-        // Safe-Browsing checked below. Applies to private windows too.
-        const QUrl requestUrl = info.requestUrl();
-        if (requestUrl.scheme().compare(QLatin1String("http"), Qt::CaseInsensitive) == 0
-            && !isLocalOrIpAddress(requestUrl.host())) {
-            QUrl upgraded = requestUrl;
-            upgraded.setScheme(QStringLiteral("https"));
-            if (upgraded.port() == 80)
-                upgraded.setPort(-1); // drop the explicit :80 port
-            info.redirect(upgraded);
-            return;
-        }
-
-        // Record every distinct site visited so the Privacy Report can show the
-        // percentage of websites that contacted trackers. Never recorded for
-        // private-window traffic.
-        if (!incognito) {
-            const QString host = requestUrl.host().toLower();
-            if (!host.isEmpty()) {
-                QMetaObject::invokeMethod(this, [this, host]() {
-                    const QString day = QDate::currentDate().toString(Qt::ISODate);
-                    QSet<QString> &sites = m_sitesByDay[day];
-                    if (sites.size() < kMaxSitesPerDay)
-                        sites.insert(host);
-                    emit privacyChanged();
-                }, Qt::QueuedConnection);
-            }
-        }
-
-        // Offline Safe Browsing: redirect known phishing hosts to a warning page.
-        if (SafeBrowsing::instance().isBlocked(requestUrl)) {
-            info.redirect(SafeBrowsing::warningUrl(requestUrl));
-        }
-        return;
-    }
-
-    // Check extension blocking rules first (declarative rules from extensions)
-    if (isBlockedByExtensionRules(info.requestUrl().toString())) {
-        info.block(true);
-        return;
-    }
-
-    const QString host = info.requestUrl().host().toLower();
-    if (host.isEmpty() || !isBlockedHost(host))
-        return;
-
-    const QString firstPartyHost = info.firstPartyUrl().host().toLower();
-    info.block(true);
-
-    if (!incognito) {
-        QMetaObject::invokeMethod(this, [this, host, firstPartyHost]() {
-            rollDayIfNeeded();
-            const QString day = QDate::currentDate().toString(Qt::ISODate);
-            ++m_today;
-            m_daily[day] = m_today;
-            ++m_hostCounts[day][host];
-            if (!firstPartyHost.isEmpty()) {
-                QSet<QString> &sites = m_hostSites[day][host];
-                if (sites.size() < kMaxSitesPerDay)
-                    sites.insert(firstPartyHost);
-            }
-            emit privacyChanged();
-        }, Qt::QueuedConnection);
-    }
-}
-
-QList<QDate> TrackerBlocker::daysInWindow(int days) const
-{
-    const QDate today = QDate::currentDate();
-    QList<QDate> dates;
-    for (int i = 0; i < days; ++i)
-        dates.append(today.addDays(-i));
-    return dates;
 }
 
 int TrackerBlocker::blockedLastNDays(int days) const
@@ -425,6 +158,194 @@ int TrackerBlocker::blockedLastNDays(int days) const
             total += it.value();
     }
     return total;
+}
+
+QList<QDate> TrackerBlocker::daysInWindow(int days) const
+{
+    const QDate today = QDate::currentDate();
+    QList<QDate> dates;
+    for (int i = 0; i < days; ++i)
+        dates.append(today.addDays(-i));
+    return dates;
+}
+
+void TrackerBlocker::rollDayIfNeeded() const
+{
+    const QDate today = QDate::currentDate();
+    if (today != m_lastDate) {
+        m_today = 0;
+        m_lastDate = today;
+    }
+}
+
+void TrackerBlocker::recordBlockedRequest(const QString &host, const QString &firstPartyHost)
+{
+    rollDayIfNeeded();
+    const QString day = QDate::currentDate().toString(Qt::ISODate);
+    ++m_today;
+    m_daily[day] = m_today;
+    ++m_hostCounts[day][host];
+    if (!firstPartyHost.isEmpty()) {
+        QSet<QString> &sites = m_hostSites[day][host];
+        if (sites.size() < kMaxSitesPerDay)
+            sites.insert(firstPartyHost);
+    }
+    emit privacyChanged();
+}
+
+void TrackerBlocker::recordVisitedSite(const QString &host)
+{
+    const QString day = QDate::currentDate().toString(Qt::ISODate);
+    QSet<QString> &sites = m_sitesByDay[day];
+    if (sites.size() < kMaxSitesPerDay)
+        sites.insert(host);
+    emit privacyChanged();
+}
+
+void TrackerBlocker::interceptRequest(QWebEngineUrlRequestInfo &info)
+{
+    const bool incognito = isIncognito();
+
+    if (info.resourceType() == QWebEngineUrlRequestInfo::ResourceTypeMainFrame) {
+        const QUrl requestUrl = info.requestUrl();
+        if (requestUrl.scheme().compare(QLatin1String("http"), Qt::CaseInsensitive) == 0
+            && !isLocalOrIpAddress(requestUrl.host())) {
+            QUrl upgraded = requestUrl;
+            upgraded.setScheme(QStringLiteral("https"));
+            if (upgraded.port() == 80)
+                upgraded.setPort(-1);
+            info.redirect(upgraded);
+            return;
+        }
+
+        if (!incognito) {
+            const QString host = requestUrl.host().toLower();
+            if (!host.isEmpty()) {
+                QMetaObject::invokeMethod(this, [this, host]() {
+                    recordVisitedSite(host);
+                }, Qt::QueuedConnection);
+            }
+        }
+
+        if (SafeBrowsing::instance().isBlocked(requestUrl)) {
+            info.redirect(SafeBrowsing::warningUrl(requestUrl));
+        }
+        return;
+    }
+
+    // Check extension blocking rules first
+    if (isBlockedByExtensionRules(info)) {
+        info.block(true);
+        return;
+    }
+
+    const QString host = info.requestUrl().host().toLower();
+    if (host.isEmpty())
+        return;
+
+    bool blocked = false;
+
+    // Check dynamic filter list parser first
+    if (m_filterParser) {
+        const QUrl requestUrl = info.requestUrl();
+        const QString documentDomain = info.firstPartyUrl().host().toLower();
+        QString resourceType;
+        switch (info.resourceType()) {
+            case QWebEngineUrlRequestInfo::ResourceTypeMainFrame: resourceType = "main_frame"; break;
+            case QWebEngineUrlRequestInfo::ResourceTypeSubFrame: resourceType = "sub_frame"; break;
+            case QWebEngineUrlRequestInfo::ResourceTypeStylesheet: resourceType = "stylesheet"; break;
+            case QWebEngineUrlRequestInfo::ResourceTypeScript: resourceType = "script"; break;
+            case QWebEngineUrlRequestInfo::ResourceTypeImage: resourceType = "image"; break;
+            case QWebEngineUrlRequestInfo::ResourceTypeFontResource: resourceType = "font"; break;
+            case QWebEngineUrlRequestInfo::ResourceTypeSubResource: resourceType = "sub_resource"; break;
+            case QWebEngineUrlRequestInfo::ResourceTypeObject: resourceType = "object"; break;
+            case QWebEngineUrlRequestInfo::ResourceTypeMedia: resourceType = "media"; break;
+            case QWebEngineUrlRequestInfo::ResourceTypeWorker: resourceType = "worker"; break;
+            case QWebEngineUrlRequestInfo::ResourceTypeSharedWorker: resourceType = "shared_worker"; break;
+            case QWebEngineUrlRequestInfo::ResourceTypeServiceWorker: resourceType = "service_worker"; break;
+            case QWebEngineUrlRequestInfo::ResourceTypePing: resourceType = "ping"; break;
+            case QWebEngineUrlRequestInfo::ResourceTypeWebSocket: resourceType = "websocket"; break;
+            default: resourceType = "other"; break;
+        }
+        
+        if (m_filterParser->matches(requestUrl, documentDomain, resourceType)) {
+            blocked = true;
+        }
+    }
+
+    // Fallback to legacy hardcoded list
+    if (!blocked && m_legacyBlockedHosts.contains(host)) {
+        blocked = true;
+    }
+
+    if (blocked) {
+        const QString firstPartyHost = info.firstPartyUrl().host().toLower();
+        info.block(true);
+        
+        if (!incognito) {
+            QMetaObject::invokeMethod(this, [this, host, firstPartyHost]() {
+                recordBlockedRequest(host, firstPartyHost);
+            }, Qt::QueuedConnection);
+        }
+    }
+}
+
+bool TrackerBlocker::isBlockedByExtensionRules(const QWebEngineUrlRequestInfo &info) const
+{
+    if (!m_extensionManager)
+        return false;
+
+    const QList<BlockingRule> rules = m_extensionManager->activeBlockingRules();
+    if (rules.isEmpty())
+        return false;
+
+    const QUrl requestUrl = info.requestUrl();
+    const QString host = requestUrl.host().toLower();
+    const QString path = requestUrl.path();
+
+    // Map resource type to string for comparison with blockedTypes
+    QString resourceType;
+    switch (info.resourceType()) {
+        case QWebEngineUrlRequestInfo::ResourceTypeMainFrame: resourceType = "main_frame"; break;
+        case QWebEngineUrlRequestInfo::ResourceTypeSubFrame: resourceType = "sub_frame"; break;
+        case QWebEngineUrlRequestInfo::ResourceTypeStylesheet: resourceType = "stylesheet"; break;
+        case QWebEngineUrlRequestInfo::ResourceTypeScript: resourceType = "script"; break;
+        case QWebEngineUrlRequestInfo::ResourceTypeImage: resourceType = "image"; break;
+        case QWebEngineUrlRequestInfo::ResourceTypeFontResource: resourceType = "font"; break;
+        case QWebEngineUrlRequestInfo::ResourceTypeSubResource: resourceType = "sub_resource"; break;
+        case QWebEngineUrlRequestInfo::ResourceTypeObject: resourceType = "object"; break;
+        case QWebEngineUrlRequestInfo::ResourceTypeMedia: resourceType = "media"; break;
+        case QWebEngineUrlRequestInfo::ResourceTypeWorker: resourceType = "worker"; break;
+        case QWebEngineUrlRequestInfo::ResourceTypeSharedWorker: resourceType = "shared_worker"; break;
+        case QWebEngineUrlRequestInfo::ResourceTypeServiceWorker: resourceType = "service_worker"; break;
+        case QWebEngineUrlRequestInfo::ResourceTypePing: resourceType = "ping"; break;
+        case QWebEngineUrlRequestInfo::ResourceTypeWebSocket: resourceType = "websocket"; break;
+        default: resourceType = "other"; break;
+    }
+
+    for (const BlockingRule &rule : rules) {
+        // Check host
+        for (const QString &blockedHost : rule.blockedHosts) {
+            if (host == blockedHost.toLower() || host.endsWith(QLatin1Char('.') + blockedHost.toLower())) {
+                // If no resource types specified, block all types for this host
+                if (rule.blockedTypes.isEmpty() || rule.blockedTypes.contains(resourceType)) {
+                    return true;
+                }
+            }
+        }
+
+        // Check path patterns
+        for (const QString &blockedPath : rule.blockedPaths) {
+            QRegularExpression pathRe(globToRegex(blockedPath));
+            if (pathRe.match(path).hasMatch()) {
+                if (rule.blockedTypes.isEmpty() || rule.blockedTypes.contains(resourceType)) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
 }
 
 QString TrackerBlocker::mostContactedTracker() const
@@ -543,7 +464,6 @@ void TrackerBlocker::loadData()
             for (auto it = obj.constBegin(); it != obj.constEnd(); ++it) {
                 const QString day = it.key();
                 if (it.value().isDouble()) {
-                    // Legacy format: { "date": count }
                     m_daily.insert(day, it.value().toInt());
                     continue;
                 }
@@ -576,11 +496,8 @@ void TrackerBlocker::saveData()
     const QString today = QDate::currentDate().toString(Qt::ISODate);
     m_daily[today] = m_today;
 
-    // TTL cleanup: purge privacy data older than 90 days to bound disk usage
     const QDate cutoff = QDate::currentDate().addDays(-90);
-    const QString cutoffStr = cutoff.toString(Qt::ISODate);
 
-    // Purge m_daily
     for (auto it = m_daily.begin(); it != m_daily.end(); ) {
         const QDate day = QDate::fromString(it.key(), Qt::ISODate);
         if (day.isValid() && day < cutoff)
@@ -588,7 +505,6 @@ void TrackerBlocker::saveData()
         else
             ++it;
     }
-    // Purge m_hostCounts
     for (auto it = m_hostCounts.begin(); it != m_hostCounts.end(); ) {
         const QDate day = QDate::fromString(it.key(), Qt::ISODate);
         if (day.isValid() && day < cutoff)
@@ -596,7 +512,6 @@ void TrackerBlocker::saveData()
         else
             ++it;
     }
-    // Purge m_hostSites
     for (auto it = m_hostSites.begin(); it != m_hostSites.end(); ) {
         const QDate day = QDate::fromString(it.key(), Qt::ISODate);
         if (day.isValid() && day < cutoff)
@@ -604,7 +519,6 @@ void TrackerBlocker::saveData()
         else
             ++it;
     }
-    // Purge m_sitesByDay
     for (auto it = m_sitesByDay.begin(); it != m_sitesByDay.end(); ) {
         const QDate day = QDate::fromString(it.key(), Qt::ISODate);
         if (day.isValid() && day < cutoff)
@@ -655,3 +569,5 @@ void TrackerBlocker::saveData()
     OSPaths::writeFileAtomic(dataFile(QStringLiteral("privacy.json")),
                              QJsonDocument(root).toJson());
 }
+
+#include "TrackerBlocker.moc"
