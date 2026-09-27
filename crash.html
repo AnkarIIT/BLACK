@@ -1,229 +1,167 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' qrc:; script-src 'self' 'unsafe-inline' qrc:; connect-src 'self' qrc: http://127.0.0.1:* http://localhost:*; img-src 'self' data: qrc:; style-src 'self' 'unsafe-inline' qrc:; font-src 'self' data: qrc:; frame-src 'self' qrc:; object-src 'none'; base-uri 'self'">
-<title>Page Crashed</title>
-<link rel="stylesheet" href="qrc:/chrome-theme.css">
-  <link rel="stylesheet" href="qrc:/responsive.css">
-<style>
-  :root {
-    --bg-window: #f5f5f7;
-    --bg-card: #ffffff;
-    --accent: #0066cc;
-    --text-primary: #1d1d1f;
-    --text-secondary: #86868b;
-    --border: rgba(0,0,0,0.08);
-    --hairline: rgba(0,0,0,0.06);
-    --danger: #d70015;
-  }
-  html.black-forced-dark {
-    color-scheme: dark;
-    --bg-window: #1e1e20;
-    --bg-card: #2c2c2e;
-    --accent: #0a84ff;
-    --text-primary: #f5f5f7;
-    --text-secondary: #98989d;
-    --border: rgba(255,255,255,0.12);
-    --hairline: rgba(255,255,255,0.09);
-    --danger: #ff453a;
-  }
-  /* Classic Chrome mode: the native side sets data-ui-layout="chrome" on
-     <html> (see BrowserWindow::applyUiLayoutToView). chrome-theme.css already
-     re-tokens --bg-window/--bg-card/--accent/--text-*; these blocks close the
-     gap for the border/hairline/danger tokens it does not override, so the
-     crash card never mixes Safari-era neutrals into the Chrome palette. */
-  html[data-ui-layout="chrome"] {
-    --border: rgba(0,0,0,0.14);
-    --hairline: rgba(0,0,0,0.08);
-    --danger: #d93025;
-  }
-  html[data-ui-layout="chrome"].black-forced-dark {
-    --border: rgba(255,255,255,0.14);
-    --hairline: rgba(255,255,255,0.08);
-    --danger: #ff6a5e;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    background: var(--bg-window);
-    color: var(--text-primary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-    -webkit-font-smoothing: antialiased;
-  }
-  .card {
-    width: min(560px, 100%);
-    background: var(--bg-card);
-    border: 1px solid var(--hairline);
-    border-radius: 18px;
-    padding: 34px 30px;
-    box-shadow: 0 24px 60px rgba(0,0,0,0.12), 0 2px 8px var(--hairline);
-  }
-  .crash-icon {
-    width: 52px;
-    height: 52px;
-    border-radius: 14px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 26px;
-    margin-bottom: 18px;
-    background: var(--hairline);
-  }
-  h1 { font-size: 19px; font-weight: 700; margin-bottom: 8px; }
-  p { color: var(--text-secondary); font-size: 14px; line-height: 1.55; }
-  .url {
-    color: var(--text-secondary);
-    font-size: 12.5px;
-    word-break: break-all;
-    padding: 10px 12px;
-    margin: 12px 0 20px;
-    background: var(--hairline);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-  }
-  .actions { display: flex; gap: 10px; flex-wrap: wrap; }
-  button {
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 9px 16px;
-    font-size: 13px;
-    font-weight: 600;
-    font-family: inherit;
-    cursor: pointer;
-    color: var(--text-primary);
-    background: var(--hairline);
-    transition: filter 0.15s ease;
-  }
-  button.primary { background: var(--accent); color: #ffffff; border-color: transparent; }
-  button.danger { color: var(--danger); }
-  button:hover { filter: brightness(1.06); }
-
-  /* Responsive adjustments */
-  @media (max-width: 768px) {
-    body {
-      padding: 16px;
-    }
-    .card {
-      padding: 28px 24px;
-    }
-    .crash-icon {
-      width: 44px;
-      height: 44px;
-      border-radius: 12px;
-      font-size: 22px;
-    }
-    h1 { font-size: 17px; }
-    p { font-size: 13px; }
-    .url {
-      font-size: 12px;
-      padding: 8px 10px;
-    }
-    .actions {
-      flex-direction: column;
-      gap: 8px;
-    }
-    button {
-      width: 100%;
-      padding: 12px 16px;
-    }
-  }
-
-  @media (max-width: 480px) {
-    body {
-      padding: 12px;
-    }
-    .card {
-      padding: 24px 18px;
-      border-radius: var(--corner-radius, 12px);
-    }
-    .crash-icon {
-      width: 40px;
-      height: 40px;
-      border-radius: 10px;
-      font-size: 20px;
-    }
-    h1 { font-size: 16px; }
-    p { font-size: 12px; }
-    .url {
-      font-size: 11px;
-      padding: 8px 10px;
-    }
-    button {
-      padding: 14px 16px;
-      font-size: 13px;
-      min-height: 48px;
-    }
-  }
-
-  /* Touch device adjustments */
-  @media (pointer: coarse) {
-    button {
-      min-height: 48px;
-    }
-  }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Page Crashed</title>
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <style>
+        :root {
+            --bg: #f5f5f7;
+            --text: #1d1d1f;
+            --text-secondary: #86868b;
+            --accent: #0a84ff;
+            --border: rgba(0,0,0,0.08);
+            --card: #ffffff;
+        }
+        html.black-forced-dark {
+            --bg: #1e1e20;
+            --text: #f5f5f7;
+            --text-secondary: #98989d;
+            --accent: #0a84ff;
+            --border: rgba(255,255,255,0.12);
+            --card: #2c2c2e;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        .container {
+            max-width: 480px;
+            width: 100%;
+            text-align: center;
+        }
+        .icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 24px;
+            background: var(--accent);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .icon svg { width: 40px; height: 40px; fill: white; }
+        h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
+        p { color: var(--text-secondary); font-size: 15px; line-height: 1.5; margin-bottom: 24px; }
+        .url-box {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 24px;
+            text-align: left;
+            font-family: monospace;
+            font-size: 13px;
+            color: var(--text-secondary);
+            word-break: break-all;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            transition: all 0.15s ease;
+        }
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+        .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn-secondary {
+            background: var(--card);
+            color: var(--text);
+            border: 1px solid var(--border);
+            margin-left: 12px;
+        }
+        .btn-secondary:hover { border-color: var(--accent); }
+        .details {
+            margin-top: 32px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+            text-align: left;
+        }
+        .details summary {
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-size: 13px;
+        }
+        .details pre {
+            margin-top: 12px;
+            padding: 12px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 11px;
+            overflow: auto;
+            max-height: 200px;
+        }
+    </style>
 </head>
 <body>
-  <div class="card">
-    <div class="crash-icon">💥</div>
-    <h1>This page has crashed</h1>
-    <p>The renderer process for this tab stopped unexpectedly. You can try reloading the page, copy its address, or head back to your start page.</p>
-    <div class="url" id="url">—</div>
-    <div class="actions">
-      <button class="primary" id="reload">Reload page</button>
-      <button id="copy">Copy URL</button>
-      <button class="danger" id="close">Go to start page</button>
+    <div class="container">
+        <div class="icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                <line x1="12" y1="9" x2="12" y2="13"></line>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+        </div>
+        <h1>Page Crashed</h1>
+        <p id="message">Something went wrong while displaying this page.</p>
+        <div class="url-box" id="urlBox"></div>
+        <button class="btn btn-primary" id="reloadBtn">Reload Page</button>
+        <button class="btn btn-secondary" id="homeBtn">Go to Start Page</button>
+        <details class="details">
+            <summary>Technical Details</summary>
+            <pre id="detailsPre">Renderer process crashed. This can happen due to:
+- Insufficient memory
+- Graphics driver issues
+- Problematic page content
+- Browser extension conflicts</pre>
+        </details>
     </div>
-  </div>
+    <script>
+        (function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const crashedUrl = urlParams.get('url') || 'unknown';
+            const crashCount = parseInt(urlParams.get('count') || '0', 10);
+            
+            const urlBox = document.getElementById('urlBox');
+            const message = document.getElementById('message');
+            const detailsPre = document.getElementById('detailsPre');
+            
+            urlBox.textContent = decodeURIComponent(crashedUrl);
+            
+            if (crashCount > 1) {
+                message.textContent = `This page has crashed ${crashCount} times. The content may be incompatible or causing instability.`;
+            }
+            
+            detailsPre.textContent = `Crashed URL: ${decodeURIComponent(crashedUrl)}
+Crash count: ${crashCount}
+Time: ${new Date().toISOString()}
+User Agent: ${navigator.userAgent}`;
 
-  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
-  <script>
-    (function () {
-      // The native side percent-encodes the original url into ?url=; URLSearchParams
-      // already decodes it once, so no extra decodeURIComponent here.
-      var raw = new URLSearchParams(location.search).get('url');
-      var url = raw ? raw : '';
-      var urlEl = document.getElementById('url');
-      if (urlEl) urlEl.textContent = url || '—';
-
-      // Dark mode. This qrc page gets the full bridge in the MainWorld, so the
-      // SafariTheme object is reachable here; apply black-forced-dark live and
-      // keep following scheme changes while the page is open.
-      function applyDark(isDark) {
-        document.documentElement.classList.toggle('black-forced-dark', isDark);
-      }
-      if (window.qt && qt.webChannelTransport) {
-        try {
-          new QWebChannel(qt.webChannelTransport, function (channel) {
-            var theme = channel.objects.theme;
-            if (!theme) return;
-            theme.themeSchemeChanged.connect(function () {
-              applyDark(theme.themeScheme === 1);
+            document.getElementById('reloadBtn').addEventListener('click', function() {
+                window.location.href = decodeURIComponent(crashedUrl);
             });
-            applyDark(theme.themeScheme === 1);
-          });
-        } catch (e) { /* channel unavailable: stay with the base palette */ }
-      }
-
-      document.getElementById('reload').addEventListener('click', function () {
-        if (url) location.href = url;
-        else location.href = 'qrc:/startpage_enhanced.html';
-      });
-      document.getElementById('copy').addEventListener('click', function () {
-        if (url && navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(url);
-        }
-      });
-      document.getElementById('close').addEventListener('click', function () {
-        location.href = 'qrc:/startpage_enhanced.html';
-      });
-    })();
-  </script>
+            
+            document.getElementById('homeBtn').addEventListener('click', function() {
+                window.location.href = 'qrc:/startpage_enhanced.html';
+            });
+        })();
+    </script>
 </body>
 </html>

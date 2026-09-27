@@ -879,36 +879,68 @@ function onAuthFailed(message) {
     err.style.display = "block";
     err.textContent = "Sign-in failed: " + message;
 }
-if (typeof QWebChannel !== "undefined") {
-    new QWebChannel(qt.webChannelTransport, function (ch) {
-        bridge = ch.objects.onboardingBridge;
-        oauthManager = ch.objects.oauthManager;
-        bridgeReady = true;
-        console.log("[onboarding] bridge registered:", !!bridge, "oauthManager:", !!oauthManager);
-        if (oauthManager) {
-            oauthManager.authSuccess.connect(onAuthSuccess);
-            oauthManager.authFailed.connect(onAuthFailed);
-            if (oauthManager.decryptFailed) {
-                oauthManager.decryptFailed(function (locked) {
-                    oauthLocked = !!locked;
-                    applyOAuthLock();
-                });
+function initBridge() {
+        if (typeof QWebChannel === "undefined") {
+            showBridgeFallback();
+            return;
+        }
+        new QWebChannel(qt.webChannelTransport, function (ch) {
+            bridge = ch.objects.onboardingBridge;
+            oauthManager = ch.objects.oauthManager;
+            bridgeReady = true;
+            console.log("[onboarding] bridge registered:", !!bridge, "oauthManager:", !!oauthManager);
+            if (oauthManager) {
+                oauthManager.authSuccess.connect(onAuthSuccess);
+                oauthManager.authFailed.connect(onAuthFailed);
+                if (oauthManager.decryptFailed) {
+                    oauthManager.decryptFailed(function (locked) {
+                        oauthLocked = !!locked;
+                        applyOAuthLock();
+                    });
+                }
             }
+            appearance = ch.objects.appearance;
+            if (appearance) {
+                updateLayoutSeg();
+                appearance.uiLayoutChanged.connect(updateLayoutSeg);
+            }
+            theme = ch.objects.theme;
+            if (theme) {
+                updateThemeSeg();
+                theme.themeSchemeChanged.connect(updateThemeSeg);
+            }
+            updateOAuthVisibility();
+            renderAccountList();
+        });
+    }
+
+    // Fallback if WebChannel fails to initialize within 3 seconds
+    var bridgeTimeout = setTimeout(function() {
+        if (!bridgeReady) {
+            showBridgeFallback();
         }
-        appearance = ch.objects.appearance;
-        if (appearance) {
-            updateLayoutSeg();
-            appearance.uiLayoutChanged.connect(updateLayoutSeg);
-        }
-        theme = ch.objects.theme;
-        if (theme) {
-            updateThemeSeg();
-            theme.themeSchemeChanged.connect(updateThemeSeg);
-        }
-        updateOAuthVisibility();
-        renderAccountList();
-    });
-}
+    }, 3000);
+
+    function showBridgeFallback() {
+        clearTimeout(bridgeTimeout);
+        // Show a native fallback button to complete onboarding
+        var fallbackBtn = document.createElement('button');
+        fallbackBtn.id = 'bridge-fallback-btn';
+        fallbackBtn.className = 'btn-orange';
+        fallbackBtn.textContent = 'Continue to Browser';
+        fallbackBtn.style.cssText = 'position:fixed;bottom:32px;left:50%;transform:translateX(-50%);z-index:10000;';
+        fallbackBtn.onclick = function() {
+            if (bridge && bridge.completeOnboarding) {
+                bridge.completeOnboarding();
+            } else {
+                // Direct fallback - write marker and close
+                window.location.href = 'qrc:/startpage_enhanced.html';
+            }
+        };
+        document.body.appendChild(fallbackBtn);
+    }
+
+    initBridge();
 
 /* Layout picker: mirror the Safari/Chrome choice onto the live window. */
 var appearance = null;
@@ -1189,9 +1221,6 @@ function resetCamera() {
 /* ============================ Frame controller ============================ */
 function onFrameStart(n) {
     state.frame = n;
-    if (bridge && typeof bridge.onFrameChanged === "function") {
-        callBridge("onFrameChanged", String(n));
-    }
 }
 
 /* ---------------- Frames 01-05: opening ---------------- */
@@ -1995,11 +2024,6 @@ function enableNext(id) {
     var b = document.getElementById(id);
     b.style.pointerEvents = "auto";
     gsap.to(b, { opacity: 1 });
-}
-function disableNext(id) {
-    var b = document.getElementById(id);
-    b.style.pointerEvents = "none";
-    gsap.to(b, { opacity: 0.45 });
 }
 
 /* ============================ Boot sequence ============================ */

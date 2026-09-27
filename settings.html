@@ -622,93 +622,105 @@
                 min-height: 14px;
             }
         }
+
+        /* Reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
     </style>
     <link rel="stylesheet" href="chrome-theme.css">
     <link rel="stylesheet" href="responsive.css">
 </head>
 <body>
-    <div class="window">
+    <div class="window" role="dialog" aria-modal="true" aria-labelledby="titleText">
         <!-- Title Bar -->
-        <div class="titlebar">
-            <div class="traffic-lights">
-                <span class="dot red" id="closeBtn" title="Close settings"></span>
-                <span class="dot yellow" id="minimizeBtn" title="Minimize settings"></span>
-                <span class="dot green" id="zoomBtn" title="Zoom settings"></span>
+        <header class="titlebar" role="banner">
+            <div class="traffic-lights" role="group" aria-label="Window controls">
+                <button class="dot red" id="closeBtn" aria-label="Close settings" type="button"></button>
+                <button class="dot yellow" id="minimizeBtn" aria-label="Minimize settings" type="button"></button>
+                <button class="dot green" id="zoomBtn" aria-label="Zoom settings" type="button"></button>
             </div>
-            <div class="window-title" id="titleText">General</div>
-        </div>
+            <h1 class="window-title" id="titleText">General</h1>
+        </header>
 
         <!-- Preferences Tabs -->
-        <div class="toolbar" id="toolbar">
-            <button class="tool-btn active" onclick="switchTab('general', 'General')">
-                <span class="tool-icon">⚙</span>
+<nav class="toolbar" id="toolbar" role="tablist" aria-label="Settings categories">
+            <button class="tool-btn active" role="tab" aria-selected="true" aria-controls="general" onclick="switchTab('general', 'General', event)" id="tab-general">
+                <span class="tool-icon" aria-hidden="true">⚙</span>
                 <span class="tool-label">General</span>
             </button>
-            <button class="tool-btn" onclick="switchTab('tabs', 'Tabs')">
-                <span class="tool-icon">🗂</span>
+            <button class="tool-btn" role="tab" aria-selected="false" aria-controls="tabs" onclick="switchTab('tabs', 'Tabs', event)" id="tab-tabs">
+                <span class="tool-icon" aria-hidden="true">🗂</span>
                 <span class="tool-label">Tabs</span>
             </button>
-            <button class="tool-btn" onclick="switchTab('autofill', 'AutoFill')">
-                <span class="tool-icon">📝</span>
+            <button class="tool-btn" role="tab" aria-selected="false" aria-controls="autofill" onclick="switchTab('autofill', 'AutoFill', event)" id="tab-autofill">
+                <span class="tool-icon" aria-hidden="true">📝</span>
                 <span class="tool-label">AutoFill</span>
             </button>
-            <button class="tool-btn" onclick="switchTab('passwords', 'Passwords')">
-                <span class="tool-icon">🔑</span>
+            <button class="tool-btn" role="tab" aria-selected="false" aria-controls="passwords" onclick="switchTab('passwords', 'Passwords', event)" id="tab-passwords">
+                <span class="tool-icon" aria-hidden="true">🔑</span>
                 <span class="tool-label">Passwords</span>
             </button>
-            <button class="tool-btn" onclick="switchTab('search', 'Search')">
-                <span class="tool-icon">🔍</span>
+            <button class="tool-btn" role="tab" aria-selected="false" aria-controls="search" onclick="switchTab('search', 'Search', event)" id="tab-search">
+                <span class="tool-icon" aria-hidden="true">🔍</span>
                 <span class="tool-label">Search</span>
             </button>
-            <button class="tool-btn" onclick="switchTab('security', 'Security')">
-                <span class="tool-icon">🔒</span>
+            <button class="tool-btn" role="tab" aria-selected="false" aria-controls="security" onclick="switchTab('security', 'Security', event)" id="tab-security">
+                <span class="tool-icon" aria-hidden="true">🔒</span>
                 <span class="tool-label">Security</span>
             </button>
-            <button class="tool-btn" onclick="switchTab('privacy', 'Privacy')">
-                <span class="tool-icon">✋</span>
+            <button class="tool-btn" role="tab" aria-selected="false" aria-controls="privacy" onclick="switchTab('privacy', 'Privacy', event)" id="tab-privacy">
+                <span class="tool-icon" aria-hidden="true">✋</span>
                 <span class="tool-label">Privacy</span>
             </button>
-            <button class="tool-btn" onclick="switchTab('websites', 'Websites')">
-                <span class="tool-icon">🌐</span>
+            <button class="tool-btn" role="tab" aria-selected="false" aria-controls="websites" onclick="switchTab('websites', 'Websites', event)" id="tab-websites">
+                <span class="tool-icon" aria-hidden="true">🌐</span>
                 <span class="tool-label">Websites</span>
             </button>
-            <button class="tool-btn" onclick="switchTab('profiles', 'Profiles')">
-                <span class="tool-icon">👤</span>
+            <button class="tool-btn" role="tab" aria-selected="false" aria-controls="profiles" onclick="switchTab('profiles', 'Profiles', event)" id="tab-profiles">
+                <span class="tool-icon" aria-hidden="true">👤</span>
                 <span class="tool-label">Profiles</span>
             </button>
-            <button class="tool-btn" id="extTabBtn" onclick="switchTab('extensions', 'Extensions')">
-                <span class="tool-icon">🧩</span>
+            <button class="tool-btn" role="tab" aria-selected="false" aria-controls="extensions" onclick="switchTab('extensions', 'Extensions', event)" id="tab-extensions">
+                <span class="tool-icon" aria-hidden="true">🧩</span>
                 <span class="tool-label">Extensions</span>
             </button>
-            <button class="tool-btn" onclick="switchTab('advanced', 'Advanced')">
-                <span class="tool-icon">🛠</span>
+            <button class="tool-btn" role="tab" aria-selected="false" aria-controls="advanced" onclick="switchTab('advanced', 'Advanced', event)" id="tab-advanced">
+                <span class="tool-icon" aria-hidden="true">🛠</span>
                 <span class="tool-label">Advanced</span>
             </button>
-            <button class="tool-btn" onclick="switchTab('developer', 'Developer')">
-                <span class="tool-icon">🔨</span>
+            <button class="tool-btn" role="tab" aria-selected="false" aria-controls="developer" onclick="switchTab('developer', 'Developer', event)" id="tab-developer">
+                <span class="tool-icon" aria-hidden="true">🔨</span>
                 <span class="tool-label">Developer</span>
             </button>
-            <button class="tool-btn" onclick="switchTab('features', 'Feature Flags')">
-                <span class="tool-icon">🚩</span>
+            <button class="tool-btn" role="tab" aria-selected="false" aria-controls="features" onclick="switchTab('features', 'Feature Flags', event)" id="tab-features">
+                <span class="tool-icon" aria-hidden="true">🚩</span>
                 <span class="tool-label">Feature Flags</span>
             </button>
-            <button class="tool-btn" onclick="switchTab('updates', 'Updates')">
-                <span class="tool-icon">🔄</span>
+            <button class="tool-btn" role="tab" aria-selected="false" aria-controls="updates" onclick="switchTab('updates', 'Updates', event)" id="tab-updates">
+                <span class="tool-icon" aria-hidden="true">🔄</span>
                 <span class="tool-label">Updates</span>
             </button>
-        </div>
+        </nav>
 
         <!-- Tab Contents -->
         <div class="pane-area">
-            <div id="general" class="content active">
+            <div id="general" class="content active" role="tabpanel" aria-labelledby="tab-general">
                 <div class="settings-grid">
-                    <div class="label">Default web browser:</div>
+                    <div class="label"><label for="opensWith">Default web browser:</label></div>
                     <div class="value">
                         <span>BLACK is not your default browser.</span>
                         <button class="mac-btn" id="setDefaultBtn">Set Default&hellip;</button>
                     </div>
 
-                    <div class="label">Safari opens with:</div>
+                    <div class="label"><label for="opensWith">Safari opens with:</label></div>
                     <div class="value">
                         <select id="opensWith">
                             <option>New window</option>
@@ -718,7 +730,7 @@
                         </select>
                     </div>
 
-                    <div class="label">New windows open with:</div>
+                    <div class="label"><label for="newWindowsWith">New windows open with:</label></div>
                     <div class="value">
                         <select id="newWindowsWith">
                             <option>Start Page</option>
@@ -729,7 +741,7 @@
                         </select>
                     </div>
 
-                    <div class="label">New tabs open with:</div>
+                    <div class="label"><label for="newTabsWith">New tabs open with:</label></div>
                     <div class="value">
                         <select id="newTabsWith">
                             <option>Start Page</option>
@@ -739,13 +751,13 @@
                         </select>
                     </div>
 
-                    <div class="label">Homepage:</div>
+                    <div class="label"><label for="homepageInput">Homepage:</label></div>
                     <div class="value">
                         <input type="text" id="homepageInput" placeholder="https://">
                         <button class="mac-btn" id="setHomepageBtn">Set to Current Page</button>
                     </div>
 
-                    <div class="label">Remove history items:</div>
+                    <div class="label"><label for="removeHistoryItems">Remove history items:</label></div>
                     <div class="value">
                         <select id="removeHistoryItems">
                             <option>After one year</option>
@@ -755,14 +767,14 @@
                         </select>
                     </div>
 
-                    <div class="label">Start Page Favourites:</div>
+                    <div class="label"><label for="startPageFavs">Start Page Favourites:</label></div>
                     <div class="value">
                         <select id="startPageFavs">
                             <option>Favourites</option>
                         </select>
                     </div>
 
-                    <div class="label">File download location:</div>
+                    <div class="label"><label for="downloadLoc">File download location:</label></div>
                     <div class="value">
                         <select id="downloadLoc">
                             <option>Downloads</option>
@@ -770,7 +782,7 @@
                         </select>
                     </div>
 
-                    <div class="label">Remove download list items:</div>
+                    <div class="label"><label for="removeDownloadListItems">Remove download list items:</label></div>
                     <div class="value">
                         <select id="removeDownloadListItems">
                             <option>After one day</option>
@@ -792,21 +804,21 @@
 
                     <div class="label">Appearance</div>
                     <div class="value">
-                        <div class="segmented" id="themeSeg" style="display: flex; gap: 4px; background: rgba(0,0,0,0.05); padding: 2px; border-radius: 6px;">
-                            <button data-theme="0" class="mac-btn" style="padding: 3px 8px; font-size: 11px;">System</button>
-                            <button data-theme="1" class="mac-btn" style="padding: 3px 8px; font-size: 11px;">Light</button>
-                            <button data-theme="2" class="mac-btn" style="padding: 3px 8px; font-size: 11px;">Dark</button>
+                        <div class="segmented" id="themeSeg" role="radiogroup" aria-label="Theme" style="display: flex; gap: 4px; background: rgba(0,0,0,0.05); padding: 2px; border-radius: 6px;">
+                            <button data-theme="0" class="mac-btn" role="radio" aria-checked="false" style="padding: 3px 8px; font-size: 11px;">System</button>
+                            <button data-theme="1" class="mac-btn" role="radio" aria-checked="false" style="padding: 3px 8px; font-size: 11px;">Light</button>
+                            <button data-theme="2" class="mac-btn" role="radio" aria-checked="false" style="padding: 3px 8px; font-size: 11px;">Dark</button>
                         </div>
-                        <div class="segmented" id="uiLayoutSeg" style="display: flex; gap: 4px; background: rgba(0,0,0,0.05); padding: 2px; border-radius: 6px; margin-top: 8px;">
-                            <button data-layout="0" class="mac-btn" style="padding: 3px 8px; font-size: 11px;">Safari Modern</button>
-                            <button data-layout="1" class="mac-btn" style="padding: 3px 8px; font-size: 11px;">Classic Chrome</button>
+                        <div class="segmented" id="uiLayoutSeg" role="radiogroup" aria-label="UI Layout" style="display: flex; gap: 4px; background: rgba(0,0,0,0.05); padding: 2px; border-radius: 6px; margin-top: 8px;">
+                            <button data-layout="0" class="mac-btn" role="radio" aria-checked="false" style="padding: 3px 8px; font-size: 11px;">Safari Modern</button>
+                            <button data-layout="1" class="mac-btn" role="radio" aria-checked="false" style="padding: 3px 8px; font-size: 11px;">Classic Chrome</button>
                         </div>
                     </div>
                 </div>
             </div>
 
             <!-- Tabs -->
-            <div id="tabs" class="content">
+            <div id="tabs" class="content" role="tabpanel" aria-labelledby="tab-tabs" hidden>
                 <div class="settings-grid">
                     <div class="label">Tab layout:</div>
                     <div class="value">
@@ -861,7 +873,7 @@
             </div>
 
             <!-- Search -->
-            <div id="search" class="content">
+            <div id="search" class="content" role="tabpanel" aria-labelledby="tab-search" hidden>
                 <div class="settings-grid">
                     <div class="label">Search engine:</div>
                     <div class="value">
@@ -903,7 +915,7 @@
                 </div>
             </div>
 
-            <div id="autofill" class="content">
+            <div id="autofill" class="content" role="tabpanel" aria-labelledby="tab-autofill" hidden>
                 <div class="empty-state">
                     <div class="empty-icon">📝</div>
                     <div class="empty-title">AutoFill</div>
@@ -911,7 +923,7 @@
                 </div>
             </div>
 
-            <div id="passwords" class="content">
+            <div id="passwords" class="content" role="tabpanel" aria-labelledby="tab-passwords" hidden>
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
                     <div class="pane-title">Saved Logins</div>
                     <button class="mac-btn" id="pwClearBtn">Remove All</button>
@@ -935,15 +947,53 @@
                 </div>
             </div>
 
-            <div id="security" class="content">
-                <div class="empty-state">
-                    <div class="empty-icon">🔒</div>
-                    <div class="empty-title">Security</div>
-                    <div class="empty-desc">Sandboxing, multi-process isolation and certificate checks are active. Warning dialogs appear when a site&rsquo;s identity cannot be verified.</div>
-                </div>
+            <div id="security" class="content" role="tabpanel" aria-labelledby="tab-security" hidden>
+                <div class="pane-title">Security</div>
+                <div class="subtext" style="margin-bottom: 16px;">Sandboxing, multi-process isolation and certificate checks are active. Warning dialogs appear when a site&rsquo;s identity cannot be verified.</div>
+
+                <!-- Passkeys / WebAuthn -->
+                <details open style="margin-bottom: 16px; padding: 12px; border: 1px solid var(--mac-border); border-radius: 8px; background: var(--mac-card);">
+                    <summary style="cursor: pointer; font-weight: 600; color: var(--mac-text);">
+                        <span style="display: inline-flex; align-items: center; gap: 8px;">
+                            <span>🔑</span> Passkeys (WebAuthn)
+                        </span>
+                    </summary>
+                    <div id="passkeysSection" style="margin-top: 12px;">
+                        <div class="subtext" style="margin-bottom: 12px;">Passkeys replace passwords with cryptographic keys stored on your device. Use Face ID, Touch ID, Windows Hello, or a security key to sign in.</div>
+                        <div class="settings-grid" style="margin-bottom: 12px;">
+                            <div class="label">Status:</div>
+                            <div class="value">
+                                <span id="passkeyStatus">Checking…</span>
+                            </div>
+                        </div>
+                        <div class="settings-grid" style="margin-bottom: 12px;">
+                            <div class="label">Platform Authenticator:</div>
+                            <div class="value">
+                                <span id="platformAuthStatus">Unknown</span>
+                            </div>
+                        </div>
+                        <div class="settings-grid" style="margin-bottom: 12px;">
+                            <div class="label">AAGUID:</div>
+                            <div class="value" style="font-family: monospace; font-size: 12px;">
+                                <span id="passkeyAaguid">—</span>
+                            </div>
+                        </div>
+                        <button class="mac-btn" id="refreshPasskeysBtn" style="margin-top: 8px;">Refresh Status</button>
+                        <button class="mac-btn" id="managePasskeysBtn" style="margin-top: 8px; margin-left: 8px;">Manage Passkeys…</button>
+                    </div>
+                </details>
+
+                <details style="margin-bottom: 16px; padding: 12px; border: 1px solid var(--mac-border); border-radius: 8px; background: var(--mac-card);">
+                    <summary style="cursor: pointer; font-weight: 600; color: var(--mac-text);">
+                        <span style="display: inline-flex; align-items: center; gap: 8px;">
+                            <span>🛡</span> General Security
+                        </span>
+                    </summary>
+                    <div class="subtext" style="margin-top: 12px;">Sandboxing, multi-process isolation and certificate checks are active. Warning dialogs appear when a site&rsquo;s identity cannot be verified.</div>
+                </details>
             </div>
 
-            <div id="privacy" class="content">
+            <div id="privacy" class="content" role="tabpanel" aria-labelledby="tab-privacy" hidden>
                 <div class="empty-state">
                     <div class="empty-icon">✋</div>
                     <div class="empty-title">Privacy</div>
@@ -951,33 +1001,186 @@
                 </div>
             </div>
 
-            <div id="websites" class="content">
-                <div class="pane-title">Website Permissions</div>
-                <div class="subtext" style="margin-bottom: 16px;">Manage camera, microphone, location, and notification permissions for websites.</div>
-                <div class="list-card" id="permissionsList">
-                    <div class="list-empty">No saved permissions. Permissions are saved when you choose \"Remember my decision\" on a permission prompt.</div>
-                </div>
-                <div style="display: flex; justify-content: flex-end; margin-top: 16px; gap: 8px;">
-                    <button class="mac-btn" id="clearPermissionsBtn">Clear All Permissions</button>
-                </div>
-            </div>
+            <div id="websites" class="content" role="tabpanel" aria-labelledby="tab-websites" hidden>
+                <div class="pane-title">Website Settings</div>
+                <div class="subtext" style="margin-bottom: 16px;">Manage permissions and content settings for individual websites. Changes apply immediately.</div>
 
-            <div id="profiles" class="content">
-                <div class="pane-title" style="margin-bottom: 12px;">Profiles</div>
-                <div class="list-card">
-                    <div class="list-row">
-                        <span class="list-site">Account</span>
-                        <span class="list-user" id="profileName">Guest</span>
-                        <span class="list-pass" id="profileMethod">Not signed in</span>
-                        <button class="mac-btn" id="signOutBtn" style="display: none;">Sign Out</button>
+                <!-- Search/Filter -->
+                <div class="settings-grid" style="margin-bottom: 16px;">
+                    <div class="label" style="width: auto; min-width: 80px;">Filter:</div>
+                    <div class="value" style="flex: 1;">
+                        <input type="text" id="siteFilter" placeholder="Search sites..." style="width: 100%; max-width: 300px;">
                     </div>
                 </div>
-                <div class="subtext" style="margin-top: 10px;">
-                    BLACK has no cloud backend — every profile is stored on this device only. Apple/Google cloud sign-in requires a registered OAuth client ID and is not available. Use Private Windows for isolated sessions.
+
+                <!-- Default Settings -->
+                <details class="defaults-section" open style="margin-bottom: 16px; padding: 12px; border: 1px solid var(--mac-border); border-radius: 8px; background: var(--mac-card);">
+                    <summary style="cursor: pointer; font-weight: 600; color: var(--mac-text);">Default Settings for All Sites</summary>
+                    <div id="defaultSettings" style="margin-top: 12px;"></div>
+                </details>
+
+                <!-- Site List -->
+                <div class="list-card" id="siteList">
+                    <div class="list-empty">Loading site settings...</div>
+                </div>
+                <div style="display: flex; justify-content: flex-end; margin-top: 16px; gap: 8px;">
+                    <button class="mac-btn" id="clearSiteSettingsBtn">Clear All Site Settings</button>
                 </div>
             </div>
 
-            <div id="extensions" class="content">
+            <div id="profiles" class="content" role="tabpanel" aria-labelledby="tab-profiles" hidden>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+                    <div class="pane-title">Profiles</div>
+                    <button class="mac-btn" id="createProfileBtn">Create Profile</button>
+                </div>
+                <div class="subtext" style="margin-bottom: 16px;">
+                    Each profile has its own bookmarks, history, passwords, and settings. Use profiles to separate work, personal, and other browsing.
+                </div>
+                <div class="list-card" id="profileList">
+                    <div class="list-empty">Loading profiles...</div>
+</div>
+            <div class="subtext" style="margin-top: 16px;">
+                BLACK has no cloud backend — every profile is stored on this device only. Apple/Google cloud sign-in requires a registered OAuth client ID and is not available. Use Private Windows for isolated sessions.
+            </div>
+        </div>
+
+        <div id="sync" class="content" role="tabpanel" aria-labelledby="tab-sync" hidden>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+                <div class="pane-title">Sync</div>
+                <span id="syncStatusBadge" class="mac-badge" style="display: none;">Syncing…</span>
+            </div>
+            <div class="subtext" style="margin-bottom: 16px;">
+                Synchronize bookmarks, history, passwords, settings, and more across your devices with end-to-end encryption.
+            </div>
+
+            <!-- Sign In Section -->
+            <div id="syncSignInSection" style="margin-bottom: 24px; padding: 16px; border: 1px solid var(--mac-border); border-radius: 8px; background: var(--mac-card); display: none;">
+                <h3 style="margin-bottom: 12px;">Sign in to Sync</h3>
+                <div class="settings-grid" style="margin-bottom: 12px;">
+                    <div class="label" style="width: 120px;">Email:</div>
+                    <div class="value" style="flex: 1;">
+                        <input type="email" id="syncEmail" placeholder="you@example.com" style="width: 100%; max-width: 300px;">
+                    </div>
+                </div>
+                <div class="settings-grid" style="margin-bottom: 12px;">
+                    <div class="label" style="width: 120px;">Password:</div>
+                    <div class="value" style="flex: 1;">
+                        <input type="password" id="syncPassword" placeholder="Enter password" style="width: 100%; max-width: 300px;">
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; margin-top: 8px;">
+                    <button class="mac-btn" id="syncSignInBtn">Sign In</button>
+                    <button class="mac-btn" id="syncSignUpBtn">Create Account</button>
+                </div>
+            </div>
+
+            <!-- Sync Status Section -->
+            <div id="syncStatusSection" style="display: none; margin-bottom: 24px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                    <h3 style="margin: 0;">Sync Status</h3>
+                    <button class="mac-btn" id="syncNowBtn" style="padding: 6px 12px; font-size: 12px;">Sync Now</button>
+                </div>
+                <div class="settings-grid" style="margin-bottom: 16px;">
+                    <div class="label">Status:</div>
+                    <div class="value">
+                        <span id="syncStatusText">Not syncing</span>
+                    </div>
+                    <div class="label">Last Sync:</div>
+                    <div class="value">
+                        <span id="lastSyncText">Never</span>
+                    </div>
+                    <div class="label">Next Sync:</div>
+                    <div class="value">
+                        <span id="nextSyncText">In 15 minutes</span>
+                    </div>
+                    <div class="label">Items Synced:</div>
+                    <div class="value">
+                        <span id="itemsSyncedText">0</span>
+                    </div>
+                </div>
+                <div id="syncProgressContainer" style="display: none; margin-top: 12px;">
+                    <div style="font-size: 12px; color: var(--mac-text-sec); margin-bottom: 4px;" id="syncProgressText">Syncing…</div>
+                    <progress id="syncProgressBar" value="0" max="100" style="width: 100%; height: 6px;"></progress>
+                </div>
+            </div>
+
+            <!-- Data Types Section -->
+            <details open style="margin-bottom: 24px; padding: 16px; border: 1px solid var(--mac-border); border-radius: 8px; background: var(--mac-card);">
+                <summary style="cursor: pointer; font-weight: 600; color: var(--mac-text);">Data Types to Sync</summary>
+                <div id="syncDataTypes" style="margin-top: 12px;"></div>
+            </details>
+
+            <!-- Conflict Resolution -->
+            <details style="margin-bottom: 24px; padding: 16px; border: 1px solid var(--mac-border); border-radius: 8px; background: var(--mac-card);">
+                <summary style="cursor: pointer; font-weight: 600; color: var(--mac-text);">Conflict Resolution</summary>
+                <div class="settings-grid" style="margin-top: 12px;">
+                    <div class="label" style="width: 200px;">When conflicts occur:</div>
+                    <div class="value" style="flex: 1;">
+                        <select id="conflictStrategy" style="width: 100%; max-width: 250px;">
+                            <option value="0">Keep local version</option>
+                            <option value="1">Accept server version</option>
+                            <option value="2" selected>Use newest version</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="subtext" style="margin-top: 8px;">Choose how to handle conflicts when the same item is modified on different devices.</div>
+            </details>
+
+            <!-- Devices Section -->
+            <details style="margin-bottom: 24px; padding: 16px; border: 1px solid var(--mac-border); border-radius: 8px; background: var(--mac-card);">
+                <summary style="cursor: pointer; font-weight: 600; color: var(--mac-text);">Connected Devices</summary>
+                <div class="list-card" id="syncDeviceList" style="margin-top: 12px;">
+                    <div class="list-empty">Loading devices...</div>
+                </div>
+                <div class="subtext" style="margin-top: 8px;">Manage devices connected to your sync account.</div>
+            </details>
+
+            <!-- Pending Conflicts -->
+            <details style="margin-bottom: 24px; padding: 16px; border: 1px solid var(--mac-border); border-radius: 8px; background: var(--mac-card);">
+                <summary style="cursor: pointer; font-weight: 600; color: var(--mac-text);">Pending Conflicts</summary>
+                <div class="list-card" id="syncConflictsList" style="margin-top: 12px;">
+                    <div class="list-empty">No conflicts</div>
+                </div>
+            </details>
+
+            <!-- Backup/Restore -->
+            <details style="margin-bottom: 24px; padding: 16px; border: 1px solid var(--mac-border); border-radius: 8px; background: var(--mac-card);">
+                <summary style="cursor: pointer; font-weight: 600; color: var(--mac-text);">Backup & Restore</summary>
+                <div class="settings-grid" style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button class="mac-btn" id="exportBackupBtn">Export Encrypted Backup</button>
+                    <button class="mac-btn" id="importBackupBtn">Import Encrypted Backup</button>
+                </div>
+                <div class="subtext" style="margin-top: 8px;">Create an encrypted backup of all your synced data for safekeeping or migration.</div>
+            </details>
+
+            <!-- Advanced Sync Settings -->
+            <details style="padding: 16px; border: 1px solid var(--mac-border); border-radius: 8px; background: var(--mac-card);">
+                <summary style="cursor: pointer; font-weight: 600; color: var(--mac-text);">Advanced</summary>
+                <div class="settings-grid" style="margin-top: 12px;">
+                    <div class="label">Sync Server:</div>
+                    <div class="value">
+                        <input type="url" id="syncServerUrl" placeholder="https://sync.black-browser.org" style="width: 100%; max-width: 400px;">
+                    </div>
+                    <div class="label">Sync Interval:</div>
+                    <div class="value">
+                        <select id="syncInterval" style="width: 100%; max-width: 200px;">
+                            <option value="5">Every 5 minutes</option>
+                            <option value="15" selected>Every 15 minutes</option>
+                            <option value="30">Every 30 minutes</option>
+                            <option value="60">Every hour</option>
+                            <option value="1440">Once daily</option>
+                        </select>
+                    </div>
+                    <div class="label">Encrypt all data:</div>
+                    <div class="value">
+                        <input type="checkbox" id="encryptAllData" checked>
+                    </div>
+                </div>
+                <div class="subtext" style="margin-top: 8px;">Advanced sync configuration. Changing the server URL requires re-authentication.</div>
+            </details>
+        </div>
+
+        <div id="extensions" class="content" role="tabpanel" aria-labelledby="tab-extensions" hidden>
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
                     <div class="pane-title">Installed Extensions</div>
                     <button class="mac-btn" id="extReloadBtn">Reload from Disk</button>
@@ -990,7 +1193,7 @@
                 </div>
             </div>
 
-            <div id="advanced" class="content">
+            <div id="advanced" class="content" role="tabpanel" aria-labelledby="tab-advanced" hidden>
                 <div class="empty-state">
                     <div class="empty-icon">🛠</div>
                     <div class="empty-title">Advanced</div>
@@ -998,7 +1201,7 @@
                 </div>
             </div>
 
-            <div id="developer" class="content">
+            <div id="developer" class="content" role="tabpanel" aria-labelledby="tab-developer" hidden>
                 <div class="empty-state">
                     <div class="empty-icon">🔨</div>
                     <div class="empty-title">Developer</div>
@@ -1006,7 +1209,7 @@
                 </div>
             </div>
 
-            <div id="features" class="content">
+            <div id="features" class="content" role="tabpanel" aria-labelledby="tab-features" hidden>
                 <div class="empty-state">
                     <div class="empty-icon">🚩</div>
                     <div class="empty-title">Feature Flags</div>
@@ -1014,7 +1217,7 @@
                 </div>
             </div>
 
-            <div id="updates" class="content">
+            <div id="updates" class="content" role="tabpanel" aria-labelledby="tab-updates" hidden>
                 <div class="pane-title">Software Updates</div>
                 <div class="subtext" style="margin-bottom: 16px;">Check for updates to BLACK. Updates are downloaded securely and installed automatically.</div>
                 <div class="settings-grid" style="max-width: 500px;">
@@ -1063,17 +1266,35 @@
     </div>
 
     <script>
-        function switchTab(id, title) {
+        function switchTab(id, title, evt) {
             document.querySelectorAll('.content').forEach(function(c) {
                 c.classList.remove('active');
+                c.hidden = true;
+                c.setAttribute('aria-hidden', 'true');
             });
-            document.getElementById(id).classList.add('active');
+            const activePane = document.getElementById(id);
+            activePane.classList.add('active');
+            activePane.hidden = false;
+            activePane.setAttribute('aria-hidden', 'false');
 
-            const buttons = document.querySelectorAll('.tool-btn');
+            const buttons = document.querySelectorAll('.tool-btn[role="tab"]');
             buttons.forEach(function(b) {
                 b.classList.remove('active');
+                b.setAttribute('aria-selected', 'false');
             });
-            if (event && event.currentTarget) event.currentTarget.classList.add('active');
+            if (evt && evt.currentTarget) {
+                evt.currentTarget.classList.add('active');
+                evt.currentTarget.setAttribute('aria-selected', 'true');
+            } else {
+                // Fallback: find the button that matches this tab
+                buttons.forEach(function(b) {
+                    const oc = b.getAttribute('onclick') || '';
+                    if (oc.indexOf("switchTab('" + id + "'") !== -1) {
+                        b.classList.add('active');
+                        b.setAttribute('aria-selected', 'true');
+                    }
+                });
+            }
 
             document.getElementById('titleText').textContent = title;
             const pane = document.getElementById(id);
@@ -1367,15 +1588,88 @@
                 }
 
                 // ── Profiles tab ───────────────────────────────────────────
+                const profileManager = channel.objects.profileManager;
                 const account = channel.objects.account;
-                const renderProfile = function () {
-                    document.getElementById('profileName').textContent = account.name;
-                    document.getElementById('profileMethod').textContent =
-                        account.signedIn ? ('Local profile (' + account.authMethod + ')') : 'Not signed in';
-                    document.getElementById('signOutBtn').style.display = account.signedIn ? '' : 'none';
+
+                const renderProfiles = function () {
+                    if (!profileManager) {
+                        console.warn('ProfileManager not available');
+                        return;
+                    }
+                    profileManager.getProfiles(function (list) {
+                        const el = document.getElementById('profileList');
+                        if (!el) return;
+                        if (!list || list.length === 0) {
+                            el.innerHTML = '<div class="list-empty">No profiles found.</div>';
+                            return;
+                        }
+                        let html = '<div class="list-row row-head"><span class="list-site">Profile</span><span class="list-user">Theme</span><span class="list-pass">Last Used</span><span></span></div>';
+                        list.forEach(function (p) {
+                            const isCurrent = p.id === profileManager.currentProfileId;
+                            const themeLabel = { light: 'Light', dark: 'Dark', system: 'System' }[p.theme] || p.theme;
+                            const lastUsed = p.lastUsedAt ? new Date(p.lastUsedAt).toLocaleString() : 'Never';
+                            html += '<div class="list-row' + (isCurrent ? ' current' : '') + '">'
+                                + '<span class="list-site">' + esc(p.name) + (p.isDefault ? ' <span style="color: var(--mac-accent); font-size: 10px;">(Default)</span>' : '') + '</span>'
+                                + '<span class="list-user">' + esc(themeLabel) + '</span>'
+                                + '<span class="list-pass">' + esc(lastUsed) + '</span>'
+                                + '<span style="display: flex; gap: 4px; align-items: center;">'
+                                + (p.id !== profileManager.currentProfileId
+                                    ? '<button class="list-btn" data-switch="' + encodeURIComponent(p.id) + '" title="Switch to this profile">Switch</button>'
+                                    : '<span class="list-pass" style="color: var(--mac-accent);">Current</span>')
+                                + '<button class="list-btn" data-rename="' + encodeURIComponent(p.id) + '" title="Rename">✎</button>'
+                                + (p.isDefault ? '' : '<button class="list-del" data-delete="' + encodeURIComponent(p.id) + '" title="Delete profile">✕</button>')
+                                + '</span></div>';
+                        });
+                        el.innerHTML = html;
+                    });
                 };
-                account.changed.connect(renderProfile);
-                renderProfile();
+
+                const renderAccount = function () {
+                    const el = document.getElementById('profileName');
+                    const methodEl = document.getElementById('profileMethod');
+                    const signOutBtn = document.getElementById('signOutBtn');
+                    if (el) el.textContent = account.name;
+                    if (methodEl) methodEl.textContent = account.signedIn ? ('Local profile (' + account.authMethod + ')') : 'Not signed in';
+                    if (signOutBtn) signOutBtn.style.display = account.signedIn ? '' : 'none';
+                };
+                account.changed.connect(renderAccount);
+                renderAccount();
+
+                if (profileManager) {
+                    profileManager.changed.connect(renderProfiles);
+                    renderProfiles();
+                }
+
+                // Profile list actions
+                const profileListEl = document.getElementById('profileList');
+                if (profileListEl) {
+                    profileListEl.addEventListener('click', function (e) {
+                        const t = e.target;
+                        if (t.dataset.switch) {
+                            const id = decodeURIComponent(t.dataset.switch);
+                            profileManager.switchProfile(id);
+                        } else if (t.dataset.rename) {
+                            const id = decodeURIComponent(t.dataset.rename);
+                            const newName = prompt('Enter new profile name:');
+                            if (newName && newName.trim()) {
+                                profileManager.renameProfile(id, newName.trim());
+                            }
+                        } else if (t.dataset.delete) {
+                            const id = decodeURIComponent(t.dataset.delete);
+                            if (confirm('Delete this profile? All its data will be lost.')) {
+                                profileManager.deleteProfile(id);
+                            }
+                        }
+                    });
+                }
+
+                document.getElementById('createProfileBtn').addEventListener('click', function () {
+                    const name = prompt('Enter profile name:');
+                    if (name && name.trim()) {
+                        profileManager.createProfile(name.trim());
+                    }
+                });
+
                 document.getElementById('signOutBtn').addEventListener('click', function () { account.signOut(); });
 
                 // ── Extensions tab ─────────────────────────────────────────
@@ -1399,51 +1693,103 @@
                 renderExtensions();
                 document.getElementById('extReloadBtn').addEventListener('click', function () { extensions.reload(); });
 
-                // ── Permissions tab (Websites) ────────────────────────────────
+                // ── Permissions & Content Settings tab (Websites) ──────────────────────────────
                 const permissions = channel.objects.permissions;
-                const typeLabels = {
-                    0: 'Notifications',
-                    1: 'Location',
-                    2: 'Microphone',
-                    3: 'Camera',
-                    4: 'Camera & Microphone',
-                    5: 'Pointer Lock',
-                    6: 'Screen Capture (Video)',
-                    7: 'Screen Capture (Audio+Video)',
-                    8: 'Clipboard',
-                    9: 'Local Fonts'
+                const stateLabels = {
+                    0: 'Default', 1: 'Allowed', 2: 'Blocked', 3: 'Ask'
                 };
-                const renderPermissions = function () {
+
+                // Render default settings
+                const renderDefaultSettings = function () {
+                    permissions.getPermissionTypes(function (types) {
+                        const el = document.getElementById('defaultSettings');
+                        if (!el) return;
+                        let html = '<div class="settings-grid">';
+                        types.forEach(function (t) {
+                            const def = permissions.getDefaultState(t.type);
+                            html += '<div class="label" style="width: 280px;">' + esc(t.name) + '</div>';
+                            html += '<div class="value" style="flex: 1;">';
+                            html += '<select data-type="' + t.type + '" style="width: 100%; max-width: 180px;">';
+                            const options = [
+                                { value: 0, label: 'Default' },
+                                { value: 1, label: 'Allowed' },
+                                { value: 2, label: 'Blocked' },
+                                { value: 3, label: 'Ask' }
+                            ];
+                            options.forEach(function (opt) {
+                                html += '<option value="' + opt.value + '"' + (opt.value === def ? ' selected' : '') + '>' + opt.label + '</option>';
+                            });
+                            html += '</select></div>';
+                        });
+                        html += '</div>';
+                        el.innerHTML = html;
+                        // Bind change events
+                        el.querySelectorAll('select').forEach(function (sel) {
+                            sel.addEventListener('change', function () {
+                                const type = parseInt(this.dataset.type, 10);
+                                const state = parseInt(this.value, 10);
+                                permissions.setDefaultState(type, state);
+                            });
+                        });
+                    });
+                };
+                renderDefaultSettings();
+
+                // Render site list
+                const renderSiteList = function (filter) {
                     permissions.getPermissions(function (list) {
-                        const el = document.getElementById('permissionsList');
+                        const el = document.getElementById('siteList');
                         if (!el) return;
                         if (!list || list.length === 0) {
-                            el.innerHTML = '<div class="list-empty">No saved permissions. Permissions are saved when you choose "Remember my decision" on a permission prompt.</div>';
+                            el.innerHTML = '<div class="list-empty">No site-specific settings yet. Settings are saved when you change a permission or content setting for a site.</div>';
                             return;
                         }
-                        let html = '<div class="list-row row-head"><span class="list-site">Website</span><span class="list-user">Permission</span><span class="list-pass">Status</span><span></span></div>';
-                        list.forEach(function (site) {
+                        // Filter by search
+                        const filtered = filter ? list.filter(function (s) {
+                            return s.origin.toLowerCase().includes(filter.toLowerCase());
+                        }) : list;
+                        if (!filtered.length) {
+                            el.innerHTML = '<div class="list-empty">No sites match your filter.</div>';
+                            return;
+                        }
+                        let html = '<div class="list-row row-head"><span class="list-site">Website</span><span class="list-user">Setting</span><span class="list-pass">State</span><span></span></div>';
+                        filtered.forEach(function (site) {
                             const origin = site.origin;
                             const perms = site.permissions;
                             perms.forEach(function (p) {
-                                const typeName = typeLabels[p.type] || ('Type ' + p.type);
-                                const status = p.allowed ? 'Allowed' : 'Blocked';
-                                const statusClass = p.allowed ? 'status-allowed' : 'status-blocked';
+                                const typeName = p.typeName;
+                                const state = p.state;
+                                const stateLabel = stateLabels[state] || 'Unknown';
+                                const stateClass = state === 1 ? 'status-allowed' : (state === 2 ? 'status-blocked' : '');
                                 html += '<div class="list-row"><span class="list-site">' + esc(origin) + '</span>'
                                     + '<span class="list-user">' + esc(typeName) + '</span>'
-                                    + '<span class="list-pass ' + statusClass + '">' + esc(status) + '</span>'
+                                    + '<span class="list-pass ' + stateClass + '">' + esc(stateLabel) + '</span>'
                                     + '<span style="display: flex; gap: 4px; align-items: center;">'
-                                    + '<button class="list-del" data-del-origin="' + encodeURIComponent(origin) + '" data-del-type="' + p.type + '" title="Remove permission">✕</button></span></div>';
+                                    + '<button class="list-del" data-del-origin="' + encodeURIComponent(origin) + '" data-del-type="' + p.type + '" title="Remove setting">✕</button></span></div>';
                             });
                         });
                         el.innerHTML = html;
                     });
                 };
-                permissions.changed.connect(renderPermissions);
-                renderPermissions();
-                const permissionsListEl = document.getElementById('permissionsList');
-                if (permissionsListEl) {
-                    permissionsListEl.addEventListener('click', function (e) {
+                renderSiteList();
+
+                // Filter handler
+                const filterInput = document.getElementById('siteFilter');
+                if (filterInput) {
+                    filterInput.addEventListener('input', function () {
+                        renderSiteList(this.value.trim());
+                    });
+                }
+
+                permissions.changed.connect(function () {
+                    renderDefaultSettings();
+                    renderSiteList(filterInput ? filterInput.value.trim() : '');
+                });
+
+                // Site list click handler
+                const siteListEl = document.getElementById('siteList');
+                if (siteListEl) {
+                    siteListEl.addEventListener('click', function (e) {
                         const t = e.target;
                         if (t.dataset.delOrigin) {
                             const origin = decodeURIComponent(t.dataset.delOrigin);
@@ -1452,11 +1798,68 @@
                         }
                     });
                 }
-                document.getElementById('clearPermissionsBtn').addEventListener('click', function () {
-                    if (confirm('Clear all saved website permissions? This cannot be undone.')) {
+
+                document.getElementById('clearSiteSettingsBtn').addEventListener('click', function () {
+                    if (confirm('Clear all site-specific settings? This cannot be undone.')) {
                         permissions.clearPermissions();
                     }
                 });
+
+                // ── Passkeys / WebAuthn (Security tab) ────────────────────────────
+                const webauthn = channel.objects.webauthn;
+                const passkeyStatusEl = document.getElementById('passkeyStatus');
+                const platformAuthStatusEl = document.getElementById('platformAuthStatus');
+                const passkeyAaguidEl = document.getElementById('passkeyAaguid');
+                const refreshPasskeysBtn = document.getElementById('refreshPasskeysBtn');
+                const managePasskeysBtn = document.getElementById('managePasskeysBtn');
+
+                const renderPasskeys = function () {
+                    if (!webauthn) {
+                        if (passkeyStatusEl) passkeyStatusEl.textContent = 'Not available';
+                        if (platformAuthStatusEl) platformAuthStatusEl.textContent = 'N/A';
+                        return;
+                    }
+                    webauthn.isSupported(function (supported) {
+                        if (passkeyStatusEl) {
+                            passkeyStatusEl.textContent = supported ? 'Supported ✓' : 'Not supported on this platform';
+                            passkeyStatusEl.style.color = supported ? '#30d158' : '#ff453a';
+                        }
+                        if (supported) {
+                            webauthn.isPlatformAuthenticatorAvailable(function (available) {
+                                if (platformAuthStatusEl) {
+                                    platformAuthStatusEl.textContent = available ? 'Available ✓' : 'Not available';
+                                    platformAuthStatusEl.style.color = available ? '#30d158' : '#ff453a';
+                                }
+                            });
+                            webauthn.getAuthenticatorInfo(function (info) {
+                                if (passkeyAaguidEl && info.aaguid) {
+                                    passkeyAaguidEl.textContent = info.aaguid;
+                                }
+                            });
+                        } else {
+                            if (platformAuthStatusEl) {
+                                platformAuthStatusEl.textContent = 'N/A';
+                                platformAuthStatusEl.style.color = '#8e8e93';
+                            }
+                        }
+                    });
+                };
+                renderPasskeys();
+
+                if (refreshPasskeysBtn) {
+                    refreshPasskeysBtn.addEventListener('click', renderPasskeys);
+                }
+
+                if (managePasskeysBtn) {
+                    managePasskeysBtn.addEventListener('click', function () {
+                        if (webauthn) {
+                            webauthn.listCredentials(function (creds) {
+                                // Show a modal with passkey list
+                                alert('Passkey management UI not yet implemented. Found ' + creds.length + ' credentials.');
+                            });
+                        }
+                    });
+                }
 
                 // ── Updates tab ────────────────────────────────────────────────
                 const updater = channel.objects.updater;
@@ -1534,8 +1937,277 @@
 
                 renderUpdater();
 
-            });
-        }
+                // ── Sync tab ────────────────────────────────────────────────────
+                const syncManager = channel.objects.syncManager;
+                const account = channel.objects.account;
+
+                const renderSyncStatus = function () {
+                    if (!syncManager) return;
+                    syncManager.getStats(function (stats) {
+                        const statusEl = document.getElementById('syncStatusText');
+                        const lastSyncEl = document.getElementById('lastSyncText');
+                        const nextSyncEl = document.getElementById('nextSyncText');
+                        const itemsSyncedEl = document.getElementById('itemsSyncedText');
+                        const progressContainer = document.getElementById('syncProgressContainer');
+                        const progressText = document.getElementById('syncProgressText');
+                        const progressBar = document.getElementById('syncProgressBar');
+                        const statusBadge = document.getElementById('syncStatusBadge');
+
+                        if (stats) {
+                            if (statusEl) statusEl.textContent = stats.pendingChanges > 0 ? 'Syncing…' : 'Up to date';
+                            if (lastSyncEl) lastSyncEl.textContent = stats.lastSync ? new Date(stats.lastSync).toLocaleString() : 'Never';
+                            if (nextSyncEl) nextSyncEl.textContent = stats.nextSync ? new Date(stats.nextSync).toLocaleString() : '—';
+                            if (itemsSyncedEl) itemsSyncedEl.textContent = stats.itemsSynced || 0;
+                            
+                            if (progressContainer) {
+                                if (stats.pendingChanges > 0) {
+                                    progressContainer.style.display = 'block';
+                                    if (progressText) progressText.textContent = 'Syncing ' + stats.pendingChanges + ' changes…';
+                                    if (progressBar) progressBar.value = Math.min(100, Math.round((stats.itemsSynced / Math.max(1, stats.itemsSynced + stats.pendingChanges)) * 100));
+                                } else {
+                                    progressContainer.style.display = 'none';
+                                }
+                                if (statusBadge) statusBadge.style.display = 'inline-block';
+                            } else {
+                                if (progressContainer) progressContainer.style.display = 'none';
+                                if (statusBadge) statusBadge.style.display = 'none';
+                            }
+                        }
+                    });
+                };
+                renderSyncStatus();
+
+                const renderDataTypes = function () {
+                    if (!syncManager) return;
+                    const enabled = syncManager.getEnabledDataTypes();
+                    const allTypes = [
+                        { type: 'bookmarks', name: 'Bookmarks', icon: '🔖' },
+                        { type: 'history', name: 'History', icon: '🕐' },
+                        { type: 'passwords', name: 'Passwords', icon: '🔑' },
+                        { type: 'settings', name: 'Settings', icon: '⚙' },
+                        { type: 'openTabs', name: 'Open Tabs', icon: '📑' },
+                        { type: 'extensions', name: 'Extensions', icon: '🧩' },
+                        { type: 'readingList', name: 'Reading List', icon: '📚' },
+                        { type: 'autofill', name: 'Autofill', icon: '📝' },
+                        { type: 'preferences', name: 'Preferences', icon: '🎛' }
+                    ];
+                    const el = document.getElementById('syncDataTypes');
+                    if (!el) return;
+                    let html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;">';
+                    allTypes.forEach(function (t) {
+                        const checked = enabled.has(t.type) ? 'checked' : '';
+                        html += '<label style="display: flex; align-items: center; gap: 8px; padding: 12px; border: 1px solid var(--mac-border); border-radius: 8px; background: var(--mac-card); cursor: pointer;">';
+                        html += '<input type="checkbox" data-sync-type="' + t.type + '" ' + checked + ' style="width: 18px; height: 18px;">';
+                        html += '<span style="font-size: 18px;">' + t.icon + '</span>';
+                        html += '<span style="font-weight: 500;">' + t.name + '</span>';
+                        html += '</label>';
+                    });
+                    html += '</div>';
+                    el.innerHTML = html;
+                    el.querySelectorAll('input[data-sync-type]').forEach(function (cb) {
+                        cb.addEventListener('change', function () {
+                            syncManager.setDataTypeEnabled(this.dataset.syncType, this.checked);
+                        });
+                    });
+                };
+                renderDataTypes();
+
+                // Sync sign-in
+                const signInSection = document.getElementById('syncSignInSection');
+                const statusSection = document.getElementById('syncStatusSection');
+                const syncEmail = document.getElementById('syncEmail');
+                const syncPassword = document.getElementById('syncPassword');
+                const signInBtn = document.getElementById('syncSignInBtn');
+                const signUpBtn = document.getElementById('syncSignUpBtn');
+
+                const updateSyncUI = function () {
+                    if (account.signedIn) {
+                        if (signInSection) signInSection.style.display = 'none';
+                        if (statusSection) statusSection.style.display = 'block';
+                        renderSyncStatus();
+                    } else {
+                        if (signInSection) signInSection.style.display = 'block';
+                        if (statusSection) statusSection.style.display = 'none';
+                    }
+                };
+                account.changed.connect(updateSyncUI);
+                updateSyncUI();
+
+                if (signInBtn) {
+                    signInBtn.addEventListener('click', function () {
+                        const email = syncEmail.value.trim();
+                        const password = syncPassword.value;
+                        if (email && password) {
+                            syncManager.signIn(email, password);
+                        }
+                    });
+                }
+                if (signUpBtn) {
+                    signUpBtn.addEventListener('click', function () {
+                        const email = syncEmail.value.trim();
+                        const password = syncPassword.value;
+                        if (email && password) {
+                            // For now, treat sign up same as sign in
+                            syncManager.signIn(email, password);
+                        }
+                    });
+                }
+
+                // Sync Now button
+                const syncNowBtn = document.getElementById('syncNowBtn');
+                if (syncNowBtn) {
+                    syncNowBtn.addEventListener('click', function () {
+                        syncManager.syncNow();
+                    });
+                }
+
+                // Conflict resolution
+                const conflictStrategy = document.getElementById('conflictStrategy');
+                if (conflictStrategy) {
+                    conflictStrategy.addEventListener('change', function () {
+                        syncManager.setConflictStrategy(parseInt(this.value, 10));
+                    });
+                }
+
+                // Render conflicts
+                const renderConflicts = function () {
+                    syncManager.getPendingConflicts(function (conflicts) {
+                        const el = document.getElementById('syncConflictsList');
+                        if (!el) return;
+                        if (!conflicts || conflicts.length === 0) {
+                            el.innerHTML = '<div class="list-empty">No conflicts</div>';
+                            return;
+                        }
+                        let html = '<div class="list-row row-head"><span class="list-site">Item</span><span class="list-user">Type</span><span class="list-pass">Action</span></div>';
+                        conflicts.forEach(function (c) {
+                            html += '<div class="list-row"><span class="list-site">' + esc(c.itemId) + '</span>'
+                                + '<span class="list-user">' + c.type + '</span>'
+                                + '<span style="display: flex; gap: 4px;">'
+                                + '<button class="list-btn" data-resolve-local="' + encodeURIComponent(c.itemId) + '">Keep Local</button>'
+                                + '<button class="list-btn" data-resolve-remote="' + encodeURIComponent(c.itemId) + '">Take Remote</button>'
+                                + '<button class="list-btn" data-resolve-newest="' + encodeURIComponent(c.itemId) + '">Newest</button>'
+                                + '</span></div>';
+                        });
+                        el.innerHTML = html;
+                        el.querySelectorAll('[data-resolve-local]').forEach(function (btn) {
+                            btn.addEventListener('click', function () {
+                                syncManager.resolveConflict(this.dataset.resolveLocal, 0);
+                            });
+                        });
+                        el.querySelectorAll('[data-resolve-remote]').forEach(function (btn) {
+                            btn.addEventListener('click', function () {
+                                syncManager.resolveConflict(this.dataset.resolveRemote, 1);
+                            });
+                        });
+                        el.querySelectorAll('[data-resolve-newest]').forEach(function (btn) {
+                            btn.addEventListener('click', function () {
+                                syncManager.resolveConflict(this.dataset.resolveNewest, 2);
+                            });
+                        });
+                    });
+                };
+                syncManager.getPendingConflicts(renderConflicts);
+
+                // Device list
+                const renderDevices = function () {
+                    syncManager.getDevices(function (devices) {
+                        const el = document.getElementById('syncDeviceList');
+                        if (!el) return;
+                        if (!devices || devices.length === 0) {
+                            el.innerHTML = '<div class="list-empty">No devices connected</div>';
+                            return;
+                        }
+                        let html = '<div class="list-row row-head"><span class="list-site">Device</span><span class="list-user">Type</span><span class="list-pass">Last Seen</span><span></span></div>';
+                        devices.forEach(function (d) {
+                            const current = d.current ? ' <span style="color: var(--mac-accent); font-size: 10px;">(This Device)</span>' : '';
+                            const trusted = d.trusted ? '<span style="color: #30d158; font-size: 10px;">Trusted</span>' : '<span style="color: #ff453a; font-size: 10px;">Untrusted</span>';
+                            html += '<div class="list-row"><span class="list-site">' + esc(d.name) + current + '</span>'
+                                + '<span class="list-user">' + esc(d.type) + '</span>'
+                                + '<span class="list-pass">' + (d.lastSeen ? new Date(d.lastSeen).toLocaleString() : 'Never') + ' ' + trusted + '</span>'
+                                + '<span style="display: flex; gap: 4px;">'
+                                + (d.id !== syncManager.getDeviceId()
+                                    ? '<button class="list-del" data-revoke="' + encodeURIComponent(d.id) + '" title="Revoke device">Revoke</button>'
+                                    : '')
+                                + '</span></div>';
+                        });
+                        el.innerHTML = html;
+                        el.querySelectorAll('[data-revoke]').forEach(function (btn) {
+                            btn.addEventListener('click', function () {
+                                if (confirm('Revoke this device? It will be signed out of sync.')) {
+                                    syncManager.revokeDevice(this.dataset.revoke);
+                                }
+                            });
+                        });
+                    });
+                };
+                syncManager.getDevices(renderDevices);
+
+                // Device rename
+                const deviceListEl = document.getElementById('syncDeviceList');
+                if (deviceListEl) {
+                    deviceListEl.addEventListener('click', function (e) {
+                        // Handled by revoke buttons
+                    });
+                }
+
+                // Data types checkboxes
+                // Already handled in renderDataTypes
+
+                // Conflict strategy
+                const conflictStrategy = document.getElementById('conflictStrategy');
+                if (conflictStrategy) {
+                    conflictStrategy.addEventListener('change', function () {
+                        syncManager.setConflictStrategy(parseInt(this.value, 10));
+                    });
+                }
+
+                // Backup/Restore
+                const exportBackupBtn = document.getElementById('exportBackupBtn');
+                const importBackupBtn = document.getElementById('importBackupBtn');
+                if (exportBackupBtn) {
+                    exportBackupBtn.addEventListener('click', function () {
+                        const filePath = prompt('Enter backup file path (e.g., backup.blacksync):');
+                        if (filePath) {
+                            const password = prompt('Enter encryption password:');
+                            if (password) {
+                                syncManager.exportBackup(filePath, password);
+                            }
+                        }
+                    });
+                }
+                if (importBackupBtn) {
+                    importBackupBtn.addEventListener('click', function () {
+                        const filePath = prompt('Enter backup file path to import:');
+                        if (filePath) {
+                            const password = prompt('Enter decryption password:');
+                            if (password) {
+                                syncManager.importBackup(filePath, password);
+                            }
+                        }
+                    });
+                }
+
+                // Advanced settings
+                const syncServerUrl = document.getElementById('syncServerUrl');
+                const syncInterval = document.getElementById('syncInterval');
+                const encryptAllData = document.getElementById('encryptAllData');
+                if (syncServerUrl) {
+                    syncServerUrl.addEventListener('change', function () {
+                        // Update server URL - would need to restart sync
+                        alert('Server URL change requires restart. New URL: ' + this.value);
+                    });
+                }
+                if (syncInterval) {
+                    syncInterval.addEventListener('change', function () {
+                        const interval = parseInt(this.value, 10);
+                        syncManager.getSyncEngine().setConfig({...syncManager.getSyncEngine().config(), syncIntervalMinutes: interval});
+                    });
+                }
+                if (encryptAllData) {
+                    encryptAllData.addEventListener('change', function () {
+                        syncManager.getSyncEngine().setConfig({...syncManager.getSyncEngine().config(), encryptAllData: this.checked});
+                    });
+                }
     </script>
 </body>
 </html>

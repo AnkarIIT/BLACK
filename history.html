@@ -267,6 +267,29 @@
             try { return new URL(url).host; } catch (e) { return url; }
         }
 
+        function isSafeUrl(url) {
+            try {
+                var u = new URL(url);
+                if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function normalizeUrl(url) {
+            try {
+                var u = new URL(url);
+                return u.href;
+            } catch (e) {
+                // Handle bare domains
+                if (/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(\/.*)?$/.test(url)) {
+                    return 'https://' + url;
+                }
+                return url;
+            }
+        }
+
         function escapeHtml(s) {
             return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
@@ -327,13 +350,8 @@
                         return;
                     }
                     var url = row.dataset.url;
-                    try {
-                        var u = new URL(url);
-                        if (u.protocol !== 'http:' && u.protocol !== 'https:') return;
-                    } catch (e) {
-                        return;
-                    }
-                    window.location.href = url;
+                    if (!isSafeUrl(url)) return;
+                    window.location.href = normalizeUrl(url);
                 });
             });
         }

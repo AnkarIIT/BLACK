@@ -870,6 +870,29 @@
         else if (hour < 18) greeting.textContent = 'Good afternoon,';
         else greeting.textContent = 'Good evening,';
 
+        function isSafeUrl(url) {
+            try {
+                var u = new URL(url);
+                if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function normalizeUrl(url) {
+            try {
+                var u = new URL(url);
+                return u.href;
+            } catch (e) {
+                // Handle bare domains and domains with paths
+                if (/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(\/.*)?$/.test(url)) {
+                    return 'https://' + url;
+                }
+                return url;
+            }
+        }
+
         // Search engine (defaults to Google until the WebChannel connects)
         let currentSearchEngine = 'Google';
 
@@ -904,20 +927,10 @@
             searchInput.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter' && this.value.trim()) {
                     const url = this.value.trim();
-                    try {
-                        const u = new URL(url);
-                        if (u.protocol === 'http:' || u.protocol === 'https:') {
-                            window.location.href = url;
-                        } else {
-                            window.location.href = searchUrlFor(url);
-                        }
-                    } catch (e) {
-                        // Not a valid URL, check if it looks like a bare domain
-                        if (/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(url)) {
-                            window.location.href = 'https://' + url;
-                        } else {
-                            window.location.href = searchUrlFor(url);
-                        }
+                    if (isSafeUrl(url)) {
+                        window.location.href = normalizeUrl(url);
+                    } else {
+                        window.location.href = searchUrlFor(url);
                     }
                 }
             });
