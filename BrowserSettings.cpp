@@ -43,6 +43,7 @@ BrowserSettings::BrowserSettings(QObject *parent)
     , m_openPagesInTabs(QStringLiteral("Automatically"))
     , m_autoCloseTabs(QStringLiteral("Manually"))
     , m_activateNewTabs(true)
+    , m_translationTargetLanguage(QStringLiteral("en"))
 {
     load();
 }
@@ -65,9 +66,13 @@ QJsonObject BrowserSettings::readSettingsObject()
     return QJsonObject();
 }
 
-void BrowserSettings::writeSettingsObject(const QJsonObject &obj)
+bool BrowserSettings::writeSettingsObject(const QJsonObject &obj)
 {
-    OSPaths::writeFileAtomic(settingsFilePath(), QJsonDocument(obj).toJson());
+    if (!OSPaths::writeFileAtomic(settingsFilePath(), QJsonDocument(obj).toJson())) {
+        qWarning() << "Failed to save settings";
+        return false;
+    }
+    return true;
 }
 
 void BrowserSettings::load()
@@ -83,6 +88,7 @@ void BrowserSettings::load()
     m_openSafeFiles           = general.value(QStringLiteral("openSafeFiles")).toBool(m_openSafeFiles);
     m_homepage                = general.value(QStringLiteral("homepage")).toString(m_homepage);
     m_downloadLocation        = general.value(QStringLiteral("downloadLocation")).toString(m_downloadLocation);
+    m_preloadFavicons         = general.value(QStringLiteral("preloadFavicons")).toBool(m_preloadFavicons);
 
     const QJsonObject appearance = obj.value(QStringLiteral("appearance")).toObject();
     m_uiLayout = static_cast<UiLayout>(appearance.value(QStringLiteral("uiLayout")).toInt(m_uiLayout));
@@ -93,6 +99,9 @@ void BrowserSettings::load()
     m_openPagesInTabs       = tabs.value(QStringLiteral("openPagesInTabs")).toString(m_openPagesInTabs);
     m_autoCloseTabs         = tabs.value(QStringLiteral("autoCloseTabs")).toString(m_autoCloseTabs);
     m_activateNewTabs       = tabs.value(QStringLiteral("activateNewTabs")).toBool(m_activateNewTabs);
+
+    const QJsonObject translation = obj.value(QStringLiteral("translation")).toObject();
+    m_translationTargetLanguage = translation.value(QStringLiteral("targetLanguage")).toString(m_translationTargetLanguage);
 }
 
 void BrowserSettings::save()
@@ -108,6 +117,7 @@ void BrowserSettings::save()
     general.insert(QStringLiteral("openSafeFiles"), m_openSafeFiles);
     general.insert(QStringLiteral("homepage"), m_homepage);
     general.insert(QStringLiteral("downloadLocation"), m_downloadLocation);
+    general.insert(QStringLiteral("preloadFavicons"), m_preloadFavicons);
     obj.insert(kGeneralKey, general);
 
     QJsonObject appearance;
@@ -122,7 +132,13 @@ void BrowserSettings::save()
     tabs.insert(QStringLiteral("activateNewTabs"), m_activateNewTabs);
     obj.insert(kTabsKey, tabs);
 
-    writeSettingsObject(obj);
+    QJsonObject translation;
+    translation.insert(QStringLiteral("targetLanguage"), m_translationTargetLanguage);
+    obj.insert(QStringLiteral("translation"), translation);
+
+    if (!writeSettingsObject(obj)) {
+        return;
+    }
 }
 
 void BrowserSettings::setValue(const QString &key, const QString &value)
@@ -161,6 +177,9 @@ void BrowserSettings::setValue(const QString &key, const QString &value)
     } else if (key == QLatin1String("autoCloseTabs") && m_autoCloseTabs != value) {
         m_autoCloseTabs = value;
         changed = true;
+    } else if (key == QLatin1String("translationTargetLanguage") && m_translationTargetLanguage != value) {
+        m_translationTargetLanguage = value;
+        changed = true;
     }
     if (changed) {
         save();
@@ -170,19 +189,66 @@ void BrowserSettings::setValue(const QString &key, const QString &value)
 
 void BrowserSettings::setBool(const QString &key, bool value)
 {
+    bool changed = false;
     if (key == QLatin1String("openSafeFiles") && m_openSafeFiles != value) {
         m_openSafeFiles = value;
-        save();
-        emit settingsChanged();
+        changed = true;
     } else if (key == QLatin1String("showTabTitles") && m_showTabTitles != value) {
         m_showTabTitles = value;
-        save();
-        emit settingsChanged();
+        changed = true;
     } else if (key == QLatin1String("activateNewTabs") && m_activateNewTabs != value) {
         m_activateNewTabs = value;
+        changed = true;
+    } else if (key == QLatin1String("preloadFavicons") && m_preloadFavicons != value) {
+        m_preloadFavicons = value;
+        changed = true;
+    } else if (key == QLatin1String("crashReportingConsent")) {
+        // Store in a separate section
+        QJsonObject obj = readSettingsObject();
+        QJsonObject privacy = obj.value("privacy").toObject();
+        privacy["crashReportingConsent"] = value;
+        obj["privacy"] = privacy;
+        if (!writeSettingsObject(obj)) {
+            return;
+        }
+        changed = true;
+    }
+    if (changed) {
         save();
         emit settingsChanged();
     }
+}
+
+QVariant BrowserSettings::value(const QString &key, const QVariant &defaultValue) const
+{
+    QJsonObject obj = readSettingsObject();
+    
+    if (key == QLatin1String("crashReportingConsent")) {
+        QJsonObject privacy = obj.value("privacy").toObject();
+        return privacy.value("crashReportingConsent").toBool(false);
+    }
+    
+    const QJsonObject general = obj.value("general").toObject();
+    if (general.contains(key)) {
+        return general[key].toVariant();
+    }
+    
+    const QJsonObject appearance = obj.value("appearance").toObject();
+    if (appearance.contains(key)) {
+        return appearance[key].toVariant();
+    }
+    
+    const QJsonObject tabs = obj.value("tabs").toObject();
+    if (tabs.contains(key)) {
+        return tabs[key].toVariant();
+    }
+    
+    const QJsonObject privacy = obj.value("privacy").toObject();
+    if (privacy.contains(key)) {
+        return privacy[key].toVariant();
+    }
+    
+    return defaultValue;
 }
 
 void BrowserSettings::setUiLayout(UiLayout mode)
@@ -190,7 +256,7 @@ void BrowserSettings::setUiLayout(UiLayout mode)
     if (m_uiLayout != mode) {
         m_uiLayout = mode;
         save();
-        emit settingsChanged();
+        // save() will only emit settingsChanged on success
     }
 }
 
@@ -241,7 +307,9 @@ void BrowserSettings::setShortcut(const QString &action, const QString &shortcut
     QJsonObject shortcuts = obj.value(QStringLiteral("shortcuts")).toObject();
     shortcuts.insert(action, shortcut);
     obj.insert(QStringLiteral("shortcuts"), shortcuts);
-    writeSettingsObject(obj);
+    if (!writeSettingsObject(obj)) {
+        return;
+    }
     emit settingsChanged();
 }
 
@@ -251,7 +319,9 @@ void BrowserSettings::resetShortcut(const QString &action)
     QJsonObject shortcuts = obj.value(QStringLiteral("shortcuts")).toObject();
     if (shortcuts.remove(action)) {
         obj.insert(QStringLiteral("shortcuts"), shortcuts);
-        writeSettingsObject(obj);
+        if (!writeSettingsObject(obj)) {
+            return;
+        }
         emit settingsChanged();
     }
 }

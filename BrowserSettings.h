@@ -3,8 +3,8 @@
 
 #include <QObject>
 #include <QString>
-
-class QJsonObject;
+#include <QVariant>
+#include <QJsonObject>
 
 // Holds the Safari-style General settings (Settings > General) and persists
 // them to the shared settings.json, without clobbering the theme preference
@@ -27,6 +27,8 @@ class BrowserSettings : public QObject
     Q_PROPERTY(QString openPagesInTabs READ openPagesInTabs NOTIFY settingsChanged)
     Q_PROPERTY(QString autoCloseTabs READ autoCloseTabs NOTIFY settingsChanged)
     Q_PROPERTY(bool activateNewTabs READ activateNewTabs NOTIFY settingsChanged)
+    Q_PROPERTY(QString translationTargetLanguage READ translationTargetLanguage NOTIFY settingsChanged)
+    Q_PROPERTY(bool preloadFavicons READ preloadFavicons NOTIFY settingsChanged)
 
 public:
     enum UiLayout { SafariModern = 0, ClassicChrome = 1 };
@@ -49,9 +51,12 @@ public:
     QString openPagesInTabs() const { return m_openPagesInTabs; }
     QString autoCloseTabs() const { return m_autoCloseTabs; }
     bool activateNewTabs() const { return m_activateNewTabs; }
+    QString translationTargetLanguage() const { return m_translationTargetLanguage; }
+    bool preloadFavicons() const { return m_preloadFavicons; }
 
     Q_INVOKABLE void setValue(const QString &key, const QString &value);
     Q_INVOKABLE void setBool(const QString &key, bool value);
+    Q_INVOKABLE QVariant value(const QString &key, const QVariant &defaultValue = QVariant()) const;
     Q_INVOKABLE void setUiLayout(UiLayout mode);
     Q_INVOKABLE void openDefaultBrowserSettings();
 
@@ -91,6 +96,8 @@ private:
     QString m_openPagesInTabs;
     QString m_autoCloseTabs;
     bool m_activateNewTabs;
+    QString m_translationTargetLanguage;
+    bool m_preloadFavicons = false;
 };
 
 #endif
