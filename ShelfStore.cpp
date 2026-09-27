@@ -11,14 +11,22 @@
 #include <QSet>
 
 namespace {
-const int kMaxEntries = 500;
+const int kDefaultMaxEntries = 500;
 }
 
 ShelfStore::ShelfStore(const QString &fileName, QObject *parent)
     : QObject(parent)
     , m_fileName(fileName)
     , m_retentionDays(0)
+    , m_maxEntries(kDefaultMaxEntries)
 {
+    // Set up periodic pruning timer (every hour)
+    QTimer *pruneTimer = new QTimer(this);
+    pruneTimer->setInterval(60 * 60 * 1000); // 1 hour
+    connect(pruneTimer, &QTimer::timeout, this, [this]() {
+        pruneOldEntries();
+    });
+    pruneTimer->start();
 }
 
 QString ShelfStore::normalizedUrl(const QString &input)
@@ -68,9 +76,20 @@ void ShelfStore::add(const QString &title, const QString &url)
     item[QStringLiteral("url")] = url;
     item[QStringLiteral("timestamp")] = QDateTime::currentDateTime().toString(Qt::ISODate);
     array.prepend(item);
-    while (array.size() > kMaxEntries)
+    
+    // Track truncation
+    m_wasTruncated = false;
+    m_truncatedCount = 0;
+    while (array.size() > m_maxEntries) {
         array.removeLast();
+        m_wasTruncated = true;
+        m_truncatedCount++;
+    }
     saveArray(array);
+    
+    if (m_wasTruncated) {
+        emit truncated(m_truncatedCount);
+    }
     emit changed();
 }
 
@@ -136,15 +155,26 @@ int ShelfStore::importBookmarks(const QJsonArray &items)
         return 0;
 
     // Newest first: prepend the batch (in order) so the first imported item is
-    // the most recent. Bulk import may temporarily exceed kMaxEntries; the cap
+    // the most recent. Bulk import may temporarily exceed maxEntries; the cap
     // is only enforced at the end, keeping the newest entries.
     for (int i = additions.size() - 1; i >= 0; --i)
         array.prepend(additions.at(i));
-    while (array.size() > kMaxEntries)
+    
+    // Track truncation
+    m_wasTruncated = false;
+    m_truncatedCount = 0;
+    while (array.size() > m_maxEntries) {
         array.removeLast();
+        m_wasTruncated = true;
+        m_truncatedCount++;
+    }
 
     // Single bulk write for the whole import.
     saveArray(array);
+    
+    if (m_wasTruncated) {
+        emit truncated(m_truncatedCount);
+    }
     emit changed();
     return additions.size();
 }
@@ -212,4 +242,29 @@ void ShelfStore::saveArray(const QJsonArray &array) const
         return;
     }
     OSPaths::writeFileAtomic(path, encrypted);
+}
+
+void ShelfStore::setMaxEntries(int max)
+{
+    if (m_maxEntries != max) {
+        m_maxEntries = max;
+        emit changed();
+    }
+}
+
+void ShelfStore::pruneOldEntries()
+{
+    // Called periodically by timer to remove entries older than retentionDays
+    if (m_retentionDays <= 0)
+        return;
+    
+    QJsonArray array = loadArray();
+    int before = array.size();
+    pruneArray(array);
+    int after = array.size();
+    
+    if (before != after) {
+        saveArray(array);
+        emit changed();
+    }
 }

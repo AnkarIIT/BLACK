@@ -13,6 +13,7 @@ class ShelfStore : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QString json READ json NOTIFY changed)
+    Q_PROPERTY(int maxEntries READ maxEntries WRITE setMaxEntries NOTIFY changed)
 
 public:
     explicit ShelfStore(const QString &fileName, QObject *parent = nullptr);
@@ -31,6 +32,11 @@ public:
 
     // Entries older than this many days are dropped on read (0 = keep all).
     void setRetentionDays(int days);
+    int retentionDays() const { return m_retentionDays; }
+
+    // Set/get maximum entries (separate for bookmarks/history via fileName)
+    void setMaxEntries(int max);
+    int maxEntries() const { return m_maxEntries; }
 
     // Normalize a URL for consistent storage and comparison
     static QString normalizedUrl(const QString &input);
@@ -38,8 +44,13 @@ public:
     // Prune entries older than retentionDays (if > 0)
     void pruneArray(QJsonArray &array) const;
 
+    // Check if last operation caused truncation
+    bool wasTruncated() const { return m_wasTruncated; }
+    int truncatedCount() const { return m_truncatedCount; }
+
 signals:
     void changed();
+    void truncated(int count); // Emitted when entries are removed due to cap
 
 private:
     friend class TestShelfStore;
@@ -47,7 +58,10 @@ private:
     void saveArray(const QJsonArray &array) const;
 
     QString m_fileName;
-    int m_retentionDays;
+    int m_retentionDays = 0;
+    int m_maxEntries = 500;
+    mutable bool m_wasTruncated = false;
+    mutable int m_truncatedCount = 0;
 };
 
 #endif
