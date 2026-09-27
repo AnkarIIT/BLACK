@@ -27,7 +27,7 @@
 #include <QWebChannel>
 #include <QWebEngineScript>
 #include "Account.h"
-#include "OnboardingBridge.h"
+#include "FilterListParser.h"
 #include "OAuthManager.h"
 #include "BookmarkImporter.h"
 #include "ShelfStore.h"
@@ -35,6 +35,9 @@
 #include "SafariTheme.h"
 #include "PlatformAdaptor.h"
 #include "ExtensionManager.h"
+#include "ProfileManager.h"
+#include "Sandbox.h"
+#include "CrashReporter.h"
 
 #if defined(Q_OS_WIN)
 #include <windows.h>
@@ -143,6 +146,29 @@ int main(int argc, char *argv[])
     app.setOrganizationName("BLACK");
     app.setApplicationDisplayName("BLACK");
     app.setWindowIcon(QIcon(":/app.png"));
+
+    // Initialize sandbox (must be early, before WebEngine processes are spawned)
+    SandboxManager sandboxManager;
+    if (SandboxManager::isSupported()) {
+        sandboxManager.enable();
+        qInfo() << "Sandbox enabled:" << sandboxManager.sandboxStatus();
+    } else {
+        qWarning() << "Sandbox not supported on this platform";
+    }
+    
+    // Initialize crash reporter (opt-in, respects user consent)
+    CrashReporter &crashReporter = CrashReporter::instance();
+    if (crashReporter.initialize()) {
+        // Check for user consent (stored in settings)
+        bool consent = BrowserSettings::instance().value("crashReportingConsent", false).toBool();
+        crashReporter.setUserConsent(consent);
+        if (consent) {
+            crashReporter.setEnabled(true);
+            crashReporter.setAnnotation("version", QCoreApplication::applicationVersion());
+            crashReporter.setAnnotation("build_date", __DATE__);
+            crashReporter.setAnnotation("build_time", __TIME__);
+        }
+    }
 
     // ────────────────────────────────────────────────────────────────────
     // Application-wide dark/light QSS so every native Qt dialog follows
@@ -341,6 +367,13 @@ int main(int argc, char *argv[])
 
     TrackerBlocker::instance().loadData();
     TrackerBlocker::instance().setExtensionManager(&ExtensionManager::instance());
+    
+    // Initialize dynamic filter lists
+    static FilterListParser filterParser;
+    static FilterListUpdater filterUpdater(&filterParser);
+    TrackerBlocker::instance().setFilterListParser(&filterParser);
+    filterUpdater.start();
+    
     profile->setUrlRequestInterceptor(&TrackerBlocker::instance());
     QObject::connect(&app, &QCoreApplication::aboutToQuit, []() {
         TrackerBlocker::instance().saveData();
@@ -371,7 +404,6 @@ int main(int argc, char *argv[])
         view->setPage(page);
         QWebChannel *channel = new QWebChannel(page);
         OAuthManager oauthManager;
-        BookmarkImporter importer;
         AppearanceManager appearance;
         ShelfStore bookmarksStore(QStringLiteral("bookmarks.json"));
         OnboardingBridge bridge(&account, &bookmarksStore, &onboarding);
@@ -404,6 +436,15 @@ int main(int argc, char *argv[])
         }
     }
 
+    // Initialize ProfileManager
+    ProfileManager &profileManager = ProfileManager::instance();
+    
+    // Use the current profile's WebEngine profile
+    QWebEngineProfile *currentProfile = profileManager.webEngineProfile(profileManager.currentProfile().id);
+    if (currentProfile) {
+        BrowserWindow::setWebProfile(currentProfile);
+    }
+    
     BrowserWindow window;
     g_activeWindow = &window;
 
