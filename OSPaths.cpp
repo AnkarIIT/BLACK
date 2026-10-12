@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QTemporaryFile>
 #include <QProcess>
 #include <QStandardPaths>
 #include <QDesktopServices>
@@ -105,13 +106,21 @@ bool OSPaths::writeFileAtomic(const QString &filePath, const QByteArray &data,
     if (!QDir().mkpath(info.absolutePath()))
         return false;
 
-    const QString tmpPath = info.absolutePath()
-                            + QLatin1Char('/')
-                            + info.fileName()
-                            + QStringLiteral(".tmp");
-    QFile tmp(tmpPath);
-    if (!tmp.open(QIODevice::WriteOnly | QIODevice::Truncate))
+    // The temp file must be unique AND exclusive. A fixed "<name>.tmp" lets
+    // two ShelfStore instances (the app keeps several: bookmarks, history,
+    // reading list, plus per-window stores) interleave their writes into one
+    // temp file and then both rename it over the destination - silently
+    // corrupting bookmarks/history. QTemporaryFile also opens with O_EXCL,
+    // which closes the symlink-following window that WriteOnly|Truncate had:
+    // a planted "<name>.tmp" symlink could otherwise redirect the write.
+    QTemporaryFile tmp(info.absolutePath() + QLatin1Char('/')
+                       + info.fileName() + QStringLiteral(".XXXXXX"));
+    tmp.setAutoRemove(false);
+    if (!tmp.open())
         return false;
+
+    const QString tmpPath = tmp.fileName();
+
     if (tmp.write(data) != data.size()) {
         tmp.close();
         QFile::remove(tmpPath);
