@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' qrc:; script-src 'self' 'unsafe-inline' qrc:; connect-src 'self' qrc: http://127.0.0.1:* http://localhost:*; img-src 'self' data: qrc:; style-src 'self' 'unsafe-inline' qrc:; font-src 'self' data: qrc:; frame-src 'self' qrc:; object-src 'none'; base-uri 'self'">
     <title>Page Crashed</title>
     <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <style>
@@ -142,20 +143,44 @@
             const urlBox = document.getElementById('urlBox');
             const message = document.getElementById('message');
             const detailsPre = document.getElementById('detailsPre');
-            
-            urlBox.textContent = decodeURIComponent(crashedUrl);
+
+            // decodeURIComponent throws URIError on malformed percent-encoding (e.g.
+            // ?url=%), which would take down the whole page. Fall back to the raw value.
+            let decodedCrashedUrl = crashedUrl;
+            try {
+                decodedCrashedUrl = decodeURIComponent(crashedUrl);
+            } catch (e) {
+                // keep raw value
+            }
+
+            urlBox.textContent = decodedCrashedUrl;
             
             if (crashCount > 1) {
                 message.textContent = `This page has crashed ${crashCount} times. The content may be incompatible or causing instability.`;
             }
             
-            detailsPre.textContent = `Crashed URL: ${decodeURIComponent(crashedUrl)}
+            detailsPre.textContent = `Crashed URL: ${decodedCrashedUrl}
 Crash count: ${crashCount}
 Time: ${new Date().toISOString()}
 User Agent: ${navigator.userAgent}`;
 
+            // The ?url= parameter is attacker-influenceable (it comes from the tab URL),
+            // so only ever follow it when it is an absolute http(s) URL. Anything else
+            // (javascript:, data:, qrc:, malformed, ...) falls back to the start page.
+            function isSafeRedirectUrl(raw) {
+                if (typeof raw !== 'string' || !raw) return false;
+                try {
+                    const u = new URL(raw, window.location.href);
+                    return u.protocol === 'http:' || u.protocol === 'https:';
+                } catch (e) {
+                    return false;
+                }
+            }
+
             document.getElementById('reloadBtn').addEventListener('click', function() {
-                window.location.href = decodeURIComponent(crashedUrl);
+                window.location.href = isSafeRedirectUrl(decodedCrashedUrl)
+                    ? decodedCrashedUrl
+                    : 'qrc:/startpage_enhanced.html';
             });
             
             document.getElementById('homeBtn').addEventListener('click', function() {
