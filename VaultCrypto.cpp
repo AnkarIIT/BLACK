@@ -52,6 +52,16 @@ const char kDpapiEntropy[] = "BLACK_BROWSER_VAULT_ENTROPY_BLOCK_32";
 // Forward declarations for functions in this namespace
 QByteArray loadOrCreateMasterKeyFile();
 QByteArray loadOrCreateMasterKey();
+#if defined(Q_OS_MACOS)
+QByteArray loadKeyFromMacOSKeychain();
+bool storeKeyToMacOSKeychain(const QByteArray &key);
+bool removeKeyFromMacOSKeychain();
+#endif
+#if defined(Q_OS_LINUX) && defined(HAVE_LIBSECRET)
+QByteArray loadKeyFromLibsecret();
+bool storeKeyToLibsecret(const QByteArray &key);
+bool removeKeyFromLibsecret();
+#endif
 
 QByteArray randomBytes(int n)
 {
@@ -270,8 +280,8 @@ QByteArray loadKeyFromMacOSKeychain()
     status = SecItemAdd(addQuery, nullptr);
     CFRelease(addQuery);
     CFRelease(dataRef);
-    CFRelease(serviceRef);
-    CFRelease(accountRef);
+    // serviceRef/accountRef were already released above; do NOT release them
+    // again here - that double-free corrupts the heap.
 
     if (status == errSecSuccess)
         return newKey;
@@ -527,6 +537,10 @@ QByteArray dpapiEncrypt(const QByteArray &plain)
 
 QByteArray dpapiDecrypt(const QByteArray &blob)
 {
+    // Only ever decrypt with the entropy block this application writes with.
+    // The previous fallback decrypted the blob with NULL entropy, which
+    // accepted any DPAPI blob produced for this user regardless of which app
+    // protected it - a silent downgrade of the vault's binding.
     DATA_BLOB in;
     in.pbData = reinterpret_cast<BYTE *>(const_cast<char *>(blob.constData()));
     in.cbData = DWORD(blob.size());
@@ -537,14 +551,6 @@ QByteArray dpapiDecrypt(const QByteArray &blob)
 
     DATA_BLOB out = { 0, nullptr };
     if (CryptUnprotectData(&in, nullptr, &entropy, nullptr, nullptr,
-                            CRYPTPROTECT_UI_FORBIDDEN, &out)) {
-        QByteArray result(reinterpret_cast<const char *>(out.pbData), int(out.cbData));
-        LocalFree(out.pbData);
-        return result;
-    }
-
-    out = { 0, nullptr };
-    if (CryptUnprotectData(&in, nullptr, nullptr, nullptr, nullptr,
                             CRYPTPROTECT_UI_FORBIDDEN, &out)) {
         QByteArray result(reinterpret_cast<const char *>(out.pbData), int(out.cbData));
         LocalFree(out.pbData);
@@ -849,7 +855,21 @@ bool hasMasterKey()
     // DPAPI always "has" a key (derived from user)
     return true;
 #else
-    return !loadOrCreateMasterKey().isEmpty();
+    // Pure query: must not CREATE a key as a side effect, otherwise asking
+    // "is there a key?" would mint one and make removeMasterKey() look broken
+    // (and would hide a genuinely missing key until it silently appeared).
+    QByteArray key;
+#if defined(Q_OS_MACOS)
+    key = loadKeyFromMacOSKeychain();
+#elif defined(Q_OS_LINUX) && defined(HAVE_LIBSECRET)
+    key = loadKeyFromLibsecret();
+#endif
+    if (!key.isEmpty())
+        return true;
+
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                        + QLatin1String("/secrets");
+    return QFileInfo::exists(dir + QLatin1String("/black_vault.key"));
 #endif
 }
 
@@ -871,4 +891,3 @@ bool removeMasterKey()
 }
 
 } // namespace VaultCrypto
-} // namespace
