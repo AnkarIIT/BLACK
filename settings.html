@@ -1475,10 +1475,14 @@
                 const renderPasswords = function () {
                     const warn = document.getElementById('pwWarn');
                     const clearBtn = document.getElementById('pwClearBtn');
-                    passwords.decryptFailed(function (failed) {
-                        if (warn) warn.style.display = failed ? 'block' : 'none';
-                        if (clearBtn) clearBtn.disabled = !!failed;
-                    });
+                    // decryptFailed is a Q_PROPERTY (bool), NOT a method: read it
+                    // directly. renderPasswords() is also connected to changed(),
+                    // so the banner refreshes whenever the vault state changes.
+                    // (Calling it as passwords.decryptFailed(cb) threw a
+                    // TypeError that aborted this entire QWebChannel callback.)
+                    const failed = !!passwords.decryptFailed;
+                    if (warn) warn.style.display = failed ? 'block' : 'none';
+                    if (clearBtn) clearBtn.disabled = failed;
                     passwords.hosts(function (list) {
                         list = list || [];
                         const el = document.getElementById('pwList');
@@ -1955,9 +1959,25 @@
                 // SyntaxError ("Identifier 'account' has already been
                 // declared") that aborts the ENTIRE settings script, which
                 // left every tab inert. Reuse the existing binding.
+                //
+                // Sync is a documented no-op stub in this build: SyncManager
+                // exposes only isEnabled()/isSyncing(). Detect that up front so
+                // the sync section degrades to an honest message instead of
+                // throwing a TypeError on the richer API this pane was written
+                // against (getStats/getDevices/signIn/...). Without this guard,
+                // renderSyncStatus() at load time would abort the whole
+                // callback and leave Updates/Sync dead too.
+                const syncAvailable = !!syncManager
+                    && typeof syncManager.getStats === 'function';
 
                 const renderSyncStatus = function () {
-                    if (!syncManager) return;
+                    if (!syncAvailable) {
+                        const statusEl = document.getElementById('syncStatusText');
+                        if (statusEl) statusEl.textContent = 'Sync is not available in this build';
+                        const badge = document.getElementById('syncStatusBadge');
+                        if (badge) badge.style.display = 'none';
+                        return;
+                    }
                     syncManager.getStats(function (stats) {
                         const statusEl = document.getElementById('syncStatusText');
                         const lastSyncEl = document.getElementById('lastSyncText');
@@ -1993,8 +2013,9 @@
                 renderSyncStatus();
 
                 const renderDataTypes = function () {
-                    if (!syncManager) return;
-                    const enabled = syncManager.getEnabledDataTypes();
+                    if (!syncAvailable) return;
+                    const enabledRaw = syncManager.getEnabledDataTypes();
+                    const enabled = Array.isArray(enabledRaw) ? enabledRaw : [];
                     const allTypes = [
                         { type: 'bookmarks', name: 'Bookmarks', icon: '🔖' },
                         { type: 'history', name: 'History', icon: '🕐' },
@@ -2010,7 +2031,7 @@
                     if (!el) return;
                     let html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;">';
                     allTypes.forEach(function (t) {
-                        const checked = enabled.has(t.type) ? 'checked' : '';
+                        const checked = enabled.indexOf(t.type) !== -1 ? 'checked' : '';
                         html += '<label style="display: flex; align-items: center; gap: 8px; padding: 12px; border: 1px solid var(--mac-border); border-radius: 8px; background: var(--mac-card); cursor: pointer;">';
                         html += '<input type="checkbox" data-sync-type="' + t.type + '" ' + checked + ' style="width: 18px; height: 18px;">';
                         html += '<span style="font-size: 18px;">' + t.icon + '</span>';
@@ -2052,7 +2073,7 @@
                     signInBtn.addEventListener('click', function () {
                         const email = syncEmail.value.trim();
                         const password = syncPassword.value;
-                        if (email && password) {
+                        if (syncAvailable && email && password) {
                             syncManager.signIn(email, password);
                         }
                     });
@@ -2061,7 +2082,7 @@
                     signUpBtn.addEventListener('click', function () {
                         const email = syncEmail.value.trim();
                         const password = syncPassword.value;
-                        if (email && password) {
+                        if (syncAvailable && email && password) {
                             // For now, treat sign up same as sign in
                             syncManager.signIn(email, password);
                         }
@@ -2072,7 +2093,7 @@
                 const syncNowBtn = document.getElementById('syncNowBtn');
                 if (syncNowBtn) {
                     syncNowBtn.addEventListener('click', function () {
-                        syncManager.syncNow();
+                        if (syncAvailable) syncManager.syncNow();
                     });
                 }
 
@@ -2080,7 +2101,7 @@
                 const conflictStrategy = document.getElementById('conflictStrategy');
                 if (conflictStrategy) {
                     conflictStrategy.addEventListener('change', function () {
-                        syncManager.setConflictStrategy(parseInt(this.value, 10));
+                        if (syncAvailable) syncManager.setConflictStrategy(parseInt(this.value, 10));
                     });
                 }
 
@@ -2121,7 +2142,7 @@
                         });
                     });
                 };
-                syncManager.getPendingConflicts(renderConflicts);
+                if (syncAvailable) syncManager.getPendingConflicts(renderConflicts);
 
                 // Device list
                 const renderDevices = function () {
@@ -2155,7 +2176,7 @@
                         });
                     });
                 };
-                syncManager.getDevices(renderDevices);
+                if (syncAvailable) syncManager.getDevices(renderDevices);
 
                 // Device rename
                 const deviceListEl = document.getElementById('syncDeviceList');
@@ -2182,7 +2203,7 @@
                         if (filePath) {
                             const password = prompt('Enter encryption password:');
                             if (password) {
-                                syncManager.exportBackup(filePath, password);
+                                if (syncAvailable) syncManager.exportBackup(filePath, password);
                             }
                         }
                     });
@@ -2193,7 +2214,7 @@
                         if (filePath) {
                             const password = prompt('Enter decryption password:');
                             if (password) {
-                                syncManager.importBackup(filePath, password);
+                                if (syncAvailable) syncManager.importBackup(filePath, password);
                             }
                         }
                     });
@@ -2212,12 +2233,22 @@
                 if (syncInterval) {
                     syncInterval.addEventListener('change', function () {
                         const interval = parseInt(this.value, 10);
-                        syncManager.getSyncEngine().setConfig({...syncManager.getSyncEngine().config(), syncIntervalMinutes: interval});
+                        // SyncEngine does not exist in this build; guard so a
+                        // change event never throws.
+                        const engine = (syncAvailable && typeof syncManager.getSyncEngine === 'function')
+                            ? syncManager.getSyncEngine() : null;
+                        if (engine && typeof engine.setConfig === 'function' && typeof engine.config === 'function') {
+                            engine.setConfig(Object.assign({}, engine.config(), { syncIntervalMinutes: interval }));
+                        }
                     });
                 }
                 if (encryptAllData) {
                     encryptAllData.addEventListener('change', function () {
-                        syncManager.getSyncEngine().setConfig({...syncManager.getSyncEngine().config(), encryptAllData: this.checked});
+                        const engine = (syncAvailable && typeof syncManager.getSyncEngine === 'function')
+                            ? syncManager.getSyncEngine() : null;
+                        if (engine && typeof engine.setConfig === 'function' && typeof engine.config === 'function') {
+                            engine.setConfig(Object.assign({}, engine.config(), { encryptAllData: this.checked }));
+                        }
                     });
                 }
             });

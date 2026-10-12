@@ -9,10 +9,13 @@
 #include <QMap>
 #include <QSet>
 #include <memory>
+#include <functional>
 
 class QWebEngineScript;
 class QWebEngineProfile;
 class ExtensionContext;
+
+using MessageListener = std::function<void(const QJsonObject&)>;
 
 struct BlockingRule {
     QStringList blockedHosts;
@@ -96,7 +99,7 @@ public:
     QList<BlockingRule> activeBlockingRules() const;
     
     Q_INVOKABLE QJsonObject callApi(const QString &extensionId, const QString &apiName, const QString &method, const QJsonArray &args);
-    Q_INVOKABLE void registerMessageListener(const QString &extensionId, const QString &apiName, const QString &eventName, std::function<void(const QJsonObject&)> listener);
+    Q_INVOKABLE void registerMessageListener(const QString &extensionId, const QString &apiName, const QString &eventName, MessageListener listener);
     
     QWebEngineProfile* defaultProfile() const;
 

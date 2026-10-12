@@ -25,7 +25,7 @@ endif()
 # links against, so a test can never silently diverge from the shipped code.
 set(BLACK_TESTLIB_SOURCES "")
 foreach(src IN LISTS BLACK_SOURCES)
-    if(NOT src STREQUAL "main.cpp")
+    if(NOT src STREQUAL "main.cpp" AND NOT src STREQUAL "BrowserWindow.cpp")
         list(APPEND BLACK_TESTLIB_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/../${src})
     endif()
 endforeach()

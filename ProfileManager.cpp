@@ -1,5 +1,7 @@
 #include "ProfileManager.h"
 
+#include <QVariantMap>
+
 ProfileManager::ProfileManager()
     : QObject(nullptr)
 {
@@ -40,6 +42,42 @@ QStringList ProfileManager::availableProfiles() const
     for (const ProfileInfo &p : m_profiles)
         ids.append(p.id);
     return ids;
+}
+
+QString ProfileManager::currentProfileId() const
+{
+    return m_current.id;
+}
+
+QVariantList ProfileManager::getProfiles() const
+{
+    // Honest, UI-shaped view of the one profile that actually exists. No
+    // theme or last-used timestamp is tracked in this build, so those keys are
+    // intentionally omitted rather than fabricated.
+    QVariantList list;
+    for (const ProfileInfo &p : m_profiles) {
+        QVariantMap entry;
+        entry.insert(QStringLiteral("id"), p.id);
+        entry.insert(QStringLiteral("name"), p.name);
+        entry.insert(QStringLiteral("isDefault"), true);
+        list.append(entry);
+    }
+    return list;
+}
+
+bool ProfileManager::renameProfile(const QString &id, const QString &name)
+{
+    Q_UNUSED(id)
+    Q_UNUSED(name)
+    // Placeholder: profile metadata is not persisted in this build.
+    return false;
+}
+
+bool ProfileManager::deleteProfile(const QString &id)
+{
+    Q_UNUSED(id)
+    // Placeholder: the single default profile can never be deleted.
+    return false;
 }
 
 bool ProfileManager::createProfile(const QString &name)

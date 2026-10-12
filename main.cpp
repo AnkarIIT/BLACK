@@ -28,6 +28,7 @@
 #include <QWebEngineScript>
 #include "Account.h"
 #include "FilterListParser.h"
+#include "OnboardingBridge.h"
 #include "OAuthManager.h"
 #include "BookmarkImporter.h"
 #include "ShelfStore.h"
@@ -445,8 +446,8 @@ int main(int argc, char *argv[])
         BrowserWindow::setWebProfile(currentProfile);
     }
     
-    BrowserWindow window;
-    g_activeWindow = &window;
+    BrowserWindow *window = new BrowserWindow();
+    g_activeWindow = window;
 
     PlatformAdaptor *adaptor = PlatformAdaptor::instance();
     QSize desired;
@@ -461,25 +462,25 @@ int main(int argc, char *argv[])
     if (screen) {
         const QRect avail = screen->availableGeometry();
         const QSize cap = QSize(avail.width() * 9 / 10, avail.height() * 9 / 10);
-        window.resize(desired.boundedTo(cap));
-        window.move(avail.center() - QPoint(window.width() / 2, window.height() / 2));
+        window->resize(desired.boundedTo(cap));
+        window->move(avail.center() - QPoint(window->width() / 2, window->height() / 2));
     } else {
-        window.resize(desired);
+        window->resize(desired);
     }
 
     // First-run startup behavior: if onboarding has never been completed,
     // show the local start page. A separate first-run cinematic is shown
     // earlier if this is the very first launch.
-    window.show();
+    window->show();
     // Debug-only entry point for the automated UI tests. A release build must
     // not expose a hidden command-line flag that force-opens the settings UI.
 #ifndef QT_NO_DEBUG
     if (QApplication::arguments().contains(QStringLiteral("--open-settings"))) {
-        QTimer::singleShot(1500, &window, &BrowserWindow::openSettingsForTesting);
+        QTimer::singleShot(1500, window, &BrowserWindow::openSettingsForTesting);
     }
 #endif
     if (isFirstRun()) {
-        window.loadStartPage();
+        window->loadStartPage();
     } else {
         // Normal run: honor "Safari opens with"
         const QString openWith = BrowserSettings::instance().opensWith();
@@ -487,13 +488,13 @@ int main(int argc, char *argv[])
             || openWith == QStringLiteral("All non-private windows from last session")) {
             // Session was already restored in the constructor; keep those tabs.
         } else if (openWith == QStringLiteral("New private window")) {
-            window.loadStartPage();
+            window->loadStartPage();
             auto *priv = new BrowserWindow(true);
             priv->setAttribute(Qt::WA_DeleteOnClose);
-            priv->resize(window.size());
+            priv->resize(window->size());
             priv->show();
         } else {
-            window.loadStartPage();
+            window->loadStartPage();
         }
     }
 
@@ -502,7 +503,7 @@ int main(int argc, char *argv[])
     routeOpenRequest(parseHandoffUrls(commandLineUrls().join(QLatin1Char('\n')).toUtf8()));
     if (!g_pendingUrls.isEmpty()) {
         for (const QUrl &url : g_pendingUrls)
-            window.addNewTab(url);
+            window->addNewTab(url);
         g_pendingUrls.clear();
     }
 
