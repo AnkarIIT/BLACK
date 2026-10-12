@@ -170,6 +170,19 @@ private:
     void updateUrlContainerStyle();
     void updateWebViewBackgrounds();
 
+    // Tab thumbnail lifecycle (driven by captureOverviewThumbnails()).
+    void captureThumbnailAsync(QWebEngineView *view, int tabIndex);
+    void pruneThumbnails();
+    void clearTabThumbnail(int index);
+
+    // Refreshes the downloads summary row in the sidebar.
+    void updateDownloadsSidebar();
+
+    // Back/forward history popup and page actions (Print / Save as PDF).
+    void showHistoryMenu(QToolButton *button, bool isBack);
+    void printPage();
+    void savePageAsPdf();
+
     friend class ChromeLayer;
 
     QIcon createSvgIcon(const QString &svgData, int size = 18, const QString &color = "#1d1d1f");
@@ -357,25 +370,33 @@ private:
     BookmarkImporter *m_bookmarkImporter;
     PermissionsBridge *m_permissionsBridge;
     UpdateChecker *m_updateChecker;
-    WebAuthnManager *m_webAuthnManager;
-    ReaderMode *m_readerMode;
-    FingerprintProtection *m_fingerprintProtection;
-    CookiePartition *m_cookiePartition;
-    TranslationManager *m_translationManager;
-    TabGroupManager *m_tabGroupManager;
-    SyncManager *m_syncManager;
-    AIManager *m_aiManager;
-    WalletManager *m_walletManager;
-    RewardsManager *m_rewardsManager;
-    SearchAffiliation *m_searchAffiliation;
-    PerformanceManager *m_performanceManager;
-    WebRTCManager *m_webRTCManager;
-    I18nManager *m_i18nManager;
-    CollaborationManager *m_collaborationManager;
-    AIAgentManager *m_aiAgentManager;
-    VoiceInterface *m_voiceInterface;
-    ProductivityManager *m_productivityManager;
-    AdvancedSecurity *m_advancedSecurity;
+    // The managers below are constructed part-way through the constructor and
+    // only THEN handed to QWebChannel::registerObject. They carry explicit
+    // = nullptr initializers so that any future code path that touches one
+    // before construction deterministically sees null instead of indeterminate
+    // stack garbage (registering an uninitialized pointer here previously led
+    // to undefined behaviour inside QWebChannel).
+    WebAuthnManager *m_webAuthnManager = nullptr;
+    ReaderMode *m_readerMode = nullptr;
+    FingerprintProtection *m_fingerprintProtection = nullptr;
+    CookiePartition *m_cookiePartition = nullptr;
+    TranslationManager *m_translationManager = nullptr;
+    TabGroupManager *m_tabGroupManager = nullptr;
+    SyncManager *m_syncManager = nullptr;
+    AIManager *m_aiManager = nullptr;
+    WalletManager *m_walletManager = nullptr;
+    RewardsManager *m_rewardsManager = nullptr;
+    SearchAffiliation *m_searchAffiliation = nullptr;
+    PerformanceManager *m_performanceManager = nullptr;
+    WebRTCManager *m_webRTCManager = nullptr;
+    I18nManager *m_i18nManager = nullptr;
+    CollaborationManager *m_collaborationManager = nullptr;
+    AIAgentManager *m_aiAgentManager = nullptr;
+    VoiceInterface *m_voiceInterface = nullptr;
+    ProductivityManager *m_productivityManager = nullptr;
+    AdvancedSecurity *m_advancedSecurity = nullptr;
+    WasmExtensionSupport *m_wasmExtensionSupport = nullptr;
+    DeveloperTools *m_developerTools = nullptr;
     ShelfStore *m_readingList;
     QMap<QString, bool> m_permissionChoices;
 
