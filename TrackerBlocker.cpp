@@ -54,6 +54,30 @@ QString globToRegex(const QString &glob)
 
 const int kMaxSitesPerDay = 200;
 
+// Convert QWebEngineUrlRequestInfo::ResourceType enum to string for FilterListParser
+QString resourceTypeToString(QWebEngineUrlRequestInfo::ResourceType type)
+{
+    switch (type) {
+    case QWebEngineUrlRequestInfo::ResourceTypeMainFrame:         return QStringLiteral("main_frame");
+    case QWebEngineUrlRequestInfo::ResourceTypeSubFrame:          return QStringLiteral("sub_frame");
+    case QWebEngineUrlRequestInfo::ResourceTypeStylesheet:        return QStringLiteral("stylesheet");
+    case QWebEngineUrlRequestInfo::ResourceTypeScript:            return QStringLiteral("script");
+    case QWebEngineUrlRequestInfo::ResourceTypeImage:             return QStringLiteral("image");
+    case QWebEngineUrlRequestInfo::ResourceTypeFontResource:      return QStringLiteral("font");
+    case QWebEngineUrlRequestInfo::ResourceTypeSubResource:       return QStringLiteral("sub_resource");
+    case QWebEngineUrlRequestInfo::ResourceTypeObject:            return QStringLiteral("object");
+    case QWebEngineUrlRequestInfo::ResourceTypeMedia:             return QStringLiteral("media");
+    case QWebEngineUrlRequestInfo::ResourceTypeWorker:            return QStringLiteral("worker");
+    case QWebEngineUrlRequestInfo::ResourceTypeSharedWorker:      return QStringLiteral("shared_worker");
+    case QWebEngineUrlRequestInfo::ResourceTypeServiceWorker:     return QStringLiteral("service_worker");
+    case QWebEngineUrlRequestInfo::ResourceTypePing:              return QStringLiteral("ping");
+    case QWebEngineUrlRequestInfo::ResourceTypeWebSocket:         return QStringLiteral("websocket");
+    case QWebEngineUrlRequestInfo::ResourceTypeCspReport:         return QStringLiteral("csp_report");
+    case QWebEngineUrlRequestInfo::ResourceTypePluginResource:    return QStringLiteral("plugin_resource");
+    default:                                                      return QStringLiteral("other");
+    }
+}
+
 bool isIpv4Literal(const QString &host)
 {
     const QStringList parts = host.split(QLatin1Char('.'));
@@ -269,7 +293,7 @@ void TrackerBlocker::interceptRequest(QWebEngineUrlRequestInfo &info)
             info.block(true);
             return;
         }
-        if (m_filterParser && m_filterParser->matches(requestUrl, QString(), info.resourceType())) {
+        if (m_filterParser && m_filterParser->matches(requestUrl, QString(), resourceTypeToString(info.resourceType()))) {
             info.block(true);
             return;
         }

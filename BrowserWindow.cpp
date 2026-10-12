@@ -2913,36 +2913,21 @@ void BrowserWindow::printPage()
     if (!view)
         return;
 
-    // Qt 6: printToPdf generates PDF, then print via QPrinter
+    // Qt 6: printToPdf generates PDF, then open with system default PDF viewer
     view->page()->printToPdf([this](const QByteArray &pdfData) {
         if (pdfData.isEmpty()) {
             QMessageBox::warning(this, tr("Print Failed"), tr("Failed to generate PDF for printing."));
             return;
         }
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-        // Save PDF to temp file and print using QPrinter
+        // Save PDF to temp file and open with system default PDF viewer
         QTemporaryFile tempFile;
         if (tempFile.open()) {
             tempFile.write(pdfData);
             tempFile.flush();
             tempFile.close();
 
-            QPrinter printer(QPrinter::HighResolution);
-            QPrintDialog dialog(&printer, this);
-            if (dialog.exec() == QDialog::Accepted) {
-                // Use QPdfDocument if available (Qt 6.4+), otherwise fall back to system print
-#if QT_VERSION >= QT_VERSION_CHECK(6, 4, 0)
-                QPdfDocument document;
-                if (document.load(tempFile.fileName())) {
-                    document.print(&printer);
-                } else {
-                    QMessageBox::warning(this, tr("Print Failed"), tr("Failed to load PDF for printing."));
-                }
-#else
-                // Fallback: open with system default PDF viewer
-                QDesktopServices::openUrl(QUrl::fromLocalFile(tempFile.fileName()));
-#endif
-            }
+            QDesktopServices::openUrl(QUrl::fromLocalFile(tempFile.fileName()));
         }
 #else
         Q_UNUSED(pdfData);
