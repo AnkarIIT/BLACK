@@ -86,54 +86,73 @@ DownloadManager::DownloadManager(QWebEngineProfile *profile,
         info.lastUpdateTime = QDateTime::currentDateTime();
         m_items.append(info);
 
-        const int idx = m_items.count() - 1;
         download->accept();
 
-        connect(download, &QWebEngineDownloadRequest::receivedBytesChanged, this, [this, idx, download]() {
-            if (idx < m_items.count()) {
-                m_items[idx].receivedBytes = download->receivedBytes();
-                m_items[idx].totalBytes = download->totalBytes();
+        // Resolve the live row by the download object itself, never by the
+        // captured position. `idx` goes stale the moment any other row is
+        // removed (clearCompleted()/clearAll()/retry): every subsequent
+        // progress or state callback would then write into the WRONG row, or -
+        // once the list shrinks past it - silently do nothing, so a download
+        // could never complete and its file would never be opened.
+        connect(download, &QWebEngineDownloadRequest::receivedBytesChanged, this, [this, download]() {
+            const int idx = indexOfDownload(download);
+            if (idx < 0)
+                return;
+            m_items[idx].receivedBytes = download->receivedBytes();
+            m_items[idx].totalBytes = download->totalBytes();
 
-                // Calculate speed and ETA
-                QDateTime now = QDateTime::currentDateTime();
-                qint64 elapsedMs = m_items[idx].lastUpdateTime.msecsTo(now);
-                if (elapsedMs > 0) {
-                    qint64 bytesDiff = download->receivedBytes() - m_items[idx].receivedBytes;
-                    // Wait, we need the previous value - let's store it
-                }
-                m_items[idx].lastUpdateTime = now;
+            m_items[idx].lastUpdateTime = QDateTime::currentDateTime();
 
-                // Update speed and ETA (will be calculated properly below)
-                calculateSpeedAndEta(idx);
-            }
+            // Update speed and ETA
+            calculateSpeedAndEta(idx);
         });
 
-        connect(download, &QWebEngineDownloadRequest::stateChanged, this, [this, idx, download](QWebEngineDownloadRequest::DownloadState state) {
-            if (idx < m_items.count()) {
-                switch (state) {
-                case QWebEngineDownloadRequest::DownloadCompleted:
-                    m_items[idx].state = 1;
-                    if (BrowserSettings::instance().openSafeFiles()
-                        && !m_items[idx].filePath.isEmpty()
-                        && isSafeToOpen(m_items[idx].filePath))
-                        QDesktopServices::openUrl(QUrl::fromLocalFile(m_items[idx].filePath));
-                    break;
-                case QWebEngineDownloadRequest::DownloadCancelled:
-                case QWebEngineDownloadRequest::DownloadInterrupted:
-                    m_items[idx].state = 2;
-                    break;
-                default:
-                    break;
-                }
-                updateButtonTooltip();
-                emit itemsChanged();
+        connect(download, &QWebEngineDownloadRequest::stateChanged, this, [this, download](QWebEngineDownloadRequest::DownloadState state) {
+            const int idx = indexOfDownload(download);
+            if (idx < 0)
+                return;
+            switch (state) {
+            case QWebEngineDownloadRequest::DownloadCompleted:
+                // Re-read the on-disk name: downloadFileName() changes when the
+                // platform uniquifies a colliding name, and the path captured at
+                // accept() time would point at a stale - or entirely unrelated
+                // pre-existing - file that we would then launch.
+                m_items[idx].filePath =
+                    QDir(download->downloadDirectory()).filePath(download->downloadFileName());
+                m_items[idx].state = 1;
+                if (BrowserSettings::instance().openSafeFiles()
+                    && !m_items[idx].filePath.isEmpty()
+                    && isSafeToOpen(m_items[idx].filePath))
+                    QDesktopServices::openUrl(QUrl::fromLocalFile(m_items[idx].filePath));
+                break;
+            case QWebEngineDownloadRequest::DownloadCancelled:
+            case QWebEngineDownloadRequest::DownloadInterrupted:
+                m_items[idx].state = 2;
+                break;
+            default:
+                break;
             }
+            updateButtonTooltip();
+            emit itemsChanged();
         });
 
         if (m_button)
             m_button->setToolTip(QStringLiteral("Downloading %1\u2026").arg(download->downloadFileName()));
         emit itemsChanged();
     });
+}
+
+// Locate the row that owns a given download request. Returns -1 when the row
+// has already been removed from the list.
+int DownloadManager::indexOfDownload(QWebEngineDownloadRequest *download) const
+{
+    if (!download)
+        return -1;
+    for (int i = 0; i < m_items.count(); ++i) {
+        if (m_items.at(i).request == download)
+            return i;
+    }
+    return -1;
 }
 
 // Calculate download speed and ETA
@@ -170,11 +189,23 @@ void DownloadManager::clearCompleted()
         if (m_items[i].state != 0)
             m_items.removeAt(i);
     updateButtonTooltip();
+    emit itemsChanged();
 }
 
 void DownloadManager::clearAll()
 {
+    // Cancel anything still in flight first. Clearing the list alone left the
+    // QWebEngineDownloadRequest objects running with no row to update, so they
+    // kept downloading invisibly and their completion handlers (which now
+    // resolve by object) simply found nothing.
+    for (DownloadItemInfo &d : m_items) {
+        if (d.state == 0 && d.request && d.request->state() == QWebEngineDownloadRequest::DownloadInProgress) {
+            d.request->cancel();
+        }
+    }
     m_items.clear();
+    updateButtonTooltip();
+    emit itemsChanged();
 }
 
 void DownloadManager::updateButtonTooltip()
