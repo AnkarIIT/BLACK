@@ -90,6 +90,13 @@ signals:
     void changed();
 
 private:
+    // Reads and authenticates permissions.json. Fails CLOSED: a file that is
+    // not a valid vault envelope, or that fails authentication, yields an
+    // empty object rather than being parsed as raw plaintext. permissions.json
+    // is a security-control file - accepting unauthenticated input would let
+    // any process that can write it grant itself Notifications/Clipboard/etc.
+    static QJsonObject loadPermissionsObject();
+
     QString keyFor(const QString &origin, int type) const;
     QString defaultKeyFor(int type) const;
     QString typeName(int type) const;
