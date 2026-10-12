@@ -1033,6 +1033,16 @@
                     <div class="pane-title">Profiles</div>
                     <button class="mac-btn" id="createProfileBtn">Create Profile</button>
                 </div>
+                <div class="list-card" style="margin-bottom: 16px;">
+                    <div class="list-row">
+                        <span class="list-site" id="profileName">—</span>
+                        <span class="list-user" id="profileMethod">Not signed in</span>
+                        <span class="list-pass"></span>
+                        <span style="display: flex; gap: 8px; align-items: center;">
+                            <button class="mac-btn" id="signOutBtn" style="display: none;">Sign Out</button>
+                        </span>
+                    </div>
+                </div>
                 <div class="subtext" style="margin-bottom: 16px;">
                     Each profile has its own bookmarks, history, passwords, and settings. Use profiles to separate work, personal, and other browsing.
                 </div>
@@ -1670,7 +1680,8 @@
                     }
                 });
 
-                document.getElementById('signOutBtn').addEventListener('click', function () { account.signOut(); });
+                const signOutBtnEl = document.getElementById('signOutBtn');
+                if (signOutBtnEl) signOutBtnEl.addEventListener('click', function () { account.signOut(); });
 
                 // ── Extensions tab ─────────────────────────────────────────
                 const extensions = channel.objects.extensions;
@@ -1939,7 +1950,11 @@
 
                 // ── Sync tab ────────────────────────────────────────────────────
                 const syncManager = channel.objects.syncManager;
-                const account = channel.objects.account;
+                // NOTE: `account` is already declared in this same scope by the
+                // Profiles tab above. Re-declaring it with `const` is a
+                // SyntaxError ("Identifier 'account' has already been
+                // declared") that aborts the ENTIRE settings script, which
+                // left every tab inert. Reuse the existing binding.
 
                 const renderSyncStatus = function () {
                     if (!syncManager) return;
@@ -2153,13 +2168,10 @@
                 // Data types checkboxes
                 // Already handled in renderDataTypes
 
-                // Conflict strategy
-                const conflictStrategy = document.getElementById('conflictStrategy');
-                if (conflictStrategy) {
-                    conflictStrategy.addEventListener('change', function () {
-                        syncManager.setConflictStrategy(parseInt(this.value, 10));
-                    });
-                }
+                // NOTE: the conflict-strategy <select> listener is attached once,
+                // above ("// Conflict resolution"). Don't re-declare
+                // `conflictStrategy` here - a duplicate `const` in the same scope
+                // is a SyntaxError that aborts this entire script.
 
                 // Backup/Restore
                 const exportBackupBtn = document.getElementById('exportBackupBtn');
@@ -2208,6 +2220,8 @@
                         syncManager.getSyncEngine().setConfig({...syncManager.getSyncEngine().config(), encryptAllData: this.checked});
                     });
                 }
+            });
+        }
     </script>
 </body>
 </html>
