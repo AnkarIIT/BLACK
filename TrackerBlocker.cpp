@@ -229,6 +229,22 @@ void TrackerBlocker::interceptRequest(QWebEngineUrlRequestInfo &info)
 
         if (SafeBrowsing::instance().isBlocked(requestUrl)) {
             info.redirect(SafeBrowsing::warningUrl(requestUrl));
+            return;
+        }
+
+        // Extension declarative blocking rules and dynamic filter-list matches
+        // used to be checked only for sub-resources, because this branch
+        // returned first. That made every rule from every installed extension
+        // dead for TOP-LEVEL navigations: an extension blocking evil.com still
+        // let the user navigate straight to it. Apply the same checks here
+        // before allowing the page through.
+        if (isBlockedByExtensionRules(info)) {
+            info.block(true);
+            return;
+        }
+        if (m_filterParser && m_filterParser->matches(requestUrl, QString(), info.resourceType())) {
+            info.block(true);
+            return;
         }
         return;
     }
@@ -336,7 +352,12 @@ bool TrackerBlocker::isBlockedByExtensionRules(const QWebEngineUrlRequestInfo &i
 
         // Check path patterns
         for (const QString &blockedPath : rule.blockedPaths) {
-            QRegularExpression pathRe(globToRegex(blockedPath));
+            // Anchor the pattern. ExtensionManager::patternToRegex() anchors its
+            // output ("^" + ... + "$"), but here the raw glob was compiled
+            // unanchored, so a rule for "tracker.js" also matched
+            // "/assets/tracker.js.map" or "/x/nottracker.jsx/" - over-blocking
+            // that breaks otherwise-harmless pages.
+            QRegularExpression pathRe(QRegularExpression::anchoredPattern(globToRegex(blockedPath)));
             if (pathRe.match(path).hasMatch()) {
                 if (rule.blockedTypes.isEmpty() || rule.blockedTypes.contains(resourceType)) {
                     return true;
@@ -566,8 +587,7 @@ void TrackerBlocker::saveData()
         root.insert(day, dayObj);
     }
 
-    OSPaths::writeFileAtomic(dataFile(QStringLiteral("privacy.json")),
-                             QJsonDocument(root).toJson());
+    OSPaths::writeFileAtomic(dataFile(QStringLiteral("privacy.json")), QJsonDocument(root).toJson(), QFile::ReadOwner | QFile::WriteOwner);
 }
 
 #include "TrackerBlocker.moc"
