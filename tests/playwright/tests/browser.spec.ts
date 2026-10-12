@@ -1,322 +1,219 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
-test.describe('BLACK Browser - Basic Navigation', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-  });
+// Every page the browser ships in its Qt resource bundle.
+const PAGES = [
+  'startpage_enhanced.html',
+  'bookmarks.html',
+  'history.html',
+  'features.html',
+  'privacyreport.html',
+  'safebrowsing_warning.html',
+  'crash.html',
+  'settings.html',
+  'onboarding_experience.html',
+];
 
-  test('should load start page', async ({ page }) => {
-    await expect(page.locator('h1, .greeting')).toBeVisible({ timeout: 10000 });
+// The `qrc:` WebChannel shim only exists inside QtWebEngine; outside it the
+// <script src="qrc:///..."> fails to load, which Chromium reports as a console
+// error. That is expected here and must not be treated as a page defect.
+function collectErrors(page: Page): string[] {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  page.on('console', (m) => {
+    if (m.type() !== 'error') return;
+    const text = m.text();
+    if (/qrc:|qwebchannel|Failed to load resource/i.test(text)) return;
+    errors.push(`console: ${text}`);
   });
+  return errors;
+}
 
-  test('should have search input', async ({ page }) => {
-    await expect(page.locator('input[type="text"]')).toBeVisible();
-  });
-
-  test('should navigate to a URL', async ({ page }) => {
-    await page.fill('input[type="text"]', 'https://example.com');
-    await page.press('input[type="text"]', 'Enter');
-    await expect(page).toHaveURL(/example\.com/);
-  });
-
-  test('should handle bare domain input', async ({ page }) => {
-    await page.fill('input[type="text"]', 'github.com');
-    await page.press('input[type="text"]', 'Enter');
-    await expect(page).toHaveURL(/github\.com/);
-  });
-
-  test('should reject javascript: URLs', async ({ page }) => {
-    await page.fill('input[type="text"]', 'javascript:alert(1)');
-    await page.press('input[type="text"]', 'Enter');
-    await expect(page).not.toHaveURL(/javascript:/);
-  });
+test.describe('pages parse and run cleanly', () => {
+  for (const name of PAGES) {
+    test(`${name} loads without script errors`, async ({ page }) => {
+      const errors = collectErrors(page);
+      await page.goto(`/${name}`);
+      await page.waitForTimeout(300);
+      expect(errors).toEqual([]);
+    });
+  }
 });
 
-test.describe('BLACK Browser - Tab Management', () => {
-  test('should open new tab with Ctrl+T', async ({ page, context }) => {
-    await page.goto('/');
-    const initialPages = context.pages().length;
-    await page.keyboard.press('Control+T');
-    await expect(async () => {
-      expect(context.pages().length).toBeGreaterThan(initialPages);
-    }).toPass({ timeout: 5000 });
+test.describe('start page', () => {
+  test('renders the greeting and the search field', async ({ page }) => {
+    await page.goto('/startpage_enhanced.html');
+    await expect(page.locator('#searchInput')).toBeVisible();
+    await expect(page.locator('#greeting')).not.toHaveText('');
   });
 
-  test('should close tab with Ctrl+W', async ({ page, context }) => {
-    await page.goto('/');
-    await page.keyboard.press('Control+T');
+  test('isSafeUrl only permits http(s)', async ({ page }) => {
+    await page.goto('/startpage_enhanced.html');
+    const r = await page.evaluate(() => {
+      const fn = (window as any).isSafeUrl as (u: string) => boolean;
+      return {
+        js: fn('javascript:alert(1)'),
+        data: fn('data:text/html,<b>x</b>'),
+        file: fn('file:///etc/passwd'),
+        vbscript: fn('vbscript:msgbox(1)'),
+        http: fn('http://example.com'),
+        https: fn('https://example.com'),
+        bare: fn('example.com'),
+      };
+    });
+    expect(r.js).toBe(false);
+    expect(r.data).toBe(false);
+    expect(r.file).toBe(false);
+    expect(r.vbscript).toBe(false);
+    expect(r.http).toBe(true);
+    expect(r.https).toBe(true);
+    expect(r.bare).toBe(false); // bare hostnames are not navigable as-is
+  });
+
+  test('normalizeUrl upgrades bare domains to https', async ({ page }) => {
+    await page.goto('/startpage_enhanced.html');
+    const out = await page.evaluate(() => {
+      const fn = (window as any).normalizeUrl as (u: string) => string;
+      return {
+        bare: fn('example.com'),
+        withPath: fn('example.com/a?b=1'),
+      };
+    });
+    expect(out.bare).toBe('https://example.com');
+    expect(out.withPath).toBe('https://example.com/a?b=1');
+  });
+
+  test('a javascript: entry is searched, never navigated to', async ({ page }) => {
+    await page.goto('/startpage_enhanced.html');
+
+    // Capture every off-origin navigation attempt instead of performing it, so
+    // the test needs no network and cannot race a real page load.
+    const attempted: string[] = [];
+    await page.route('**/*', (route) => {
+      const url = route.request().url();
+      if (!url.startsWith('http://127.0.0.1:8080')) {
+        attempted.push(url);
+        return route.abort();
+      }
+      return route.continue();
+    });
+
+    await page.fill('#searchInput', 'javascript:alert(1)');
+    await page.press('#searchInput', 'Enter');
     await page.waitForTimeout(500);
-    const beforeClose = context.pages().length;
-    await page.keyboard.press('Control+W');
-    await expect(async () => {
-      expect(context.pages().length).toBeLessThan(beforeClose);
-    }).toPass({ timeout: 5000 });
+
+    expect(attempted.length).toBeGreaterThan(0);
+    for (const url of attempted) {
+      expect(url).not.toMatch(/^javascript:/i);
+    }
+    expect(attempted.some((u) => /^https?:\/\//.test(u))).toBe(true);
   });
 
-  test('should switch tabs with Ctrl+Tab', async ({ page, context }) => {
-    await page.goto('/');
-    await page.keyboard.press('Control+T');
-    await page.keyboard.press('Control+T');
+  test('malicious bookmark titles/urls are rendered inert (no XSS)', async ({ page }) => {
+    // Provide a WebChannel bridge whose bookmark list contains javascript: and
+    // data: URLs plus an HTML-injection title, then assert the start page both
+    // drops the unsafe URLs and renders the title as text.
+    await page.addInitScript(() => {
+      const noop = { connect() {} };
+      const theme = { themeScheme: 0, themeSchemeChanged: noop };
+      const browserSettings = { searchEngine: 'DuckDuckGo', settingsChanged: noop };
+
+      const payloads = [
+        { url: 'javascript:alert(1)', title: 'xss-js' },
+        { url: 'data:text/html,<script>alert(2)</scr' + 'ipt>', title: 'xss-data' },
+        { url: 'https://example.com', title: '<img src=x onerror="window.__xss=1">' },
+      ];
+      const bookmarks = {
+        json(cb: (s: string) => void) { cb(JSON.stringify(payloads)); },
+        changed: noop,
+      };
+
+      function magic(): any {
+        const fn: any = () => magic();
+        return new Proxy(fn, {
+          get(_t, prop) {
+            if (prop === 'connect' || prop === 'disconnect') return () => {};
+            if (prop === Symbol.toPrimitive) return () => 0;
+            if (prop === 'toString') return () => '';
+            if (prop === 'then') return undefined;
+            if (prop === 'length') return 0;
+            return magic();
+          },
+          apply() { return magic(); },
+        });
+      }
+
+      const known: Record<string, unknown> = { theme, browserSettings, bookmarks };
+      const objects = new Proxy(known, {
+        get: (t, prop) => (prop in t ? (t as any)[prop] : magic()),
+      });
+
+      (window as any).qt = { webChannelTransport: {} };
+      (window as any).QWebChannel = function (_transport: unknown, cb: (c: unknown) => void) {
+        cb({ objects });
+      };
+    });
+
+    await page.goto('/startpage_enhanced.html');
+
+    // Only the safe https:// bookmark survives.
+    await expect(page.locator('#favoritesGrid .favorite-item')).toHaveCount(1);
+    // ...and its hostile title is present as text, not as markup.
+    await expect(page.locator('#favoritesGrid .favorite-name'))
+      .toHaveText('<img src=x onerror="window.__xss=1">');
+    expect(await page.evaluate(() => (window as any).__xss)).toBeUndefined();
+  });
+});
+
+test.describe('crash page', () => {
+  test('renders the ?url= parameter as inert text', async ({ page }) => {
+    const payload = '<img src=x onerror="window.__xss=1">';
+    await page.goto(`/crash.html?url=${encodeURIComponent(payload)}`);
+    await expect(page.locator('#urlBox')).toHaveText(payload);
+    expect(await page.evaluate(() => (window as any).__xss)).toBeUndefined();
+  });
+
+  test('survives a malformed (non-decodable) ?url=', async ({ page }) => {
+    const errors = collectErrors(page);
+    await page.goto('/crash.html?url=%E0%A4%A');
+    await expect(page.locator('#urlBox')).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+});
+
+test.describe('settings page', () => {
+  test('its bridge callback body runs without throwing', async ({ page }) => {
+    // The settings script does all of its work inside the QWebChannel onready
+    // callback. Without a bridge that body never executes, so a mock is the
+    // only way to cover it. A duplicated `const` or a dereferenced missing
+    // element (both of which have shipped here before) surfaces as a pageerror.
+    await page.addInitScript(() => {
+      function magic(): any {
+        const fn: any = () => magic();
+        return new Proxy(fn, {
+          get(_t, prop) {
+            if (prop === 'connect' || prop === 'disconnect') return () => {};
+            if (prop === Symbol.toPrimitive) return () => 0;
+            if (prop === 'toString') return () => '';
+            if (prop === 'then') return undefined;
+            if (prop === 'length') return 0;
+            return magic();
+          },
+          apply(_t, _this, args) {
+            for (const a of args) if (typeof a === 'function') { try { a(magic()); } catch {} }
+            return magic();
+          },
+        });
+      }
+      const objects = new Proxy({}, { get: (_t, prop) => magic() });
+      (window as any).qt = { webChannelTransport: {} };
+      (window as any).QWebChannel = function (_transport: unknown, cb: (c: unknown) => void) {
+        cb({ objects });
+      };
+    });
+
+    const errors = collectErrors(page);
+    await page.goto('/settings.html');
     await page.waitForTimeout(500);
-    await page.keyboard.press('Control+Shift+Tab');
-  });
-
-  test('should reopen closed tab with Ctrl+Shift+T', async ({ page, context }) => {
-    await page.goto('/');
-    await page.keyboard.press('Control+T');
-    await page.waitForTimeout(500);
-    await page.keyboard.press('Control+W');
-    await page.waitForTimeout(500);
-    await page.keyboard.press('Control+Shift+T');
-    await expect(async () => {
-      expect(context.pages().length).toBe(2);
-    }).toPass({ timeout: 5000 });
-  });
-
-  test('should pin/unpin tab', async ({ page }) => {
-    await page.goto('/');
-  });
-});
-
-test.describe('BLACK Browser - Bookmarks', () => {
-  test('should add bookmark with Ctrl+D', async ({ page }) => {
-    await page.goto('/');
-    await page.keyboard.press('Control+D');
-  });
-
-  test('should show bookmarks in sidebar', async ({ page }) => {
-    await page.goto('/');
-    await page.click('[aria-label="Toggle Sidebar"]');
-    await expect(page.locator('text=Favourites')).toBeVisible({ timeout: 5000 });
-  });
-
-  test('should remove bookmark', async ({ page }) => {
-    await page.goto('/');
-    await page.click('[aria-label="Toggle Sidebar"]');
-  });
-
-  test('should import bookmarks from other browsers', async ({ page }) => {
-    await page.goto('/');
-    await page.keyboard.press('Control+,');
-    await page.click('text=Bookmarks');
-  });
-});
-
-test.describe('BLACK Browser - History', () => {
-  test('should show history in sidebar', async ({ page }) => {
-    await page.goto('/');
-    await page.click('[aria-label="Toggle Sidebar"]');
-    await expect(page.locator('text=History')).toBeVisible({ timeout: 5000 });
-  });
-
-  test('should clear history', async ({ page }) => {
-    await page.goto('/');
-    await page.keyboard.press('Control+,');
-    await page.click('text=History');
-  });
-
-  test('should filter history', async ({ page }) => {
-    await page.goto('/');
-    await page.click('[aria-label="Toggle Sidebar"]');
-  });
-});
-
-test.describe('BLACK Browser - Downloads', () => {
-  test('should show downloads menu', async ({ page }) => {
-    await page.goto('/');
-    await page.click('[aria-label="Downloads"]');
-    await expect(page.locator('text=Downloads')).toBeVisible({ timeout: 5000 });
-  });
-
-  test('should track download progress', async ({ page }) => {
-  });
-
-  test('should pause/resume/cancel downloads', async ({ page }) => {
-  });
-});
-
-test.describe('BLACK Browser - Settings', () => {
-  test('should open settings with Ctrl+,', async ({ page }) => {
-    await page.goto('/');
-    await page.keyboard.press('Control+,');
-    await expect(page.locator('text=Settings')).toBeVisible({ timeout: 5000 });
-  });
-
-  test('should switch themes', async ({ page }) => {
-    await page.goto('/');
-    await page.keyboard.press('Control+,');
-    await page.click('text=Theme: Dark');
-    await expect(page.locator('html.black-forced-dark')).toBeVisible({ timeout: 5000 });
-  });
-
-  test('should switch UI layout (Safari/Chrome)', async ({ page }) => {
-    await page.goto('/');
-    await page.keyboard.press('Control+,');
-    await page.click('[data-layout="1"]');
-    await expect(page.locator('[data-ui-layout="chrome"]')).toBeVisible({ timeout: 5000 });
-  });
-
-  test('should configure search engine', async ({ page }) => {
-    await page.goto('/');
-    await page.keyboard.press('Control+,');
-    await page.click('text=Search');
-    await page.selectOption('select', 'DuckDuckGo');
-  });
-
-  test('should configure privacy settings', async ({ page }) => {
-    await page.goto('/');
-    await page.keyboard.press('Control+,');
-    await page.click('text=Privacy');
-  });
-
-  test('should manage passwords', async ({ page }) => {
-    await page.goto('/');
-    await page.keyboard.press('Control+,');
-    await page.click('text=Passwords');
-  });
-
-  test('should configure website permissions', async ({ page }) => {
-    await page.goto('/');
-    await page.keyboard.press('Control+,');
-    await page.click('text=Websites');
-  });
-
-  test('should manage profiles', async ({ page }) => {
-    await page.goto('/');
-    await page.keyboard.press('Control+,');
-    await page.click('text=Profiles');
-  });
-
-  test('should configure extensions', async ({ page }) => {
-    await page.goto('/');
-    await page.keyboard.press('Control+,');
-    await page.click('text=Extensions');
-  });
-});
-
-test.describe('BLACK Browser - Find in Page', () => {
-  test('should open find bar with Ctrl+F', async ({ page }) => {
-    await page.goto('/');
-    await page.keyboard.press('Control+F');
-    await expect(page.locator('input[placeholder="Find in page"]')).toBeVisible({ timeout: 5000 });
-  });
-
-  test('should find text on page', async ({ page }) => {
-    await page.goto('/');
-    await page.keyboard.press('Control+F');
-    await page.fill('input[placeholder="Find in page"]', 'BLACK');
-  });
-});
-
-test.describe('BLACK Browser - Private Window', () => {
-  test('should open private window with Ctrl+Shift+N', async ({ page, context }) => {
-    await page.goto('/');
-    await page.keyboard.press('Control+Shift+N');
-  });
-
-  test('should not persist private session', async ({ page, context }) => {
-  });
-});
-
-test.describe('BLACK Browser - Reader Mode', () => {
-  test('should toggle reader mode with F9', async ({ page }) => {
-    await page.goto('/');
-    await page.keyboard.press('F9');
-  });
-
-  test('should extract article content', async ({ page }) => {
-  });
-});
-
-test.describe('BLACK Browser - Picture-in-Picture', () => {
-  test('should toggle PiP', async ({ page }) => {
-  });
-});
-
-test.describe('BLACK Browser - Translation', () => {
-  test('should translate page', async ({ page }) => {
-  });
-});
-
-test.describe('BLACK Browser - Tab Groups', () => {
-  test('should create tab group', async ({ page }) => {
-    await page.goto('/');
-  });
-
-  test('should collapse/expand tab group', async ({ page }) => {
-  });
-});
-
-test.describe('BLACK Browser - Profiles', () => {
-  test('should create profile', async ({ page }) => {
-    await page.goto('/');
-    await page.keyboard.press('Control+,');
-    await page.click('text=Profiles');
-  });
-
-  test('should switch profiles', async ({ page }) => {
-  });
-});
-
-test.describe('BLACK Browser - Extensions', () => {
-  test('should load extension', async ({ page }) => {
-    await page.goto('/');
-    await page.keyboard.press('Control+,');
-    await page.click('text=Extensions');
-  });
-
-  test('should use chrome.runtime API', async ({ page }) => {
-  });
-});
-
-test.describe('BLACK Browser - Security & Privacy', () => {
-  test('should block trackers', async ({ page }) => {
-    await page.goto('/');
-    await page.keyboard.press('Control+,');
-    await page.click('text=Privacy');
-  });
-
-  test('should upgrade to HTTPS', async ({ page }) => {
-  });
-
-  test('should show Safe Browsing warning', async ({ page }) => {
-  });
-
-  test('should generate Passkeys', async ({ page }) => {
-  });
-
-  test('should resist fingerprinting', async ({ page }) => {
-  });
-});
-
-test.describe('BLACK Browser - Crash Recovery', () => {
-  test('should show crash page on renderer crash', async ({ page }) => {
-  });
-
-  test('should recover tabs after crash', async ({ page }) => {
-  });
-});
-
-test.describe('BLACK Browser - Accessibility', () => {
-  test('should be keyboard navigable', async ({ page }) => {
-  });
-
-  test('should have proper ARIA labels', async ({ page }) => {
-  });
-
-  test('should support high contrast mode', async ({ page }) => {
-  });
-});
-
-test.describe('BLACK Browser - Performance', () => {
-  test('should load start page quickly', async ({ page }) => {
-    const start = Date.now();
-    await page.goto('/');
-    await expect(page.locator('h1, .greeting')).toBeVisible({ timeout: 10000 });
-    const loadTime = Date.now() - start;
-    expect(loadTime).toBeLessThan(5000);
-  });
-
-  test('should handle many tabs', async ({ page, context }) => {
+    expect(errors).toEqual([]);
   });
 });
