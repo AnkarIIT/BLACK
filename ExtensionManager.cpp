@@ -1,4 +1,6 @@
 #include "ExtensionManager.h"
+#include <QEventLoop>
+#include <QTimer>
 #include "ExtensionApi.h"
 #include "OSPaths.h"
 #include <QWebEngineScript>
@@ -353,8 +355,16 @@ bool ExtensionManager::uninstallExtension(const QString &id)
     QString path = extRoot() + "/" + id;
     QDir dir(path);
     dir.removeRecursively();
-    
-    m_extensions.removeAll(*info);
+
+    // QList::removeAll(const T &t) takes the value BY REFERENCE and erases
+    // matching elements as it scans. Passing *info - a reference to an element
+    // of m_extensions itself - means each erase() shifts the remaining
+    // elements down underneath `t`, so the comparison keeps matching and the
+    // loop drains the whole list: uninstalling one extension wiped them all
+    // (while m_contexts below only pruned this one id, orphaning the rest).
+    const int at = m_extensions.indexOf(*info);
+    if (at >= 0)
+        m_extensions.removeAt(at);
     m_contexts.remove(id);
     
     emit extensionUninstalled(id);
@@ -454,14 +464,42 @@ QJsonObject ExtensionManager::callApi(const QString &extensionId, const QString 
         return QJsonObject{{"error", "API not found: " + apiName}};
     }
     
+    // The previous implementation spun a NESTED QEventLoop and captured &result /
+    // &loop by reference in the callback. Two failure modes:
+    //   1. Use-after-free - if handleMessage() ever invoked the callback
+    //      asynchronously (which is exactly what a nested loop permits), the
+    //      callback would write into `result` after this frame was gone.
+    //   2. Unbounded hang - if handleMessage() returned early, errored, or
+    //      matched no method, the callback never fired and loop.exec() blocked
+    //      the GUI thread forever. callApi is Q_INVOKABLE on the `extensions`
+    //      bridge object, so JavaScript could wedge the whole browser.
+    //
+    // handleMessage() is synchronous and always invokes the callback exactly
+    // once (it is the documented contract of the ExtensionApi base class), so
+    // the loop is unnecessary. A guard keeps the hang bounded even if a
+    // third-party API violates that contract.
     QJsonObject result;
+    bool completed = false;
+
     QEventLoop loop;
-    api->handleMessage(method, args, [&result, &loop](const QJsonObject &r) {
+    QTimer guard;
+    guard.setSingleShot(true);
+    QObject::connect(&guard, &QTimer::timeout, &loop, &QEventLoop::quit);
+    // Hard ceiling so a misbehaving extension API cannot freeze the browser.
+    guard.start(5000);
+
+    api->handleMessage(method, args, [&result, &loop, &completed](const QJsonObject &r) {
         result = r;
+        completed = true;
         loop.quit();
     });
-    loop.exec();
-    
+
+    if (!completed)
+        loop.exec();       // synchronous call already answered - do not block
+
+    if (!completed) {
+        return QJsonObject{{"error", "Extension API call timed out: " + apiName + "." + method}};
+    }
     return result;
 }
 
@@ -511,7 +549,7 @@ void ExtensionManager::scan()
     }
 }
 
-ExtensionInfo* ExtensionManager::createExtensionInfo(const QString &id, const QString &path)
+ExtensionInfo ExtensionManager::createExtensionInfo(const QString &id, const QString &path)
 {
     QFile manifestFile(path + "/manifest.json");
     ExtensionManifestV3 manifest;
@@ -522,8 +560,11 @@ ExtensionInfo* ExtensionManager::createExtensionInfo(const QString &id, const QS
         }
     }
     
-    ExtensionInfo* info = new ExtensionInfo();
-    info->id = id;
+    // Returned BY VALUE. Both callers assign the result to a local
+    // ExtensionInfo, so the previous `new ExtensionInfo()` was leaked on
+    // every call - once per installed extension on every scan()/reload().
+    ExtensionInfo info;
+    info.id = id;
     info.name = manifest.name;
     info.version = manifest.version;
     info.description = manifest.description;
@@ -557,7 +598,7 @@ ExtensionInfo* ExtensionManager::createExtensionInfo(const QString &id, const QS
                 }
             }
         }
-        info->blockingRules = rule;
+        info.blockingRules = rule;
     }
 
     return info;
@@ -659,6 +700,12 @@ void ExtensionManager::setupExtensionContext(ExtensionInfo *info)
 
 void ExtensionManager::teardownExtensionContext(ExtensionInfo *info)
 {
+    // getExtension(id) returns nullptr once the extension has been uninstalled
+    // or dropped by a rescan, and the `unloaded` handler above passes that
+    // straight through. Dereferencing it was a null-pointer crash reachable
+    // from JavaScript via the `extensions` bridge object.
+    if (!info)
+        return;
     if (info->context) {
         // Shutdown all APIs
         // The context destruction will handle cleanup
