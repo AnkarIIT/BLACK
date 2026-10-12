@@ -34,6 +34,13 @@ class ExtensionManager;
 #include "ProductivityManager.h"
 #include "AdvancedSecurity.h"
 #include "DeveloperTools.h"
+#include "CookiePartition.h"
+#include "FingerprintProtection.h"
+#include "TabGroupManager.h"
+#include "ReaderMode.h"
+#include "TranslationManager.h"
+#include "SyncManager.h"
+#include "WebAuthn.h"
 #include <QFrame>
 #include <QFrame>
 #include <QStyle>
@@ -456,7 +463,14 @@ static void logCrashEvent(const QString &url, int crashCount, const QString &act
     QJsonObject root;
     root[QStringLiteral("events")] = events;
     file.resize(0);
+    // QFile::resize() truncates but does NOT reset the file position, which is
+    // still sitting at the old EOF after readAll(). Writing here would seek back
+    // to that offset and leave the file padded with NUL bytes, so the next
+    // load's fromJson() would fail and silently discard every prior event.
+    file.seek(0);
     file.write(QJsonDocument(root).toJson());
+    file.flush();
+    file.close();
 }
 
 static QString searchUrlFor(const QString &query) {
@@ -621,21 +635,13 @@ m_updateChecker = new UpdateChecker(QStringLiteral(BLACK_VERSION_STRING),
     m_webChannel->registerObject(QStringLiteral("safeBrowsing"), &SafeBrowsing::instance());
     m_webChannel->registerObject(QStringLiteral("permissions"), m_permissionsBridge);
     m_webChannel->registerObject(QStringLiteral("updater"), m_updateChecker);
-    m_webChannel->registerObject(QStringLiteral("webauthn"), m_webAuthnManager);
     m_webChannel->registerObject(QStringLiteral("profileManager"), &ProfileManager::instance());
-    m_webChannel->registerObject(QStringLiteral("syncManager"), m_syncManager);
-    m_webChannel->registerObject(QStringLiteral("walletManager"), m_walletManager);
-    m_webChannel->registerObject(QStringLiteral("rewardsManager"), m_rewardsManager);
-    m_webChannel->registerObject(QStringLiteral("searchAffiliation"), m_searchAffiliation);
-    m_webChannel->registerObject(QStringLiteral("performanceManager"), m_performanceManager);
-    m_webChannel->registerObject(QStringLiteral("wasmExtensionSupport"), m_wasmExtensionSupport);
-    m_webChannel->registerObject(QStringLiteral("developerTools"), m_developerTools);
-    m_webChannel->registerObject(QStringLiteral("i18nManager"), m_i18nManager);
-    m_webChannel->registerObject(QStringLiteral("collaborationManager"), m_collaborationManager);
-    m_webChannel->registerObject(QStringLiteral("aiAgentManager"), m_aiAgentManager);
-    m_webChannel->registerObject(QStringLiteral("voiceInterface"), m_voiceInterface);
-    m_webChannel->registerObject(QStringLiteral("productivityManager"), m_productivityManager);
-    m_webChannel->registerObject(QStringLiteral("advancedSecurity"), m_advancedSecurity);
+    // NOTE: webauthn / syncManager / walletManager / performanceManager and the
+    // rest are registered AFTER they are constructed, further down. Registering
+    // them here passed uninitialized pointer members to QWebChannel, which
+    // later dereferences them (registerObject -> deregisterObject ->
+    // object->disconnect()); several were then registered a second time, so
+    // that undefined behaviour ran at construction time.
 
     // Password-only bridge for external pages. SafariWebPage exposes this
     // channel to no one except the native autofill content script, and only in
@@ -716,6 +722,7 @@ m_updateChecker = new UpdateChecker(QStringLiteral(BLACK_VERSION_STRING),
     m_syncManager = new SyncManager(this);
     m_syncManager->initialize(this, m_passwords, m_bookmarks, m_history,
                               &BrowserSettings::instance(), m_extensions, m_account);
+    m_webChannel->registerObject(QStringLiteral("syncManager"), m_syncManager);
 
     // AI Manager
     m_aiManager = new AIManager(this);
@@ -724,6 +731,7 @@ m_updateChecker = new UpdateChecker(QStringLiteral(BLACK_VERSION_STRING),
 
     // Wallet Manager
     m_walletManager = new WalletManager(this);
+    m_webChannel->registerObject(QStringLiteral("walletManager"), m_walletManager);
     m_walletManager->registerWeb3Provider(m_webChannel);
 
     // Rewards Manager
@@ -745,6 +753,7 @@ m_updateChecker = new UpdateChecker(QStringLiteral(BLACK_VERSION_STRING),
     m_performanceManager->setWebEngineProfile(m_profile);
     m_performanceManager->setOptimizationLevel(PerformanceManager::OptimizationLevel::Balanced);
     m_performanceManager->startProfiling();
+    m_webChannel->registerObject(QStringLiteral("performanceManager"), m_performanceManager);
 
     // WASM Extension Support
     m_wasmExtensionSupport = new WasmExtensionSupport(this);
@@ -818,6 +827,7 @@ m_updateChecker = new UpdateChecker(QStringLiteral(BLACK_VERSION_STRING),
 
     // Initialize WebAuthn manager
     m_webAuthnManager = new WebAuthnManager(this);
+    m_webChannel->registerObject(QStringLiteral("webauthn"), m_webAuthnManager);
 
     // Initialize Reader Mode
     m_readerMode = new ReaderMode(this);
@@ -2153,8 +2163,18 @@ SafariWebView* BrowserWindow::addTabView(const QUrl &url, QWebEngineNewWindowReq
                     const bool onCrashPage = loadedUrl.scheme() == QStringLiteral("qrc")
                                              && loadedUrl.path() == QStringLiteral("/crash.html");
                     if (!onCrashPage) {
-                        m_tabs[i].crashCount = 0;
-                        m_tabs[i].showingCrashPage = false;
+                        // Do NOT reset the crash budget on every successful
+                        // load. A page that renders and then kills its renderer
+                        // (OOM, GPU fault, allocation bomb) re-armed the budget
+                        // on each cycle, so kMaxRendererCrashReloads could
+                        // never trip and the tab reloaded forever. The counter
+                        // is cleared when the URL actually changes, so normal
+                        // navigation still resets it.
+                        const QString currentUrl = m_tabs[i].url;
+                        if (loadedUrl.toString() != currentUrl) {
+                            m_tabs[i].crashCount = 0;
+                            m_tabs[i].showingCrashPage = false;
+                        }
                     }
                     saveHistoryItem(m_tabs[i].title, m_tabs[i].url);
                     // Refresh the visible tab's thumbnail so the overview stays fresh.
@@ -2298,9 +2318,29 @@ void BrowserWindow::closeTab(int index) {
         fadeAnim->setDuration(150);
         fadeAnim->setStartValue(1.0);
         fadeAnim->setEndValue(0.0);
-        connect(fadeAnim, &QPropertyAnimation::finished, this, [this, index, v, tabWidget, opacityEffect, fadeAnim]() {
+        connect(fadeAnim, &QPropertyAnimation::finished, this, [this, v, tabWidget, opacityEffect, fadeAnim]() {
             fadeAnim->deleteLater();
             opacityEffect->deleteLater();
+
+            // The fade takes 150ms. During that window the tab list can be
+            // mutated - another closeTab() (Ctrl+W / close button / context
+            // menu) or a drag-reorder. Capturing the INDEX and calling
+            // m_tabs.removeAt(index) on it therefore removed whichever tab
+            // happened to live at that position, while v was already being
+            // destroyed - leaving a TabInfo whose .view pointed at a deleted
+            // QWebEngineView (use-after-free) and silently dropping a tab.
+            //
+            // Resolve the live position from the view instead.
+            int index = -1;
+            for (int i = 0; i < m_tabs.count(); ++i) {
+                if (m_tabs.at(i).view == v) {
+                    index = i;
+                    break;
+                }
+            }
+            if (index < 0)
+                return;     // already removed by another close path
+
             clearTabThumbnail(index);
             m_tabStack->removeWidget(v);
             v->deleteLater();
@@ -3034,7 +3074,7 @@ void BrowserWindow::toggleAIAssistant()
                             addMessage('user', message);
                             sendToAI(message);
                         };
-                        input.addEventListener('keypress', function(e) {
+                        document.getElementById('ai-input').addEventListener('keypress', function(e) {
                             if (e.key === 'Enter') document.getElementById('ai-send').click();
                         });
                         
@@ -3066,9 +3106,10 @@ void BrowserWindow::toggleAIAssistant()
                         }
                         
                         window.__blackAIAssistantVisible = true;
-                    })();
-        })();
-        """);
+                    }
+                }
+            })();
+        )");
     }
 }
 
@@ -3090,20 +3131,6 @@ void BrowserWindow::translatePage()
         }
         m_translationManager->translatePage(view, targetLang);
     }
-}
-    if (!view)
-        return;
-
-    const QUrl url = view->url();
-    if (url.scheme() != QLatin1String("http") && url.scheme() != QLatin1String("https")) {
-        return;
-    }
-
-    // Use Google Translate via translate.google.com
-    // This opens the current page in Google Translate
-    QUrl translateUrl(QStringLiteral("https://translate.google.com/translate?sl=auto&tl=en&u=")
-                      + url.toString(QUrl::FullyEncoded));
-    view->setUrl(translateUrl);
 }
 
 void BrowserWindow::handleCertificateError(QWebEngineCertificateError error) {
@@ -3342,6 +3369,10 @@ void BrowserWindow::rebuildTabBar()
             tabWidget->installEventFilter(this);
             tabWidget->setProperty("tabIndex", i);
             tabWidget->setProperty("isTab", true);
+
+            // Pinned tabs lay their favicon out in a grid; the normal (unpinned)
+            // branch below builds its own QHBoxLayout named tabLayout.
+            QGridLayout *gridLayout = new QGridLayout(tabWidget);
             gridLayout->setContentsMargins(4, 4, 4, 4);
             gridLayout->setSpacing(0);
 
