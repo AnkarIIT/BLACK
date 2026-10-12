@@ -49,7 +49,7 @@ private slots:
         // Non-HTTP(S) schemes should not be checked
         QVERIFY(!SafeBrowsing::instance().isBlocked(QUrl("ftp://appleid-verify.com/file")));
         QVERIFY(!SafeBrowsing::instance().isBlocked(QUrl("file:///path/to/file")));
-        QVERIFY(!SafeBrowsing::instance().isBlocked(QUrl("data:text/html,<script>alert(1)</script>"));
+        QVERIFY(!SafeBrowsing::instance().isBlocked(QUrl("data:text/html,<script>alert(1)</script>")));
     }
 
     void testSessionAllowance()
