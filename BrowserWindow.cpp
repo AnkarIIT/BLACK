@@ -106,6 +106,10 @@
 #include <QDrag>
 #include <QMimeData>
 #include <QNetworkRequest>
+#include <QPrinter>
+#include <QPrintDialog>
+#include <QDesktopServices>
+#include <QTemporaryFile>
 #include <functional>
 #include <utility>
 
@@ -1661,7 +1665,7 @@ void BrowserWindow::preloadFavicon(const QUrl &url)
     // Fetch favicon asynchronously using DuckDuckGo's favicon service (privacy-friendly)
     // DuckDuckGo doesn't track users and provides a simple favicon API
     QString faviconUrl = QStringLiteral("https://icons.duckduckgo.com/ip3/") + host + QStringLiteral(".ico");
-    QNetworkRequest request(QUrl(faviconUrl));
+    QNetworkRequest request{QUrl(faviconUrl)};
     request.setRawHeader("User-Agent", "BLACK Browser");
     QNetworkReply *reply = m_netManager.get(request);
     connect(reply, &QNetworkReply::finished, this, [this, reply, host]() {
@@ -2909,19 +2913,36 @@ void BrowserWindow::printPage()
     if (!view)
         return;
 
-    // Qt 6: printToPdf generates PDF, then we print it via QPrinter
+    // Qt 6: printToPdf generates PDF, then print via QPrinter
     view->page()->printToPdf([this](const QByteArray &pdfData) {
         if (pdfData.isEmpty()) {
             QMessageBox::warning(this, tr("Print Failed"), tr("Failed to generate PDF for printing."));
             return;
         }
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-        QPrinter printer(QPrinter::HighResolution);
-        QPrintDialog dialog(&printer, this);
-        if (dialog.exec() == QDialog::Accepted) {
-            QPdfDocument document;
-            document.load(pdfData);
-            document.print(&printer);
+        // Save PDF to temp file and print using QPrinter
+        QTemporaryFile tempFile;
+        if (tempFile.open()) {
+            tempFile.write(pdfData);
+            tempFile.flush();
+            tempFile.close();
+
+            QPrinter printer(QPrinter::HighResolution);
+            QPrintDialog dialog(&printer, this);
+            if (dialog.exec() == QDialog::Accepted) {
+                // Use QPdfDocument if available (Qt 6.4+), otherwise fall back to system print
+#if QT_VERSION >= QT_VERSION_CHECK(6, 4, 0)
+                QPdfDocument document;
+                if (document.load(tempFile.fileName())) {
+                    document.print(&printer);
+                } else {
+                    QMessageBox::warning(this, tr("Print Failed"), tr("Failed to load PDF for printing."));
+                }
+#else
+                // Fallback: open with system default PDF viewer
+                QDesktopServices::openUrl(QUrl::fromLocalFile(tempFile.fileName()));
+#endif
+            }
         }
 #else
         Q_UNUSED(pdfData);
@@ -3208,9 +3229,6 @@ QString BrowserWindow::permissionDisplayName(QWebEnginePermission::PermissionTyp
         return QStringLiteral("your screen and audio");
     case QWebEnginePermission::PermissionType::ClipboardReadWrite: return QStringLiteral("clipboard access");
     case QWebEnginePermission::PermissionType::LocalFontsAccess:   return QStringLiteral("fonts installed on this device");
-#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
-    case QWebEnginePermission::PermissionType::PictureInPicture:   return QStringLiteral("picture-in-picture");
-#endif
     default: return QStringLiteral("a restricted feature");
     }
 }
