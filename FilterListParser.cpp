@@ -9,7 +9,7 @@ FilterListParser::FilterListParser(QObject *parent)
 
 FilterListParser::~FilterListParser() = default;
 
-bool FilterListParser::matches(const QUrl &url, const QString &documentDomain, int resourceType) const
+bool FilterListParser::matches(const QUrl &url, const QString &documentDomain, const QString &resourceType) const
 {
     Q_UNUSED(url)
     Q_UNUSED(documentDomain)

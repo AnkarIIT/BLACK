@@ -62,7 +62,7 @@ public:
 
     static QString settingsFilePath();
     static QJsonObject readSettingsObject();
-    static void writeSettingsObject(const QJsonObject &obj);
+    static bool writeSettingsObject(const QJsonObject &obj);
 
     // Auto-close policy: number of days after which an inactive tab is dropped
     // at session restore (0 = never).

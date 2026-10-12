@@ -22,7 +22,7 @@ public:
     ~FilterListParser() override;
 
     // Always false: there are no rules.
-    bool matches(const QUrl &url, const QString &documentDomain, int resourceType) const;
+    bool matches(const QUrl &url, const QString &documentDomain, const QString &resourceType) const;
 
     // Always 0: the rule list is empty.
     int ruleCount() const;

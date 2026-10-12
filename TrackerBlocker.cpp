@@ -25,6 +25,33 @@ QString dataFile(const QString &fileName)
     return dir + QLatin1Char('/') + fileName;
 }
 
+// Convert a glob pattern (with * and ?) to a regular expression.
+QString globToRegex(const QString &glob)
+{
+    QString regex;
+    regex.reserve(glob.size() * 2);
+    for (const QChar ch : glob) {
+        switch (ch.unicode()) {
+        case '*': regex += QLatin1String(".*"); break;
+        case '?': regex += QLatin1String("."); break;
+        case '.': regex += QLatin1String("\\."); break;
+        case '+': regex += QLatin1String("\\+"); break;
+        case '^': regex += QLatin1String("\\^"); break;
+        case '$': regex += QLatin1String("\\$"); break;
+        case '(': regex += QLatin1String("\\("); break;
+        case ')': regex += QLatin1String("\\)"); break;
+        case '[': regex += QLatin1String("\\["); break;
+        case ']': regex += QLatin1String("\\]"); break;
+        case '{': regex += QLatin1String("\\{"); break;
+        case '}': regex += QLatin1String("\\}"); break;
+        case '\\': regex += QLatin1String("\\\\"); break;
+        case '|': regex += QLatin1String("\\|"); break;
+        default:  regex += ch; break;
+        }
+    }
+    return regex;
+}
+
 const int kMaxSitesPerDay = 200;
 
 bool isIpv4Literal(const QString &host)

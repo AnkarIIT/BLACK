@@ -7,8 +7,8 @@
 #include "BrowserSettings.h"
 #include "ShelfStore.h"
 #include "PasswordStore.h"
-// ExtensionManager is used via singleton instance()
-class ExtensionManager;
+#include "ExtensionManager.h"
+#include "ProfileManager.h"
 #include "Account.h"
 #include "AppearanceManager.h"
 #include "SafeBrowsing.h"
@@ -102,6 +102,10 @@ class ExtensionManager;
 #include <QGestureEvent>
 #include <QTapGesture>
 #include <QGesture>
+#include <QBuffer>
+#include <QDrag>
+#include <QMimeData>
+#include <QNetworkRequest>
 #include <functional>
 #include <utility>
 
@@ -656,8 +660,7 @@ m_updateChecker = new UpdateChecker(QStringLiteral(BLACK_VERSION_STRING),
     // Google render their official dark/light themes via prefers-color-scheme.
 #if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
     m_profile->settings()->setAttribute(QWebEngineSettings::ForceDarkMode, false);
-    // Enable Picture-in-Picture
-    m_profile->settings()->setAttribute(QWebEngineSettings::PictureInPictureEnabled, true);
+    // PictureInPictureEnabled is not available in Qt 6.8; PiP is handled via JS API
 #endif
 
     QWebEngineScript styleScript;
@@ -2906,11 +2909,25 @@ void BrowserWindow::printPage()
     if (!view)
         return;
 
-    view->page()->print(nullptr, [this](bool success) {
-        if (!success) {
-            QMessageBox::warning(this, tr("Print Failed"), tr("Failed to print the page."));
+    // Qt 6: printToPdf generates PDF, then we print it via QPrinter
+    view->page()->printToPdf([this](const QByteArray &pdfData) {
+        if (pdfData.isEmpty()) {
+            QMessageBox::warning(this, tr("Print Failed"), tr("Failed to generate PDF for printing."));
+            return;
         }
-    });
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        QPrinter printer(QPrinter::HighResolution);
+        QPrintDialog dialog(&printer, this);
+        if (dialog.exec() == QDialog::Accepted) {
+            QPdfDocument document;
+            document.load(pdfData);
+            document.print(&printer);
+        }
+#else
+        Q_UNUSED(pdfData);
+        QMessageBox::warning(this, tr("Print Failed"), tr("Printing requires Qt 6+"));
+#endif
+    }, QPageLayout());
 }
 
 void BrowserWindow::savePageAsPdf()
@@ -2932,13 +2949,19 @@ void BrowserWindow::savePageAsPdf()
         fileName += QStringLiteral(".pdf");
 
     QPageLayout layout(QPageSize(QPageSize::A4), QPageLayout::Portrait, QMarginsF(15, 15, 15, 15));
-    view->page()->printToPdf(fileName, layout, [this, fileName](bool success) {
-        if (success) {
+    view->page()->printToPdf([this, fileName](const QByteArray &pdfData) {
+        if (pdfData.isEmpty()) {
+            QMessageBox::warning(this, tr("Save Failed"), tr("Failed to generate PDF."));
+            return;
+        }
+        QFile file(fileName);
+        if (file.open(QIODevice::WriteOnly)) {
+            file.write(pdfData);
             QMessageBox::information(this, tr("Saved as PDF"), tr("Page saved to %1").arg(fileName));
         } else {
-            QMessageBox::warning(this, tr("Save Failed"), tr("Failed to save page as PDF."));
+            QMessageBox::warning(this, tr("Save Failed"), tr("Failed to write PDF file."));
         }
-    });
+    }, layout);
 }
 
 void BrowserWindow::openDevTools()
@@ -3185,7 +3208,7 @@ QString BrowserWindow::permissionDisplayName(QWebEnginePermission::PermissionTyp
         return QStringLiteral("your screen and audio");
     case QWebEnginePermission::PermissionType::ClipboardReadWrite: return QStringLiteral("clipboard access");
     case QWebEnginePermission::PermissionType::LocalFontsAccess:   return QStringLiteral("fonts installed on this device");
-#if QT_VERSION >= QT_VERSION_CHECK(6, 4, 0)
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
     case QWebEnginePermission::PermissionType::PictureInPicture:   return QStringLiteral("picture-in-picture");
 #endif
     default: return QStringLiteral("a restricted feature");
