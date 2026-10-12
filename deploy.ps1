@@ -3,7 +3,7 @@ Param(
     [string]$QtPath = "C:\Codes\browser\Qt\6.8.0\msvc2022_64",
     [string]$CertPath = "",          # Path to .pfx certificate file
     [string]$CertPassword = "",      # Certificate password (if required)
-    [string]$TimestampUrl = "http://timestamp.digicert.com",  # RFC 3161 timestamp server
+    [string]$TimestampUrl = "https://timestamp.digicert.com",  # RFC 3161 timestamp server
     [switch]$SkipSigning             # Skip code signing step
 )
 
@@ -29,7 +29,7 @@ function Find-SignTool {
 }
 
 # 1. Build project via CMake
-Write-Host "`n[1/4] Compiling Release executable..." -ForegroundColor Yellow
+Write-Host "`n[1/5] Compiling Release executable..." -ForegroundColor Yellow
 cmake -S . -B build -DCMAKE_PREFIX_PATH="$QtPath"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "CMake configuration failed."
@@ -43,13 +43,13 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # 2. Run windeployqt
-Write-Host "`n[2/4] Bundling Qt DLLs and WebEngine assets via windeployqt..." -ForegroundColor Yellow
+Write-Host "`n[2/5] Bundling Qt DLLs and WebEngine assets via windeployqt..." -ForegroundColor Yellow
 $winDeploy = "$QtPath\bin\windeployqt.exe"
 & $winDeploy --release .\build\Release\BLACK.exe
 
 # 3. Code signing (if certificate provided)
 if (-not $SkipSigning -and $CertPath) {
-    Write-Host "`n[3/4] Code signing executables and installer..." -ForegroundColor Yellow
+    Write-Host "`n[3/5] Code signing executables and installer..." -ForegroundColor Yellow
     $signTool = Find-SignTool
     if (-not $signTool) {
         Write-Warning "signtool.exe not found in Windows SDK. Skipping code signing."
@@ -78,13 +78,13 @@ if (-not $SkipSigning -and $CertPath) {
         }
     }
 } elseif ($SkipSigning) {
-    Write-Host "`n[3/4] Skipping code signing (--SkipSigning specified)..." -ForegroundColor Yellow
+    Write-Host "`n[3/5] Skipping code signing (--SkipSigning specified)..." -ForegroundColor Yellow
 } else {
-    Write-Host "`n[3/4] Skipping code signing (no certificate provided)..." -ForegroundColor Yellow
+    Write-Host "`n[3/5] Skipping code signing (no certificate provided)..." -ForegroundColor Yellow
 }
 
 # 4. Run Inno Setup to create installer
-Write-Host "`n[4/4] Creating Inno Setup installer..." -ForegroundColor Yellow
+Write-Host "`n[4/5] Creating Inno Setup installer..." -ForegroundColor Yellow
 $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 if (-not (Test-Path $iscc)) {
     $iscc = "C:\Program Files\Inno Setup 6\ISCC.exe"
