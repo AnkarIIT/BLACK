@@ -52,6 +52,18 @@ private:
     // Recursively collects "url" nodes, skipping empty entries and the
     // Guest/System subtrees.
     void walkNode(const QJsonObject &node, QJsonArray &out) const;
+
+    // Detected browsers as a JSON array. Defined in the .cpp but never
+    // declared here, which is a hard compile error; scanBrowsersJson() is the
+    // Q_INVOKABLE entry point used by the UI.
+    QJsonArray availableBrowsers() const;
+
+    // Upper bound on the Bookmarks file we are willing to parse. This file
+    // lives in ANOTHER application's profile and is therefore untrusted: any
+    // local process, a shared/synced profile, or a crafted "import" bundle can
+    // control it. readAll() + QJsonDocument::fromJson() on an unbounded file is
+    // a memory-exhaustion vector, and it runs synchronously on the GUI thread.
+    static constexpr qint64 kMaxBookmarksFileBytes = 64LL * 1024 * 1024;
 };
 
 #endif // BOOKMARKIMPORTER_H
