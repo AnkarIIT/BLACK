@@ -5,6 +5,7 @@
 #include <QWidget>
 #include <QHBoxLayout>
 #include <QToolButton>
+#include <QIcon>
 #include <QLineEdit>
 #include <QLabel>
 #include <QProgressBar>
@@ -104,6 +105,7 @@ private:
     void updateUrlBarStyle(bool chrome);
     void updateTrafficLights(bool chrome);
     void updateLoadingBarStyle(bool chrome);
+    QIcon createSvgIcon(const QString &svg, int size, const QString &color);
 };
 
 #endif
