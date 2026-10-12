@@ -44,6 +44,12 @@ public:
     // Prune entries older than retentionDays (if > 0)
     void pruneArray(QJsonArray &array) const;
 
+    // Drops entries past the retention window from the on-disk store.
+    // Public because tests/test_tab_thumbnail_download.cpp exercises it
+    // directly; it was called from the constructor's prune timer without ever
+    // being declared, which is a hard compile error.
+    void pruneOldEntries();
+
     // Check if last operation caused truncation
     bool wasTruncated() const { return m_wasTruncated; }
     int truncatedCount() const { return m_truncatedCount; }
