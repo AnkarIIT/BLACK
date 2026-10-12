@@ -57,6 +57,10 @@ struct ExtensionInfo {
     QString description;
     QString path;
     ExtensionManifestV3 manifest;
+    // Declarative network-blocking rules contributed by this extension's
+    // manifest (activeBlockingRules() aggregates these, and manifest parsing
+    // populates them at load time).
+    BlockingRule blockingRules;
     bool enabled = true;
     bool loaded = false;
     QDateTime installTime;
@@ -107,7 +111,7 @@ private:
     void scan();
     bool parseManifest(const QString &path, ExtensionManifestV3 &manifest);
     bool validateManifest(const ExtensionManifestV3 &manifest);
-    ExtensionInfo* createExtensionInfo(const QString &id, const QString &path);
+    ExtensionInfo createExtensionInfo(const QString &id, const QString &path);
     void setupExtensionContext(ExtensionInfo *info);
     void teardownExtensionContext(ExtensionInfo *info);
     
