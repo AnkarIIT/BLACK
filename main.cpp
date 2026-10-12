@@ -471,9 +471,13 @@ int main(int argc, char *argv[])
     // show the local start page. A separate first-run cinematic is shown
     // earlier if this is the very first launch.
     window.show();
+    // Debug-only entry point for the automated UI tests. A release build must
+    // not expose a hidden command-line flag that force-opens the settings UI.
+#ifndef QT_NO_DEBUG
     if (QApplication::arguments().contains(QStringLiteral("--open-settings"))) {
         QTimer::singleShot(1500, &window, &BrowserWindow::openSettingsForTesting);
     }
+#endif
     if (isFirstRun()) {
         window.loadStartPage();
     } else {
