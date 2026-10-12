@@ -35,12 +35,12 @@ Root: HKCR; Subkey: "BLACKHTML"; ValueType: string; ValueData: "BLACK HTML Docum
 Root: HKCR; Subkey: "BLACKHTML\shell\open\command"; ValueType: string; ValueData: """{app}\BLACK.exe"" ""%1"""; Flags: uninsdeletekey
 Root: HKCR; Subkey: "BLACKHTML\DefaultIcon"; ValueType: string; ValueData: "{app}\BLACK.exe,0"; Flags: uninsdeletekey
 
-Root: HKCR; Subkey: "http\shell\open\command"; ValueType: string; ValueData: """{app}\BLACK.exe"" ""%1"""; Flags: uninsdeletekey
-Root: HKCR; Subkey: "https\shell\open\command"; ValueType: string; ValueData: """{app}\BLACK.exe"" ""%1"""; Flags: uninsdeletekey
+Root: HKCR; Subkey: "http\shell\open\command"; ValueType: string; ValueData: """{app}\BLACK.exe"" ""%1"""; Tasks: setdefaultbrowser; Flags: uninsdeletekey
+Root: HKCR; Subkey: "https\shell\open\command"; ValueType: string; ValueData: """{app}\BLACK.exe"" ""%1"""; Tasks: setdefaultbrowser; Flags: uninsdeletekey
 
 ; File associations for .html/.htm
-Root: HKCR; Subkey: ".html"; ValueType: string; ValueData: "BLACKHTML"; Flags: uninsdeletevalue
-Root: HKCR; Subkey: ".htm"; ValueType: string; ValueData: "BLACKHTML"; Flags: uninsdeletevalue
+Root: HKCR; Subkey: ".html"; ValueType: string; ValueData: "BLACKHTML"; Tasks: setdefaultbrowser; Flags: uninsdeletevalue
+Root: HKCR; Subkey: ".htm"; ValueType: string; ValueData: "BLACKHTML"; Tasks: setdefaultbrowser; Flags: uninsdeletevalue
 
 ; black:// internal protocol
 Root: HKCR; Subkey: "black"; ValueType: string; ValueData: "URL:BLACK Internal Protocol"; Flags: uninsdeletekey
