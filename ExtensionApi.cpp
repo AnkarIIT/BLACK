@@ -157,16 +157,16 @@ QSet<QString> ExtensionContext::hostPermissions() const
     return m_hostPermissions;
 }
 
-void ExtensionContext::registerApi(std::unique_ptr<ExtensionApi> api)
+void ExtensionContext::registerApi(std::shared_ptr<ExtensionApi> api)
 {
     if (!api)
         return;
-    m_apis.append(std::move(api));
+    m_apis.append(api);
 }
 
 ExtensionApi *ExtensionContext::api(const QString &name) const
 {
-    for (const std::unique_ptr<ExtensionApi> &a : m_apis) {
+    for (const std::shared_ptr<ExtensionApi> &a : m_apis) {
         if (a && a->name() == name)
             return a.get();
     }

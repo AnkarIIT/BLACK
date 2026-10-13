@@ -69,6 +69,9 @@ struct ExtensionInfo {
     QDateTime installTime;
     QDateTime lastUpdateTime;
     ExtensionContext *context = nullptr;
+
+    // Required for QList/QMap comparisons (e.g., indexOf, removeOne, contains)
+    bool operator==(const ExtensionInfo &other) const { return id == other.id; }
 };
 
 class ExtensionManager : public QObject

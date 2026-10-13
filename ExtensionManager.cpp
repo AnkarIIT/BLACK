@@ -678,16 +678,16 @@ void ExtensionManager::setupExtensionContext(ExtensionInfo *info)
     ctx->setHostPermissions(hostPermissions);
     
     // Register APIs
-    ctx->registerApi(std::make_unique<ExtensionRuntimeApi>(ctx.get()));
-    ctx->registerApi(std::make_unique<ExtensionStorageApi>(ctx.get()));
-    ctx->registerApi(std::make_unique<ExtensionTabsApi>(ctx.get()));
-    ctx->registerApi(std::make_unique<ExtensionDeclarativeNetRequestApi>(ctx.get()));
-    ctx->registerApi(std::make_unique<ExtensionScriptingApi>(ctx.get()));
-    ctx->registerApi(std::make_unique<ExtensionIdentityApi>(ctx.get()));
-    ctx->registerApi(std::make_unique<ExtensionActionApi>(ctx.get()));
-    ctx->registerApi(std::make_unique<ExtensionSidePanelApi>(ctx.get()));
-    ctx->registerApi(std::make_unique<ExtensionCommandsApi>(ctx.get()));
-    ctx->registerApi(std::make_unique<ExtensionOffscreenApi>(ctx.get()));
+    ctx->registerApi(std::make_shared<ExtensionRuntimeApi>(ctx.get()));
+    ctx->registerApi(std::make_shared<ExtensionStorageApi>(ctx.get()));
+    ctx->registerApi(std::make_shared<ExtensionTabsApi>(ctx.get()));
+    ctx->registerApi(std::make_shared<ExtensionDeclarativeNetRequestApi>(ctx.get()));
+    ctx->registerApi(std::make_shared<ExtensionScriptingApi>(ctx.get()));
+    ctx->registerApi(std::make_shared<ExtensionIdentityApi>(ctx.get()));
+    ctx->registerApi(std::make_shared<ExtensionActionApi>(ctx.get()));
+    ctx->registerApi(std::make_shared<ExtensionSidePanelApi>(ctx.get()));
+    ctx->registerApi(std::make_shared<ExtensionCommandsApi>(ctx.get()));
+    ctx->registerApi(std::make_shared<ExtensionOffscreenApi>(ctx.get()));
     
     // Connect extension events
     connect(ctx.get(), &ExtensionContext::unloaded, [this, id = info->id]() {

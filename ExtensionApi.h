@@ -150,7 +150,7 @@ public:
     QSet<QString> hostPermissions() const;
 
     // Takes ownership. Registries are looked up by ExtensionApi::name().
-    void registerApi(std::unique_ptr<ExtensionApi> api);
+    void registerApi(std::shared_ptr<ExtensionApi> api);
 
     // Returns the registered API whose name() matches, or nullptr.
     ExtensionApi *api(const QString &name) const;
@@ -172,7 +172,7 @@ private:
     QWebEngineProfile *m_profile = nullptr; // Borrowed, may be null.
     QSet<ExtensionApiPermission> m_permissions;
     QSet<QString> m_hostPermissions;
-    QList<std::unique_ptr<ExtensionApi>> m_apis;
+    QList<std::shared_ptr<ExtensionApi>> m_apis;
 };
 
 // ── Placeholder API namespaces ───────────────────────────────────────────────

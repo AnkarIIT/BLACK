@@ -61,6 +61,21 @@ else()
     find_package(OpenSSL REQUIRED)
 endif()
 
+# macOS: Homebrew OpenSSL is in non-standard location; help CMake find it
+if(APPLE)
+    set(OPENSSL_ROOT_DIR "/opt/homebrew/opt/openssl" CACHE PATH "OpenSSL root dir")
+    set(OPENSSL_INCLUDE_DIR "/opt/homebrew/opt/openssl/include" CACHE PATH "OpenSSL include dir")
+    set(OPENSSL_CRYPTO_LIBRARY "/opt/homebrew/opt/openssl/lib/libcrypto.dylib" CACHE FILEPATH "OpenSSL crypto library")
+    set(OPENSSL_SSL_LIBRARY "/opt/homebrew/opt/openssl/lib/libssl.dylib" CACHE FILEPATH "OpenSSL ssl library")
+    # Also try Intel Homebrew path
+    if(NOT EXISTS "${OPENSSL_ROOT_DIR}")
+        set(OPENSSL_ROOT_DIR "/usr/local/opt/openssl")
+        set(OPENSSL_INCLUDE_DIR "/usr/local/opt/openssl/include")
+        set(OPENSSL_CRYPTO_LIBRARY "/usr/local/opt/openssl/lib/libcrypto.dylib")
+        set(OPENSSL_SSL_LIBRARY "/usr/local/opt/openssl/lib/libssl.dylib")
+    endif()
+endif()
+
 # macOS Keychain (Security framework) for VaultCrypto master key storage
 if(APPLE)
     find_library(SECURITY Security)
