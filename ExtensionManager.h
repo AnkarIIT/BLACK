@@ -50,7 +50,7 @@ struct ExtensionManifestV3 {
     QJsonObject key;
     QJsonObject sandbox;
     QJsonObject sidePanel;
-    QJsonObject webAccessibleResources;
+    QJsonArray webAccessibleResources;
 };
 
 struct ExtensionInfo {
@@ -119,7 +119,7 @@ private:
     void teardownExtensionContext(ExtensionInfo *info);
     
     QList<ExtensionInfo> m_extensions;
-    QMap<QString, std::unique_ptr<ExtensionContext>> m_contexts;
+    QMap<QString, std::shared_ptr<ExtensionContext>> m_contexts;
     QWebEngineProfile *m_profile = nullptr;
 };
 

@@ -606,7 +606,7 @@ ExtensionInfo ExtensionManager::createExtensionInfo(const QString &id, const QSt
 
 void ExtensionManager::setupExtensionContext(ExtensionInfo *info)
 {
-    auto ctx = std::make_unique<ExtensionContext>(info->id, this);
+    auto ctx = std::make_shared<ExtensionContext>(info->id, this);
     ctx->setExtensionPath(info->path);
     ctx->setManifest(info->manifest);
     ctx->setProfile(m_profile);
@@ -694,7 +694,7 @@ void ExtensionManager::setupExtensionContext(ExtensionInfo *info)
         teardownExtensionContext(getExtension(id));
     });
     
-    m_contexts[info->id] = std::move(ctx);
+    m_contexts[info->id] = ctx;
     info->context = m_contexts[info->id].get();
 }
 

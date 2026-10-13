@@ -234,6 +234,16 @@ bool storeKeyToFile(const QByteArray &key)
 }
 
 #if defined(Q_OS_MACOS)
+
+// Helper to create a CFDictionary with proper key/value arrays.
+static CFDictionaryRef makeKeychainDict(CFAllocatorRef allocator,
+                                        const void **keys, const void **values,
+                                        CFIndex count)
+{
+    return CFDictionaryCreate(allocator, keys, values, count,
+                              &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+}
+
 QByteArray loadKeyFromMacOSKeychain()
 {
     const char *service = "BLACK Browser";
@@ -242,13 +252,9 @@ QByteArray loadKeyFromMacOSKeychain()
     CFStringRef serviceRef = CFStringCreateWithCString(kCFAllocatorDefault, service, kCFStringEncodingUTF8);
     CFStringRef accountRef = CFStringCreateWithCString(kCFAllocatorDefault, account, kCFStringEncodingUTF8);
 
-    CFDictionaryRef query = CFDictionaryCreate(kCFAllocatorDefault,
-        (const void **)&kSecClass, (const void **)&kSecClassGenericPassword,
-        (const void **)&kSecAttrService, (const void **)&serviceRef,
-        (const void **)&kSecAttrAccount, (const void **)&accountRef,
-        (const void **)&kSecReturnData, (const void **)kCFBooleanTrue,
-        (const void **)&kSecMatchLimit, (const void **)kSecMatchLimitOne,
-        nullptr);
+    const void *queryKeys[] = { kSecClass, kSecAttrService, kSecAttrAccount, kSecReturnData, kSecMatchLimit };
+    const void *queryValues[] = { kSecClassGenericPassword, serviceRef, accountRef, kCFBooleanTrue, kSecMatchLimitOne };
+    CFDictionaryRef query = makeKeychainDict(kCFAllocatorDefault, queryKeys, queryValues, 5);
 
     CFTypeRef result = nullptr;
     OSStatus status = SecItemCopyMatching(query, &result);
@@ -269,13 +275,9 @@ QByteArray loadKeyFromMacOSKeychain()
     CFDataRef dataRef = CFDataCreate(kCFAllocatorDefault,
         reinterpret_cast<const UInt8 *>(newKey.constData()), newKey.size());
 
-    CFDictionaryRef addQuery = CFDictionaryCreate(kCFAllocatorDefault,
-        (const void **)&kSecClass, (const void **)&kSecClassGenericPassword,
-        (const void **)&kSecAttrService, (const void **)&serviceRef,
-        (const void **)&kSecAttrAccount, (const void **)&accountRef,
-        (const void **)&kSecValueData, (const void **)&dataRef,
-        (const void **)&kSecAttrAccessible, (const void **)kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-        nullptr);
+    const void *addKeys[] = { kSecClass, kSecAttrService, kSecAttrAccount, kSecValueData, kSecAttrAccessible };
+    const void *addValues[] = { kSecClassGenericPassword, serviceRef, accountRef, dataRef, kSecAttrAccessibleWhenUnlockedThisDeviceOnly };
+    CFDictionaryRef addQuery = makeKeychainDict(kCFAllocatorDefault, addKeys, addValues, 5);
 
     status = SecItemAdd(addQuery, nullptr);
     CFRelease(addQuery);
@@ -301,24 +303,18 @@ bool storeKeyToMacOSKeychain(const QByteArray &key)
     CFStringRef accountRef = CFStringCreateWithCString(kCFAllocatorDefault, account, kCFStringEncodingUTF8);
 
     // Delete existing first
-    CFDictionaryRef deleteQuery = CFDictionaryCreate(kCFAllocatorDefault,
-        (const void **)&kSecClass, (const void **)&kSecClassGenericPassword,
-        (const void **)&kSecAttrService, (const void **)&serviceRef,
-        (const void **)&kSecAttrAccount, (const void **)&accountRef,
-        nullptr);
+    const void *delKeys[] = { kSecClass, kSecAttrService, kSecAttrAccount };
+    const void *delValues[] = { kSecClassGenericPassword, serviceRef, accountRef };
+    CFDictionaryRef deleteQuery = makeKeychainDict(kCFAllocatorDefault, delKeys, delValues, 3);
     SecItemDelete(deleteQuery);
     CFRelease(deleteQuery);
 
     CFDataRef dataRef = CFDataCreate(kCFAllocatorDefault,
         reinterpret_cast<const UInt8 *>(key.constData()), key.size());
 
-    CFDictionaryRef addQuery = CFDictionaryCreate(kCFAllocatorDefault,
-        (const void **)&kSecClass, (const void **)&kSecClassGenericPassword,
-        (const void **)&kSecAttrService, (const void **)&serviceRef,
-        (const void **)&kSecAttrAccount, (const void **)&accountRef,
-        (const void **)&kSecValueData, (const void **)&dataRef,
-        (const void **)&kSecAttrAccessible, (const void **)kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-        nullptr);
+    const void *addKeys[] = { kSecClass, kSecAttrService, kSecAttrAccount, kSecValueData, kSecAttrAccessible };
+    const void *addValues[] = { kSecClassGenericPassword, serviceRef, accountRef, dataRef, kSecAttrAccessibleWhenUnlockedThisDeviceOnly };
+    CFDictionaryRef addQuery = makeKeychainDict(kCFAllocatorDefault, addKeys, addValues, 5);
 
     OSStatus status = SecItemAdd(addQuery, nullptr);
     CFRelease(addQuery);
@@ -337,11 +333,9 @@ bool removeKeyFromMacOSKeychain()
     CFStringRef serviceRef = CFStringCreateWithCString(kCFAllocatorDefault, service, kCFStringEncodingUTF8);
     CFStringRef accountRef = CFStringCreateWithCString(kCFAllocatorDefault, account, kCFStringEncodingUTF8);
 
-    CFDictionaryRef deleteQuery = CFDictionaryCreate(kCFAllocatorDefault,
-        (const void **)&kSecClass, (const void **)&kSecClassGenericPassword,
-        (const void **)&kSecAttrService, (const void **)&serviceRef,
-        (const void **)&kSecAttrAccount, (const void **)&accountRef,
-        nullptr);
+    const void *delKeys[] = { kSecClass, kSecAttrService, kSecAttrAccount };
+    const void *delValues[] = { kSecClassGenericPassword, serviceRef, accountRef };
+    CFDictionaryRef deleteQuery = makeKeychainDict(kCFAllocatorDefault, delKeys, delValues, 3);
 
     OSStatus status = SecItemDelete(deleteQuery);
     CFRelease(deleteQuery);
@@ -350,6 +344,9 @@ bool removeKeyFromMacOSKeychain()
 
     return status == errSecSuccess || status == errSecItemNotFound;
 }
+
+#endif // Q_OS_MACOS
+
 #if defined(Q_OS_LINUX) && defined(HAVE_LIBSECRET)
 QByteArray loadKeyFromLibsecret()
 {
