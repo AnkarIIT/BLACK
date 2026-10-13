@@ -4,6 +4,7 @@
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QToolButton>
+#include <QScrollBar>
 #include <QtSvg/QSvgRenderer>
 #include <QPainter>
 #include <QPixmap>
@@ -143,7 +144,7 @@ void ChromeLayer::setupUi(QWidget *central, QVBoxLayout *rootLayout)
 
     // Connect scroll bar range changes to update button visibility
     auto *hScrollBar = m_tabScrollArea->horizontalScrollBar();
-    connect(hScrollBar, &QScrollBar::rangeChanged, this, [this](int min, int max) {
+    connect(hScrollBar, &QScrollBar::rangeChanged, this, [this, hScrollBar](int min, int max) {
         if (m_scrollLeftBtn && m_scrollRightBtn) {
             bool canScrollLeft = hScrollBar->value() > min;
             bool canScrollRight = hScrollBar->value() < max;
@@ -152,7 +153,7 @@ void ChromeLayer::setupUi(QWidget *central, QVBoxLayout *rootLayout)
         }
     });
     // Also update on value change (for keyboard/automatic scrolling)
-    connect(hScrollBar, &QScrollBar::valueChanged, this, [this](int value) {
+    connect(hScrollBar, &QScrollBar::valueChanged, this, [this, hScrollBar](int value) {
         if (m_scrollLeftBtn && m_scrollRightBtn) {
             int min = hScrollBar->minimum();
             int max = hScrollBar->maximum();

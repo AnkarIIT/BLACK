@@ -206,7 +206,7 @@ void PermissionsBridge::setPermission(const QString &origin, int type, int state
     // Read-modify-write against the authenticated store only (fail closed -
     // see loadPermissionsObject()). Writing back on top of an unauthenticated
     // file would let a tampered store silently keep its attacker-set values.
-    const QJsonObject obj = loadPermissionsObject();
+    QJsonObject obj = loadPermissionsObject();
 
     const QString key = keyFor(origin, type);
     if (state == Default) {
@@ -321,7 +321,7 @@ void PermissionsBridge::setDefaultState(int type, int state)
     QDir().mkpath(QFileInfo(path).absolutePath());
 
     // Fail-closed authenticated read (see loadPermissionsObject()).
-    const QJsonObject obj = loadPermissionsObject();
+    QJsonObject obj = loadPermissionsObject();
 
     const QString key = defaultKeyFor(type);
     if (state == Ask && type != Cookies && type != Images && type != JavaScript) {
