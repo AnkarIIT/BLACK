@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <QMutex>
 #include <QMutexLocker>
+#include <QPointer>
 
 namespace {
 
@@ -214,7 +215,7 @@ void SafeBrowsing::checkUrlAsync(const QUrl &url, std::function<void(bool, Threa
         }
     }
 
-    bool blocked = !threats.isEmpty();
+    bool blocked = (threats == 0);
     // Release the read lock before emitting: a connected slot that calls back
     // into any write-locked method would otherwise self-deadlock.
     locker.unlock();
