@@ -58,23 +58,21 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets Svg WebCh
 
 # macOS: Homebrew OpenSSL is in non-standard location; help CMake find it
 if(APPLE)
-    set(OPENSSL_ROOT_DIR "/opt/homebrew/opt/openssl" CACHE PATH "OpenSSL root dir")
-    set(OPENSSL_INCLUDE_DIR "/opt/homebrew/opt/openssl/include" CACHE PATH "OpenSSL include dir")
-    set(OPENSSL_CRYPTO_LIBRARY "/opt/homebrew/opt/openssl/lib/libcrypto.dylib" CACHE FILEPATH "OpenSSL crypto library")
-    set(OPENSSL_SSL_LIBRARY "/opt/homebrew/opt/openssl/lib/libssl.dylib" CACHE FILEPATH "OpenSSL ssl library")
-    # Also try Intel Homebrew path
-    if(NOT EXISTS "${OPENSSL_ROOT_DIR}")
-        set(OPENSSL_ROOT_DIR "/usr/local/opt/openssl")
-        set(OPENSSL_INCLUDE_DIR "/usr/local/opt/openssl/include")
-        set(OPENSSL_CRYPTO_LIBRARY "/usr/local/opt/openssl/lib/libcrypto.dylib")
-        set(OPENSSL_SSL_LIBRARY "/usr/local/opt/openssl/lib/libssl.dylib")
-    endif()
-endif()
-
-if(WIN32)
-    find_package(OpenSSL QUIET)
+    # Homebrew on Apple Silicon: /opt/homebrew/opt/openssl@3 or /opt/homebrew/opt/openssl
+    # Homebrew on Intel: /usr/local/opt/openssl@3 or /usr/local/opt/openssl
+    set(OPENSSL_ROOT_DIR_HINTS
+        "/opt/homebrew/opt/openssl@3"
+        "/opt/homebrew/opt/openssl"
+        "/usr/local/opt/openssl@3"
+        "/usr/local/opt/openssl"
+    )
+    find_package(OpenSSL REQUIRED HINTS ${OPENSSL_ROOT_DIR_HINTS})
 else()
-    find_package(OpenSSL REQUIRED)
+    if(WIN32)
+        find_package(OpenSSL QUIET)
+    else()
+        find_package(OpenSSL REQUIRED)
+    endif()
 endif()
 
 # macOS Keychain (Security framework) for VaultCrypto master key storage
