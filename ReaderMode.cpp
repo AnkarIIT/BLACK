@@ -170,7 +170,7 @@ QString renderArticleDocument(const ArticleContent &article, bool dark,
     html += QStringLiteral("<meta charset=\"utf-8\">\n");
     html += QStringLiteral("<title>%1</title>\n").arg(article.title.toHtmlEscaped());
     html += QStringLiteral("<style>\n");
-    html += readerModeStylesheet(dark);
+    html += ReaderMode::readerModeStylesheet(dark);
     html += QStringLiteral("body { margin: 0 auto; max-width: 42rem; padding: 2rem 1rem; }\n");
     html += QStringLiteral(".article-header { margin-bottom: 2rem; }\n");
     html += QStringLiteral(".article-header .site-name, .article-header .byline,\n"
