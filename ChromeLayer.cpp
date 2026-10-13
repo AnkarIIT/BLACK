@@ -186,11 +186,6 @@ void ChromeLayer::setupUi(QWidget *central, QVBoxLayout *rootLayout)
     m_tabStrip->setVisible(false);
 }
 
-private:
-    QScrollArea *m_tabScrollArea = nullptr;
-    QToolButton *m_scrollLeftBtn = nullptr;
-    QToolButton *m_scrollRightBtn = nullptr;
-
 void ChromeLayer::setChromeMode(bool chrome)
 {
     if (m_chrome == chrome)
