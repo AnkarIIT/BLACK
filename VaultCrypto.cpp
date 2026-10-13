@@ -578,7 +578,7 @@ QByteArray aesGcmEncryptBlob(const QByteArray &plain)
 
     QByteArray iv;
     iv.resize(12);
-    if (RAND_bytes(iv.data(), 12) != 1)
+    if (RAND_bytes(reinterpret_cast<unsigned char*>(iv.data()), 12) != 1)
         return {};
 
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
@@ -589,20 +589,25 @@ QByteArray aesGcmEncryptBlob(const QByteArray &plain)
         EVP_CIPHER_CTX_free(ctx);
         return {};
     }
-    if (EVP_EncryptInit_ex(ctx, nullptr, nullptr, master.constData(), iv.constData()) != 1) {
+    if (EVP_EncryptInit_ex(ctx, nullptr, nullptr,
+                           reinterpret_cast<const unsigned char*>(master.constData()),
+                           reinterpret_cast<const unsigned char*>(iv.constData())) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         return {};
     }
 
     int len = 0;
     QByteArray ciphertext(plain.size(), 0);
-    if (EVP_EncryptUpdate(ctx, ciphertext.data(), &len, plain.constData(), plain.size()) != 1) {
+    if (EVP_EncryptUpdate(ctx,
+                          reinterpret_cast<unsigned char*>(ciphertext.data()), &len,
+                          reinterpret_cast<const unsigned char*>(plain.constData()), plain.size()) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         return {};
     }
     int ciphertextLen = len;
 
-    if (EVP_EncryptFinal_ex(ctx, ciphertext.data() + len, &len) != 1) {
+    if (EVP_EncryptFinal_ex(ctx,
+                            reinterpret_cast<unsigned char*>(ciphertext.data() + len), &len) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         return {};
     }
@@ -649,25 +654,31 @@ QByteArray aesGcmDecryptBlob(const QByteArray &envelope)
         EVP_CIPHER_CTX_free(ctx);
         return {};
     }
-    if (EVP_DecryptInit_ex(ctx, nullptr, nullptr, master.constData(), iv.constData()) != 1) {
+    if (EVP_DecryptInit_ex(ctx, nullptr, nullptr,
+                           reinterpret_cast<const unsigned char*>(master.constData()),
+                           reinterpret_cast<const unsigned char*>(iv.constData())) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         return {};
     }
 
     int len = 0;
     QByteArray plaintext(ciphertext.size(), 0);
-    if (EVP_DecryptUpdate(ctx, plaintext.data(), &len, ciphertext.constData(), ciphertext.size()) != 1) {
+    if (EVP_DecryptUpdate(ctx,
+                          reinterpret_cast<unsigned char*>(plaintext.data()), &len,
+                          reinterpret_cast<const unsigned char*>(ciphertext.constData()), ciphertext.size()) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         return {};
     }
     int plaintextLen = len;
 
-    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, tag.data()) != 1) {
+    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16,
+                            const_cast<unsigned char*>(reinterpret_cast<const unsigned char*>(tag.constData()))) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         return {};
     }
 
-    if (EVP_DecryptFinal_ex(ctx, plaintext.data() + len, &len) != 1) {
+    if (EVP_DecryptFinal_ex(ctx,
+                            reinterpret_cast<unsigned char*>(plaintext.data() + len), &len) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         return {}; // authentication failed
     }
