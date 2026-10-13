@@ -55,11 +55,6 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets Svg WebCh
 
 # OpenSSL is only required on non-Windows for AES-GCM in VaultCrypto
 # On Windows, DPAPI is used which doesn't require OpenSSL
-if(WIN32)
-    find_package(OpenSSL QUIET)
-else()
-    find_package(OpenSSL REQUIRED)
-endif()
 
 # macOS: Homebrew OpenSSL is in non-standard location; help CMake find it
 if(APPLE)
@@ -74,6 +69,12 @@ if(APPLE)
         set(OPENSSL_CRYPTO_LIBRARY "/usr/local/opt/openssl/lib/libcrypto.dylib")
         set(OPENSSL_SSL_LIBRARY "/usr/local/opt/openssl/lib/libssl.dylib")
     endif()
+endif()
+
+if(WIN32)
+    find_package(OpenSSL QUIET)
+else()
+    find_package(OpenSSL REQUIRED)
 endif()
 
 # macOS Keychain (Security framework) for VaultCrypto master key storage
