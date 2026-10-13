@@ -14,6 +14,8 @@ class QWebEngineNewWindowRequest;
 class QWebChannel;
 class TabController;
 
+struct TabInfo;
+
 class TabManager : public QObject
 {
     Q_OBJECT

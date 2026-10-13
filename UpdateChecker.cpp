@@ -381,7 +381,8 @@ void UpdateChecker::onDownloadFinished()
                 args << QStringLiteral("/VERYSILENT") << QStringLiteral("/SUPPRESSMSGBOXES")
                      << QStringLiteral("/NORESTART") << QStringLiteral("/LOG");
 
-                if (!m_installerProcess->start(m_downloadFilePath, args)) {
+                m_installerProcess->start(m_downloadFilePath, args);
+                if (!m_installerProcess->waitForStarted(5000)) {
                     error = QStringLiteral("Failed to launch installer: %1").arg(m_installerProcess->errorString());
                     success = false;
                     discardDownloadedFile();
@@ -466,7 +467,7 @@ void UpdateChecker::cleanupDownload()
         m_downloadFile = nullptr;
     }
     if (m_hasher) {
-        m_hasher->deleteLater();
+        delete m_hasher;
         m_hasher = nullptr;
     }
     // Never deleteLater() a process that may still be running - that kills the

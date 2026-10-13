@@ -11,6 +11,12 @@
 #include <QProgressBar>
 #include <QGraphicsDropShadowEffect>
 #include <QGraphicsOpacityEffect>
+#include <QParallelAnimationGroup>
+#include <QPushButton>
+#include <QUrl>
+#include <QColor>
+
+#include "BrowserSettings.h"
 
 class BrowserWindow;
 
