@@ -253,8 +253,9 @@ elseif(APPLE)
     if(METAL)
         target_link_libraries(BLACK PRIVATE ${METAL})
     endif()
-    # Explicitly undefine AGL symbols to prevent linker from pulling in AGL framework
-    target_link_options(BLACK PRIVATE "-Wl,-U,_aglChoosePixelFormat" "-Wl,-U,_aglSetDrawable" "-Wl,-U,_aglSetCurrentContext" "-Wl,-U,_aglCreateContext" "-Wl,-U,_aglDestroyContext")
+    # Force Qt to use Metal backend instead of OpenGL/AGL
+    target_compile_definitions(BLACK PRIVATE QT_MAC_WANTS_LAYER=1)
+    target_link_options(BLACK PRIVATE "-Wl,-framework,Metal" "-Wl,-framework,OpenGL")
     target_compile_definitions(BLACK PRIVATE HAVE_OPENSSL)
 elseif(LINUX)
     target_link_libraries(BLACK PRIVATE OpenSSL::SSL OpenSSL::Crypto ${SECRET})
