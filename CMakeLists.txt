@@ -243,12 +243,18 @@ if(WIN32)
     target_link_libraries(BLACK PRIVATE crypt32 dwmapi)
 elseif(APPLE)
     target_link_libraries(BLACK PRIVATE OpenSSL::SSL OpenSSL::Crypto ${SECURITY})
-    # AGL framework deprecated/removed on macOS 13+; link OpenGL explicitly to avoid
-    # Qt WebEngine trying to link the removed AGL framework.
+    # AGL framework deprecated/removed on macOS 13+; link OpenGL and Metal explicitly
+    # to avoid Qt WebEngine trying to link the removed AGL framework.
     find_library(OPENGL OpenGL)
     if(OPENGL)
         target_link_libraries(BLACK PRIVATE ${OPENGL})
     endif()
+    find_library(METAL Metal)
+    if(METAL)
+        target_link_libraries(BLACK PRIVATE ${METAL})
+    endif()
+    # Explicitly undefine AGL symbols to prevent linker from pulling in AGL framework
+    target_link_options(BLACK PRIVATE "-Wl,-U,_aglChoosePixelFormat" "-Wl,-U,_aglSetDrawable" "-Wl,-U,_aglSetCurrentContext" "-Wl,-U,_aglCreateContext" "-Wl,-U,_aglDestroyContext")
     target_compile_definitions(BLACK PRIVATE HAVE_OPENSSL)
 elseif(LINUX)
     target_link_libraries(BLACK PRIVATE OpenSSL::SSL OpenSSL::Crypto ${SECRET})
