@@ -8,12 +8,12 @@ on:
 
 jobs:
   build-macos:
-    runs-on: macos-12
+    runs-on: macos-latest
     timeout-minutes: 90
     
     strategy:
       matrix:
-        qt_version: [6.8.0]
+        qt_version: [6.8.3]
         build_type: [Release, Debug]
         
     steps:
