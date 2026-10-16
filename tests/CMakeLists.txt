@@ -124,6 +124,7 @@ foreach(t
     test_shelffstore
     test_trackerblocker
     test_vaultcrypto
+    test_videodownloader
 )
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${t}.cpp")
         add_black_test(${t} ${t}.cpp)
