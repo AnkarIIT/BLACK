@@ -376,8 +376,8 @@ VideoDownloader::VideoDownloader(QObject *parent)
     : QObject(parent), d(new Private)
 {
     d->nam = new QNetworkAccessManager(this);
-    qRegisterMetatype<VideoInfo>("VideoInfo");
-    qRegisterMetatype<DownloadProgress>("DownloadProgress");
+    qRegisterMetaType<VideoInfo>("VideoInfo");
+    qRegisterMetaType<DownloadProgress>("DownloadProgress");
 }
 
 VideoDownloader::~VideoDownloader()
