@@ -4,6 +4,7 @@
 #include <QStandardPaths>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QWebEngineScript>
 #include "../ExtensionManager.h"
 #include "../VaultCrypto.h"
 #include "../OSPaths.h"

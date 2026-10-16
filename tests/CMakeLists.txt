@@ -40,9 +40,14 @@ endif()
 # Building the application's own sources once (minus main.cpp, which supplies
 # the real entry point) means each test links against exactly what the browser
 # links against, so a test can never silently diverge from the shipped code.
+#
+# BrowserWindow.cpp AND BrowserWindow.h are both excluded: the header carries
+# Q_OBJECT, so AUTOMOC would emit moc_BrowserWindow (with vtable references to
+# changeEvent() et al.) into the test lib while the definitions stay in the
+# excluded .cpp, breaking every test link with undefined symbols.
 set(BLACK_TESTLIB_SOURCES "")
 foreach(src IN LISTS BLACK_SOURCES)
-    if(NOT src STREQUAL "main.cpp" AND NOT src STREQUAL "BrowserWindow.cpp")
+    if(NOT src STREQUAL "main.cpp" AND NOT src STREQUAL "BrowserWindow.cpp" AND NOT src STREQUAL "BrowserWindow.h")
         list(APPEND BLACK_TESTLIB_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/../${src})
     endif()
 endforeach()
