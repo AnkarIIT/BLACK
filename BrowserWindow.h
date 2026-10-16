@@ -10,6 +10,8 @@
 #include <QWebEnginePermission>
 #endif
 #include <QWebEngineCertificateError>
+#include <QWebEngineFullScreenRequest>
+#include <QWebEngineClientCertificateSelection>
 #include <QLineEdit>
 #include <QToolButton>
 #include <QPushButton>
@@ -21,7 +23,8 @@
 #include <QUrl>
 
 // Safari-style User-Agent shared by the main and private-window profiles so
-// both present an identical fingerprint to sites.
+// both present an identical fingerprint to sites (same string on the same OS,
+// including the BLACK/1.0 suffix on every platform).
 QString getSafariUserAgent();
 #include <QLabel>
 #include <QScrollArea>
@@ -32,6 +35,7 @@ QString getSafariUserAgent();
 #include <QPointer>
 
 class QProgressBar;
+class QAuthenticator;
 class SafariWebView;
 class CollaborationManager;
 class AIAgentManager;
@@ -171,6 +175,11 @@ private:
     void applyUiLayoutToView(QWebEngineView *view);
     void applySidebarLayout(bool chrome);
     void handleRenderProcessCrash(QWebEngineView *view);
+    void handleFullScreenRequest(QWebEngineFullScreenRequest request);
+    void handleAuthenticationRequired(const QUrl &requestUrl, QAuthenticator *authenticator);
+    void handleProxyAuthenticationRequired(const QUrl &requestUrl, QAuthenticator *authenticator,
+                                           const QString &proxyHost);
+    void handleClientCertificateSelection(QWebEngineClientCertificateSelection selection);
     void updateUrlContainerStyle();
     void updateWebViewBackgrounds();
 
@@ -422,6 +431,11 @@ private:
     void preloadFavicon(const QUrl &url);
     QNetworkAccessManager m_netManager;
     QMap<QString, QPixmap> m_faviconCache;
+
+    // Page-initiated fullscreen state (HTML5 video / Element.requestFullscreen).
+    QPointer<QWebEngineView> m_fullscreenView;
+    bool m_pageFullscreen = false;
+    bool m_fullscreenWasMaximized = false;
 };
 
 #endif
