@@ -41,6 +41,25 @@ html[data-ui-layout="chrome"] {
     --accent: #1a73e8;
 }
 
+/* ── Shared generic tokens (used across pages) ─────────────────────────────── */
+/* These variables are referenced by several internal pages. Without Chrome
+ * values here they would fall back to the Safari palette in Chrome mode.
+ * Geometry tokens (--radius*) are mode-independent and defined once. */
+
+html[data-ui-layout="chrome"] {
+    --border: rgba(0, 0, 0, 0.14);
+    --control-bg: rgba(60, 64, 67, 0.08);
+    --glass: rgba(255, 255, 255, 0.72);
+    --hairline: rgba(0, 0, 0, 0.08);
+    --hover: rgba(60, 64, 67, 0.08);
+    --line: rgba(0, 0, 0, 0.14);
+    --muted: #5f6368;
+    --radius: 12px;
+    --radius-sm: 8px;
+    --sec: #5f6368;
+    --shadow: 0 1px 3px rgba(60, 64, 67, 0.3);
+}
+
 /* ── Dark Chrome ──────────────────────────────────────────────────────────── */
 
 html[data-ui-layout="chrome"].black-forced-dark {
@@ -68,4 +87,16 @@ html[data-ui-layout="chrome"].black-forced-dark {
     --card: #202124;
     --text: #e8eaed;
     --accent: #8ab4f8;
+}
+
+html[data-ui-layout="chrome"].black-forced-dark {
+    --border: rgba(255, 255, 255, 0.14);
+    --control-bg: rgba(232, 234, 237, 0.08);
+    --glass: rgba(32, 33, 36, 0.72);
+    --hairline: rgba(255, 255, 255, 0.09);
+    --hover: rgba(232, 234, 237, 0.08);
+    --line: rgba(255, 255, 255, 0.14);
+    --muted: #9aa0a6;
+    --sec: #9aa0a6;
+    --shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 }
