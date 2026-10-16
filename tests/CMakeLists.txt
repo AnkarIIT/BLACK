@@ -15,7 +15,9 @@ if(APPLE)
         foreach(_qt_prop INTERFACE_LINK_LIBRARIES INTERFACE_LINK_OPTIONS)
             get_target_property(_qt_vals ${_qt_target} ${_qt_prop})
             if(_qt_vals AND NOT _qt_vals MATCHES "NOTFOUND$")
-                list(REMOVE_ITEM _qt_vals "-framework AGL")
+                # WrapOpenGL carries the framework as a full SDK-absolute path,
+                # which CMake renders as `-framework AGL` at link time.
+                list(REMOVE_ITEM _qt_vals "-framework AGL" "/System/Library/Frameworks/AGL.framework")
                 set_target_properties(${_qt_target} PROPERTIES ${_qt_prop} "${_qt_vals}")
             endif()
         endforeach()
