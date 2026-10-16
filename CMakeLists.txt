@@ -204,6 +204,8 @@ set(BLACK_SOURCES
     ProductivityManager.h
     AdvancedSecurity.cpp
     AdvancedSecurity.h
+    VideoDownloader.cpp
+    VideoDownloader.h
 )
 
 qt_add_executable(BLACK ${BLACK_SOURCES})
