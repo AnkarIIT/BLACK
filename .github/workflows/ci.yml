@@ -49,6 +49,11 @@ jobs:
     - name: Build
       run: |
         cmake --build build --parallel $(sysctl -n hw.ncpu)
+
+    - name: Dump link command on failure
+      if: failure()
+      run: |
+        cat build/CMakeFiles/BLACK.dir/link.txt || true
         
     - name: Run Tests
       run: |
