@@ -59,6 +59,14 @@ bool SafariWebPage::acceptNavigationRequest(const QUrl &url, NavigationType type
     return QWebEnginePage::acceptNavigationRequest(url, type, isMainFrame);
 }
 
+QString SafariWebPage::originLabel(const QUrl &origin)
+{
+    const QString host = origin.host();
+    if (host.isEmpty())
+        return QStringLiteral("[This browser page]\n\n");
+    return QStringLiteral("[%1]\n\n").arg(host);
+}
+
 int SafariWebPage::showJsDialog(const QString &message, const QString &okText,
                                 const QString &cancelText, QString *input,
                                 bool showInput) const
@@ -150,22 +158,21 @@ int SafariWebPage::showJsDialog(const QString &message, const QString &okText,
 
 void SafariWebPage::javaScriptAlert(const QUrl &securityOrigin, const QString &msg)
 {
-    Q_UNUSED(securityOrigin);
-    showJsDialog(msg, tr("OK"), QString(), nullptr, false);
+    // Show the requesting origin: a page-styled dialog without it could be
+    // mistaken for a browser message.
+    showJsDialog(originLabel(securityOrigin) + msg, tr("OK"), QString(), nullptr, false);
 }
 
 bool SafariWebPage::javaScriptConfirm(const QUrl &securityOrigin, const QString &msg)
 {
-    Q_UNUSED(securityOrigin);
-    return showJsDialog(msg, tr("OK"), tr("Cancel"), nullptr, false) == QDialog::Accepted;
+    return showJsDialog(originLabel(securityOrigin) + msg, tr("OK"), tr("Cancel"), nullptr, false) == QDialog::Accepted;
 }
 
 bool SafariWebPage::javaScriptPrompt(const QUrl &securityOrigin, const QString &msg,
                                      const QString &defaultValue, QString *result)
 {
-    Q_UNUSED(securityOrigin);
     QString input = defaultValue;
-    const bool accepted = showJsDialog(msg, tr("OK"), tr("Cancel"), &input, true)
+    const bool accepted = showJsDialog(originLabel(securityOrigin) + msg, tr("OK"), tr("Cancel"), &input, true)
         == QDialog::Accepted;
     if (result)
         *result = accepted ? input : QString();
