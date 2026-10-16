@@ -7,6 +7,21 @@ set(CMAKE_AUTORCC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Test WebEngineWidgets Svg WebChannel Network)
 
+# Same AGL strip as the top level (see CMakeLists.txt): directory properties
+# do not propagate into this scope, so repeat it for the test targets.
+if(APPLE)
+    get_property(_qt_imported_targets_tests DIRECTORY PROPERTY IMPORTED_TARGETS)
+    foreach(_qt_target IN LISTS _qt_imported_targets_tests)
+        if(_qt_target MATCHES "^Qt6::")
+            get_target_property(_qt_libs ${_qt_target} INTERFACE_LINK_LIBRARIES)
+            if(_qt_libs)
+                list(REMOVE_ITEM _qt_libs "-framework AGL")
+                set_target_properties(${_qt_target} PROPERTIES INTERFACE_LINK_LIBRARIES "${_qt_libs}")
+            endif()
+        endif()
+    endforeach()
+endif()
+
 if(WIN32)
     find_package(OpenSSL QUIET)
 else()

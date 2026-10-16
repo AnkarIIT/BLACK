@@ -53,6 +53,25 @@ endif()
 # fuzz harnesses (they reuse the QtTest macros).
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets Svg WebChannel Network Test)
 
+# Qt 6.8's WebEngine imported targets propagate `-framework AGL`, which Apple
+# removed from the macOS 15 SDK, so every link fails with
+# `ld: framework 'AGL' not found`. None of our objects reference AGL symbols;
+# strip the flag from every Qt6 imported target's link interface. (If a future
+# Qt actually needs AGL symbols, the link will fail with undefined symbols
+# instead, which is the observable signal to revisit this.)
+if(APPLE)
+    get_property(_qt_imported_targets DIRECTORY PROPERTY IMPORTED_TARGETS)
+    foreach(_qt_target IN LISTS _qt_imported_targets)
+        if(_qt_target MATCHES "^Qt6::")
+            get_target_property(_qt_libs ${_qt_target} INTERFACE_LINK_LIBRARIES)
+            if(_qt_libs)
+                list(REMOVE_ITEM _qt_libs "-framework AGL")
+                set_target_properties(${_qt_target} PROPERTIES INTERFACE_LINK_LIBRARIES "${_qt_libs}")
+            endif()
+        endif()
+    endforeach()
+endif()
+
 # OpenSSL is only required on non-Windows for AES-GCM in VaultCrypto
 # On Windows, DPAPI is used which doesn't require OpenSSL
 
