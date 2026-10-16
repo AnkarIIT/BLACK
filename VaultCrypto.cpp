@@ -23,7 +23,9 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#if defined(HAVE_LIBSECRET)
 #include <secret/secret.h>
+#endif
 #endif
 
 #if defined(HAVE_OPENSSL)

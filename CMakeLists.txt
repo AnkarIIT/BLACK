@@ -104,12 +104,15 @@ if(APPLE)
     endif()
 endif()
 
-# Linux libsecret for VaultCrypto master key storage. The library file is
-# named libsecret-1.so (not libsecret.so), so search for that name; an empty
-# SECRET must never reach target_link_libraries (configure-time NOTFOUND error).
+# Linux libsecret for VaultCrypto master key storage. The headers live under
+# /usr/include/libsecret-1 (not on the default include path), so resolve
+# everything through pkg-config rather than guessing paths or library names.
 if(LINUX)
-    find_library(SECRET secret-1)
-    if(NOT SECRET)
+    find_package(PkgConfig QUIET)
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(LIBSECRET libsecret-1)
+    endif()
+    if(NOT LIBSECRET_FOUND)
         message(WARNING "libsecret not found on Linux, falling back to file-based master key storage")
     endif()
 endif()
@@ -271,8 +274,10 @@ elseif(APPLE)
     target_compile_definitions(BLACK PRIVATE HAVE_OPENSSL)
 elseif(LINUX)
     target_link_libraries(BLACK PRIVATE OpenSSL::SSL OpenSSL::Crypto)
-    if(SECRET)
-        target_link_libraries(BLACK PRIVATE ${SECRET})
+    if(LIBSECRET_FOUND)
+        target_include_directories(BLACK PRIVATE ${LIBSECRET_INCLUDE_DIRS})
+        target_link_libraries(BLACK PRIVATE ${LIBSECRET_LIBRARIES})
+        target_compile_options(BLACK PRIVATE ${LIBSECRET_CFLAGS_OTHER})
         target_compile_definitions(BLACK PRIVATE HAVE_LIBSECRET)
     endif()
     target_compile_definitions(BLACK PRIVATE HAVE_OPENSSL)

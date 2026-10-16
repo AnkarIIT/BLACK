@@ -122,7 +122,7 @@ jobs:
     - name: Install Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libgl1-mesa-dev libglib2.0-dev libnss3-dev libatk-bridge2.0-dev libdrm-dev libxkbcommon-dev libxcomposite-dev libxcursor-dev libxdamage-dev libxrandr-dev libgbm-dev libasound2-dev libpulse-dev libsecret-1-dev libssl-dev xvfb
+        sudo apt-get install -y libgl1-mesa-dev libglib2.0-dev libnss3-dev libatk-bridge2.0-dev libdrm-dev libxkbcommon-dev libxcomposite-dev libxcursor-dev libxdamage-dev libxrandr-dev libgbm-dev libasound2-dev libpulse-dev libsecret-1-dev libssl-dev pkgconf xvfb
     - name: Install Qt
       uses: jurplel/install-qt-action@v3
       with:
