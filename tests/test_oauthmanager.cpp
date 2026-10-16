@@ -1,48 +1,12 @@
 #include <QtTest>
-#include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QStandardPaths>
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QJsonArray>
-#include <QNetworkReply>
-#include <QEventLoop>
-#include <QTcpServer>
-#include <QTcpSocket>
 #include "../OAuthManager.h"
 #include "../VaultCrypto.h"
 #include "../OSPaths.h"
-
-class MockNetworkReply : public QNetworkReply
-{
-    Q_OBJECT
-public:
-    MockNetworkReply(const QByteArray &data, QNetworkReply::NetworkError error, QObject *parent = nullptr)
-        : QNetworkReply(parent), m_data(data), m_error(error)
-    {
-        open(QIODevice::ReadOnly);
-    }
-
-    void abort() override {}
-    qint64 bytesAvailable() const override { return m_data.size() - m_pos; }
-    bool isSequential() const override { return true; }
-    qint64 readData(char *data, qint64 maxlen) override {
-        qint64 len = qMin(maxlen, m_data.size() - m_pos);
-        if (len > 0) {
-            memcpy(data, m_data.constData() + m_pos, len);
-            m_pos += len;
-        }
-        return len;
-    }
-
-    QNetworkReply::NetworkError error() const override { return m_error; }
-    QString errorString() const override { return m_error == QNetworkReply::NoError ? QString() : "Mock error"; }
-
-private:
-    QByteArray m_data;
-    qint64 m_pos = 0;
-    QNetworkReply::NetworkError m_error = QNetworkReply::NoError;
-};
 
 class TestOAuthManager : public QObject
 {
