@@ -115,12 +115,13 @@ void ChromeLayer::setupUi(QWidget *central, QVBoxLayout *rootLayout)
     m_tabLayout->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     m_tabScrollArea->setWidget(tabContainer);
 
-    // Scroll buttons
+    // Scroll buttons (glyph color is applied in applyTheme() once the palette
+    // is known; the neutral gray here is only the pre-theme placeholder).
     m_scrollLeftBtn = new QToolButton(m_tabStrip);
     m_scrollLeftBtn->setFixedSize(24, 24);
     m_scrollLeftBtn->setToolTip("Scroll tabs left");
     m_scrollLeftBtn->setIcon(chromeSvgIcon(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\"><polyline points=\"15 18 9 12 15 6\"/></svg>", 14, "transparent"));
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\"><polyline points=\"15 18 9 12 15 6\"/></svg>", 14, QStringLiteral("#9aa0a6")));
     m_scrollLeftBtn->setVisible(false);
     connect(m_scrollLeftBtn, &QToolButton::clicked, this, [this]() {
         if (m_tabScrollArea) {
@@ -133,7 +134,7 @@ void ChromeLayer::setupUi(QWidget *central, QVBoxLayout *rootLayout)
     m_scrollRightBtn->setFixedSize(24, 24);
     m_scrollRightBtn->setToolTip("Scroll tabs right");
     m_scrollRightBtn->setIcon(chromeSvgIcon(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\"><polyline points=\"9 18 15 12 9 6\"/></svg>", 14, "transparent"));
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\"><polyline points=\"9 18 15 12 9 6\"/></svg>", 14, QStringLiteral("#9aa0a6")));
     m_scrollRightBtn->setVisible(false);
     connect(m_scrollRightBtn, &QToolButton::clicked, this, [this]() {
         if (m_tabScrollArea) {
@@ -294,6 +295,17 @@ void ChromeLayer::applyTheme(const ChromePalette &palette)
         "QToolButton { border: none; background: transparent; border-radius: 6px; padding: 0; }"
         "QToolButton:hover { background-color: %1; }"
     ).arg(palette.inactiveTabHover));
+
+    // Keep the scroll chevrons visible: they are created before any palette
+    // exists, so re-tint them on every theme application.
+    if (m_scrollLeftBtn)
+        m_scrollLeftBtn->setIcon(chromeSvgIcon(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\"><polyline points=\"15 18 9 12 15 6\"/></svg>",
+            14, palette.textSecondary));
+    if (m_scrollRightBtn)
+        m_scrollRightBtn->setIcon(chromeSvgIcon(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\"><polyline points=\"9 18 15 12 9 6\"/></svg>",
+            14, palette.textSecondary));
 
 #if !defined(Q_OS_MAC)
     // While Chrome mode is active, refresh the window-control glyphs so they
