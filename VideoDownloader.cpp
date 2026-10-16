@@ -1,5 +1,6 @@
 #include "VideoDownloader.h"
 
+#include <QMetaType>
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QNetworkReply>

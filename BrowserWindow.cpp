@@ -103,7 +103,7 @@
 #include <QTapGesture>
 #include <QGesture>
 #include <QNativeGestureEvent>
-#include <QTouchDevice>
+#include <QInputDevice>
 #include <QAuthenticator>
 #include <QInputDialog>
 #include <QLineEdit>
@@ -1175,7 +1175,13 @@ QIcon BrowserWindow::createSvgIcon(const QString &svgData, int size, const QStri
 // ── Traffic Light Helper ────────────────────────────────────────────────────
 bool BrowserWindow::isTouchDevice() const
 {
-    return !QTouchDevice::devices().isEmpty();
+    // Qt 6 enumerates input devices via QInputDevice (QTouchDevice is Qt 5).
+    // A touchscreen (not a trackpad) is what needs larger touch targets.
+    for (const QInputDevice *dev : QInputDevice::devices()) {
+        if (dev && dev->type() == QInputDevice::DeviceType::TouchScreen)
+            return true;
+    }
+    return false;
 }
 
 int BrowserWindow::touchIconSize(int desktopSize) const
