@@ -105,14 +105,17 @@ if(APPLE)
 endif()
 
 # Linux libsecret for VaultCrypto master key storage. The headers live under
-# /usr/include/libsecret-1 (not on the default include path), so resolve
-# everything through pkg-config rather than guessing paths or library names.
+# /usr/include/libsecret-1 (not on the default include path).
 if(LINUX)
-    find_package(PkgConfig QUIET)
-    if(PKG_CONFIG_FOUND)
-        pkg_check_modules(LIBSECRET IMPORTED_TARGET libsecret-1)
-    endif()
-    if(NOT LIBSECRET_FOUND)
+    find_path(LIBSECRET_INCLUDE_DIR
+        NAMES secret/secret.h
+        PATHS /usr/include/libsecret-1 /usr/local/include/libsecret-1
+    )
+    find_library(LIBSECRET_LIBRARY
+        NAMES secret-1
+        PATHS /usr/lib /usr/lib/x86_64-linux-gnu /usr/local/lib
+    )
+    if(NOT LIBSECRET_INCLUDE_DIR OR NOT LIBSECRET_LIBRARY)
         message(WARNING "libsecret not found on Linux, falling back to file-based master key storage")
     endif()
 endif()
@@ -274,10 +277,9 @@ elseif(APPLE)
     target_compile_definitions(BLACK PRIVATE HAVE_OPENSSL)
 elseif(LINUX)
     target_link_libraries(BLACK PRIVATE OpenSSL::SSL OpenSSL::Crypto)
-    if(LIBSECRET_FOUND)
-        # Use the imported target so include dirs, link libs, and compile
-        # flags from pkg-config all propagate correctly to the BLACK target.
-        target_link_libraries(BLACK PRIVATE PkgConfig::LIBSECRET)
+    if(LIBSECRET_INCLUDE_DIR AND LIBSECRET_LIBRARY)
+        target_include_directories(BLACK PRIVATE ${LIBSECRET_INCLUDE_DIR})
+        target_link_libraries(BLACK PRIVATE ${LIBSECRET_LIBRARY})
         target_compile_definitions(BLACK PRIVATE HAVE_LIBSECRET)
     endif()
     target_compile_definitions(BLACK PRIVATE HAVE_OPENSSL)
