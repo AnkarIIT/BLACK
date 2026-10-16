@@ -2,16 +2,21 @@
 
 ## Latest Safari Features (macOS Sequoia 15 / Tahoe 26)
 
-### Core Features Implemented
-- ✓ Intelligent Tracking Prevention (ITP)
-- ✓ Passkeys (Passwordless Authentication)
-- ✓ Safari Notify Me (Price/Restock Alerts)
-- ✓ Tab Groups with Topic Grouping
-- ✓ Enhanced Reader Mode
-- ✓ Highlights Extraction
-- ✓ Distraction Control
-- ✓ Picture-in-Picture
-- ✓ iCloud Keychain Sync
+### Engine reality
+- BLACK renders with **Qt WebEngine (Chromium/Blink)**, not WebKit. "Safari"
+  throughout this file means Safari-style UI/behavior, not the Safari engine.
+- The checklist below mixes shipped UI with aspirational items. Status as of
+  this revision: theme/layout, tab basics, PiP plumbing, and privacy-report UI
+  exist; the rest are stubs or TODOs (see Next Steps).
+
+### Core Features (status)
+- ~ Tracker blocking (host lists; full ITP-style machine learning: TODO)
+- ~ Passkeys UI (WebAuthn backend: stub)
+- ~ Tab groups (basic manager; topic auto-grouping: TODO)
+- ~ Reader Mode (button + class; article extraction: stub)
+- ~ Privacy report UI (live stats from the real blocker)
+- - Safari Notify Me / Highlights / Distraction Control: not implemented
+- - iCloud Keychain Sync: not implemented (no cloud backend by design)
 
 ### New in Safari 17.5/18
 - **Tab Grouping by Topics** - Automatic grouping based on content
