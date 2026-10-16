@@ -116,6 +116,7 @@
 #include <QPrintDialog>
 #include <QDesktopServices>
 #include <QTemporaryFile>
+#include <cmath>
 #include <functional>
 #include <utility>
 
@@ -1107,6 +1108,24 @@ bool BrowserWindow::event(QEvent *event)
         }
         if (ge->gestureType() == Qt::SmartZoomNativeGesture) {
             v->setZoomFactor(qFuzzyCompare(v->zoomFactor(), 1.0) ? 1.25 : 1.0);
+            event->accept();
+            return true;
+        }
+        if (ge->gestureType() == Qt::SwipeNativeGesture) {
+            // Swipe angle in degrees (Qt docs). Horizontal swipes navigate:
+            // rightward (~0 deg) = back, leftward (~180 deg) = forward,
+            // matching the Safari/Chrome macOS two-finger convention.
+            // Vertical swipes are ignored.
+            qreal angle = std::fmod(ge->value(), 360.0);
+            if (angle < 0.0)
+                angle += 360.0;
+            if (angle < 45.0 || angle >= 315.0) {
+                v->back();
+            } else if (angle >= 135.0 && angle < 225.0) {
+                v->forward();
+            } else {
+                break;
+            }
             event->accept();
             return true;
         }
