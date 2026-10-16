@@ -102,6 +102,12 @@
 #include <QGestureEvent>
 #include <QTapGesture>
 #include <QGesture>
+#include <QNativeGestureEvent>
+#include <QTouchDevice>
+#include <QAuthenticator>
+#include <QInputDialog>
+#include <QLineEdit>
+#include <QSslCertificate>
 #include <QBuffer>
 #include <QDrag>
 #include <QMimeData>
@@ -120,10 +126,12 @@
 
 // Safari-style User-Agent shared by the main and private-window profiles so
 // both present an identical fingerprint to sites. (Declared in BrowserWindow.h.)
+// The OS/platform token necessarily differs per OS, but both profiles on the
+// same machine send this exact string, including the honest BLACK/1.0 suffix.
 QString getSafariUserAgent()
 {
 #if defined(Q_OS_MACOS)
-    return QStringLiteral("Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15");
+    return QStringLiteral("Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15 BLACK/1.0");
 #elif defined(Q_OS_WIN)
     return QStringLiteral("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15 BLACK/1.0");
 #elif defined(Q_OS_LINUX)
@@ -937,6 +945,17 @@ void BrowserWindow::maximizeWindow() {
 
 // ── Mouse Events (frameless window) ────────────────────────────────────────
 void BrowserWindow::mousePressEvent(QMouseEvent *event) {
+    // Mouse back/forward buttons (button 4/5): navigate the active tab.
+    if (event->button() == Qt::BackButton || event->button() == Qt::ForwardButton) {
+        if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) {
+            if (event->button() == Qt::BackButton)
+                v->back();
+            else
+                v->forward();
+        }
+        event->accept();
+        return;
+    }
     if (event->button() == Qt::LeftButton && event->pos().y() < 52) {
         QWidget *child = childAt(event->pos());
         if (!child || child == m_toolbar || child == m_central) {
@@ -1072,6 +1091,27 @@ bool BrowserWindow::event(QEvent *event)
         }
         break;
     }
+    case QEvent::NativeGesture: {
+        // Trackpad gestures over the page: pinch-to-zoom and smart-zoom.
+        // ZoomNativeGesture::value() is an incremental scale delta, applied
+        // as scale *= (1 + value) per the Qt docs. Clamped to the documented
+        // QWebEnginePage zoom range (0.25 - 5.0).
+        auto *ge = static_cast<QNativeGestureEvent *>(event);
+        auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget());
+        if (!v || !v->page())
+            break;
+        if (ge->gestureType() == Qt::ZoomNativeGesture) {
+            v->setZoomFactor(qBound(0.25, v->zoomFactor() * (1.0 + ge->value()), 5.0));
+            event->accept();
+            return true;
+        }
+        if (ge->gestureType() == Qt::SmartZoomNativeGesture) {
+            v->setZoomFactor(qFuzzyCompare(v->zoomFactor(), 1.0) ? 1.25 : 1.0);
+            event->accept();
+            return true;
+        }
+        break;
+    }
     default:
         break;
     }
@@ -1116,10 +1156,7 @@ QIcon BrowserWindow::createSvgIcon(const QString &svgData, int size, const QStri
 // ── Traffic Light Helper ────────────────────────────────────────────────────
 bool BrowserWindow::isTouchDevice() const
 {
-    // Qt 6 doesn't expose a simple touchPoints() API anymore.
-    // We can check for touch devices via QTouchDevice, but for now just
-    // return false - touch icon scaling is a nice-to-have, not essential.
-    return false;
+    return !QTouchDevice::devices().isEmpty();
 }
 
 int BrowserWindow::touchIconSize(int desktopSize) const
@@ -2253,6 +2290,23 @@ SafariWebView* BrowserWindow::addTabView(const QUrl &url, QWebEngineNewWindowReq
     });
 #endif
 
+    // Page-initiated fullscreen (HTML5 video / Element.requestFullscreen).
+    // Accepting alone is not enough: the app must actually make the view
+    // fullscreen, otherwise the element fills only its viewport rectangle.
+    connect(view->page(), &QWebEnginePage::fullScreenRequested,
+            this, &BrowserWindow::handleFullScreenRequest);
+
+    // HTTP auth (intranet/captive portals) and proxy auth: prompt instead of
+    // failing silently.
+    connect(view->page(), &QWebEnginePage::authenticationRequired,
+            this, &BrowserWindow::handleAuthenticationRequired);
+    connect(view->page(), &QWebEnginePage::proxyAuthenticationRequired,
+            this, &BrowserWindow::handleProxyAuthenticationRequired);
+
+    // Mutual-TLS client certificates: let the user pick, or proceed without.
+    connect(view->page(), &QWebEnginePage::selectClientCertificate,
+            this, &BrowserWindow::handleClientCertificateSelection);
+
     if (request) {
         request->openIn(view->page());
     } else if (url.isValid() && !url.isEmpty()) {
@@ -3329,6 +3383,114 @@ void BrowserWindow::handlePermissionRequestOld(QWebEnginePage *page, const QUrl 
         allowed ? QWebEnginePage::PermissionGrantedByUser : QWebEnginePage::PermissionDeniedByUser);
 }
 #endif
+
+void BrowserWindow::handleFullScreenRequest(QWebEngineFullScreenRequest request)
+{
+    // Find the tab whose page issued the request.
+    QWebEnginePage *page = qobject_cast<QWebEnginePage *>(sender());
+    QWebEngineView *view = nullptr;
+    for (const TabInfo &t : m_tabs) {
+        if (t.view && t.view->page() == page) {
+            view = t.view;
+            break;
+        }
+    }
+    if (request.toggleOn()) {
+        if (!view) {
+            request.reject();
+            return;
+        }
+        request.accept();
+        m_fullscreenView = view;
+        m_pageFullscreen = true;
+        m_fullscreenWasMaximized = isMaximized();
+        showFullScreen();
+    } else {
+        request.accept();
+        if (m_pageFullscreen) {
+            m_pageFullscreen = false;
+            m_fullscreenView.clear();
+            if (m_fullscreenWasMaximized)
+                showMaximized();
+            else
+                showNormal();
+        }
+    }
+}
+
+void BrowserWindow::handleAuthenticationRequired(const QUrl &requestUrl, QAuthenticator *authenticator)
+{
+    if (!authenticator)
+        return;
+    bool ok = false;
+    const QString user = QInputDialog::getText(
+        this, tr("Authentication Required"),
+        tr("Enter username for %1").arg(requestUrl.host()),
+        QLineEdit::Normal, authenticator->user(), &ok);
+    if (!ok)
+        return;
+    const QString password = QInputDialog::getText(
+        this, tr("Authentication Required"),
+        tr("Enter password for %1").arg(requestUrl.host()),
+        QLineEdit::Password, QString(), &ok);
+    if (!ok)
+        return;
+    authenticator->setUser(user);
+    authenticator->setPassword(password);
+}
+
+void BrowserWindow::handleProxyAuthenticationRequired(const QUrl &requestUrl, QAuthenticator *authenticator,
+                                                      const QString &proxyHost)
+{
+    if (!authenticator)
+        return;
+    bool ok = false;
+    const QString user = QInputDialog::getText(
+        this, tr("Proxy Authentication Required"),
+        tr("Enter username for proxy %1 (requesting %2)").arg(proxyHost, requestUrl.host()),
+        QLineEdit::Normal, authenticator->user(), &ok);
+    if (!ok)
+        return;
+    const QString password = QInputDialog::getText(
+        this, tr("Proxy Authentication Required"),
+        tr("Enter password for proxy %1").arg(proxyHost),
+        QLineEdit::Password, QString(), &ok);
+    if (!ok)
+        return;
+    authenticator->setUser(user);
+    authenticator->setPassword(password);
+}
+
+void BrowserWindow::handleClientCertificateSelection(QWebEngineClientCertificateSelection selection)
+{
+    const QList<QSslCertificate> certs = selection.certificates();
+    if (certs.isEmpty()) {
+        selection.selectNone();
+        return;
+    }
+    QStringList items;
+    items.reserve(certs.size());
+    for (const QSslCertificate &c : certs) {
+        const QString name = c.subjectInfo(QSslCertificate::CommonName).join(QStringLiteral(", "));
+        items.append(QStringLiteral("%1 (expires %2)")
+                         .arg(name.isEmpty() ? tr("(unnamed certificate)") : name,
+                              c.expiryDate().toString(Qt::ISODate)));
+    }
+    bool ok = false;
+    const QString picked = QInputDialog::getItem(
+        this, tr("Select Certificate"),
+        tr("The site %1 requests a client certificate:").arg(selection.host().toString()),
+        items, 0, false, &ok);
+    if (!ok) {
+        selection.selectNone();
+        return;
+    }
+    const int idx = items.indexOf(picked);
+    if (idx < 0 || idx >= certs.size())
+        selection.selectNone();
+    else
+        selection.select(certs.at(idx));
+}
 
 void BrowserWindow::rebuildTabBar()
 {
@@ -4931,7 +5093,8 @@ QWidget* BrowserWindow::buildDownloadRow(int index, const DownloadItemInfo &item
         infoCol->addWidget(subLbl);
     } else {
         QLabel *statusLbl = new QLabel(item.state == 1 ? QStringLiteral("\u2713 Completed")
-                                                       : QStringLiteral("\u26A0 Failed"), row);
+                                      : item.state == 3 ? QStringLiteral("\u275A\u275A Paused")
+                                                        : QStringLiteral("\u26A0 Failed"), row);
         statusLbl->setStyleSheet(QString("color: %1; background: transparent; font-size: 11px; font-weight: 600;")
             .arg(item.state == 1 ? accent() : QStringLiteral("#ff453a")));
         infoCol->addWidget(statusLbl);
@@ -4975,9 +5138,43 @@ QWidget* BrowserWindow::buildDownloadRow(int index, const DownloadItemInfo &item
             "QToolButton:hover { background-color: %1; }"
         ).arg(hover()));
         connect(cancelBtn, &QToolButton::clicked, this, [this, index]() {
-            if (m_downloads && index < m_downloads->items().count()
-                && m_downloads->items()[index].request)
-                m_downloads->items()[index].request->cancel();
+            if (m_downloads && index < m_downloads->items().count())
+                m_downloads->cancelDownload(index);
+        });
+        rl->addWidget(cancelBtn);
+    } else if (item.state == 3) {
+        // Paused: offer resume (the pause glyph doubles as resume here would
+        // confuse; use the play glyph) plus cancel.
+        QToolButton *resumeBtn = new QToolButton(row);
+        resumeBtn->setIcon(createSvgIcon(QStringLiteral(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"5 3 19 12 5 21 5 3\"/></svg>"), 14, textSecondary()));
+        resumeBtn->setIconSize(QSize(14, 14));
+        resumeBtn->setFixedSize(touchIconSize(24), touchIconSize(24));
+        resumeBtn->setToolTip(QStringLiteral("Resume Download"));
+        resumeBtn->setCursor(Qt::PointingHandCursor);
+        resumeBtn->setStyleSheet(QString(
+            "QToolButton { background: transparent; border: none; border-radius: 6px; }"
+            "QToolButton:hover { background-color: %1; }"
+        ).arg(hover()));
+        connect(resumeBtn, &QToolButton::clicked, this, [this, index]() {
+            if (m_downloads && index < m_downloads->items().count())
+                m_downloads->resumeDownload(index);
+        });
+        rl->addWidget(resumeBtn);
+
+        QToolButton *cancelBtn = new QToolButton(row);
+        cancelBtn->setIcon(createSvgIcon(svgX, 14, textSecondary()));
+        cancelBtn->setIconSize(QSize(14, 14));
+        cancelBtn->setFixedSize(touchIconSize(24), touchIconSize(24));
+        cancelBtn->setToolTip(QStringLiteral("Cancel Download"));
+        cancelBtn->setCursor(Qt::PointingHandCursor);
+        cancelBtn->setStyleSheet(QString(
+            "QToolButton { background: transparent; border: none; border-radius: 6px; }"
+            "QToolButton:hover { background-color: %1; }"
+        ).arg(hover()));
+        connect(cancelBtn, &QToolButton::clicked, this, [this, index]() {
+            if (m_downloads && index < m_downloads->items().count())
+                m_downloads->cancelDownload(index);
         });
         rl->addWidget(cancelBtn);
     } else if (item.state == 2 && !item.url.isEmpty()) {
@@ -4993,7 +5190,7 @@ QWidget* BrowserWindow::buildDownloadRow(int index, const DownloadItemInfo &item
         ).arg(hover()));
         connect(retryBtn, &QToolButton::clicked, this, [this, index]() {
             if (m_downloads && index < m_downloads->items().count())
-                addNewTab(QUrl(m_downloads->items()[index].url));
+                m_downloads->retryDownload(index);
         });
         rl->addWidget(retryBtn);
     }
