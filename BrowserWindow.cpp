@@ -1101,6 +1101,13 @@ bool BrowserWindow::event(QEvent *event)
         auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget());
         if (!v || !v->page())
             break;
+        // Only act when the gesture lands on the page itself. Accepting
+        // toolbar/sidebar/dialog gestures would zoom or navigate the tab
+        // behind an unrelated control.
+        if (QWidget *target = childAt(ge->position().toPoint())) {
+            if (target != m_tabStack && !m_tabStack->isAncestorOf(target))
+                break;
+        }
         if (ge->gestureType() == Qt::ZoomNativeGesture) {
             v->setZoomFactor(qBound(0.25, v->zoomFactor() * (1.0 + ge->value()), 5.0));
             event->accept();
@@ -1176,11 +1183,15 @@ QIcon BrowserWindow::createSvgIcon(const QString &svgData, int size, const QStri
 bool BrowserWindow::isTouchDevice() const
 {
     // Qt 6 enumerates input devices via QInputDevice (QTouchDevice is Qt 5).
-    // A touchscreen (not a trackpad) is what needs larger touch targets.
+    // Touchscreens always qualify; small-form-factor devices (tablet/phone
+    // per PlatformAdaptor) are touch-first even before any touch event has
+    // been seen, since Qt only reports some devices after first use.
     for (const QInputDevice *dev : QInputDevice::devices()) {
         if (dev && dev->type() == QInputDevice::DeviceType::TouchScreen)
             return true;
     }
+    if (const PlatformAdaptor *adaptor = PlatformAdaptor::instance())
+        return adaptor->isTablet() || adaptor->isPhone();
     return false;
 }
 
