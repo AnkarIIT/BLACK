@@ -17,6 +17,7 @@
 #include <QHash>
 #include <QTextStream>
 #include <QRegularExpression>
+#include <QLocale>
 #include "BrowserWindow.h"
 #include "BrowserSettings.h"
 #include "TrackerBlocker.h"
@@ -329,6 +330,11 @@ int main(int argc, char *argv[])
     settings->setAttribute(QWebEngineSettings::DnsPrefetchEnabled, false);
     settings->setAttribute(QWebEngineSettings::PdfViewerEnabled, true);
     settings->setAttribute(QWebEngineSettings::AutoLoadImages, true);
+
+    // Spellcheck (was never enabled, so form fields had no red underlines).
+    profile->setSpellCheckEnabled(true);
+    profile->setSpellCheckLanguages(
+        QStringList{ QLocale::system().name().replace(QLatin1Char('_'), QLatin1Char('-')) });
 
     // Set Safari-style User-Agent based on platform detection
     profile->setHttpUserAgent(getSafariUserAgent());
