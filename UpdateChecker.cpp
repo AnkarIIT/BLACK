@@ -2,6 +2,7 @@
 #include <QStandardPaths>
 #include <QDir>
 #include <QFile>
+#include <QTemporaryFile>
 #include <QProcess>
 #include <QDesktopServices>
 #include <QJsonArray>
@@ -232,8 +233,9 @@ void UpdateChecker::installUpdate()
     m_downloadedBytes = 0;
     m_verificationPassed = false;
 
-    // Initialize streaming SHA256 hasher
-    m_hasher = new QCryptographicHash(QCryptographicHash::Sha256, this);
+    // Initialize streaming SHA256 hasher (QCryptographicHash is not a
+    // QObject and takes only the algorithm argument).
+    m_hasher = new QCryptographicHash(QCryptographicHash::Sha256);
 
     QNetworkRequest request(m_updateUrl);
     request.setRawHeader("User-Agent", "BLACK-Browser-UpdateChecker/1.0");

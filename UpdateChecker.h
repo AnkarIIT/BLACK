@@ -10,6 +10,7 @@
 #include <QVersionNumber>
 #include <QTimer>
 #include <QFile>
+#include <QTemporaryFile>
 #include <QUuid>
 #include <QCryptographicHash>
 #include <QProcess>
@@ -92,7 +93,7 @@ private:
     QNetworkAccessManager m_network;
     QNetworkReply *m_checkReply = nullptr;
     QNetworkReply *m_downloadReply = nullptr;
-    QFile *m_downloadFile = nullptr;
+    QTemporaryFile *m_downloadFile = nullptr;
     QString m_downloadFilePath;
     QCryptographicHash *m_hasher = nullptr;
     QProcess *m_installerProcess = nullptr;
