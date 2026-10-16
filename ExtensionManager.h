@@ -116,7 +116,10 @@ signals:
 private:
     void scan();
     bool parseManifest(const QString &path, ExtensionManifestV3 &manifest);
-    bool validateManifest(const ExtensionManifestV3 &manifest);
+    // NOTE: manifest validation lives in the file-local validateManifest()
+    // free function in ExtensionManager.cpp. Do NOT redeclare it here: an
+    // unqualified call inside a member would bind to a member declaration and
+    // fail at link time (the free function would be shadowed, not used).
     ExtensionInfo createExtensionInfo(const QString &id, const QString &path);
     void setupExtensionContext(ExtensionInfo *info);
     void teardownExtensionContext(ExtensionInfo *info);
