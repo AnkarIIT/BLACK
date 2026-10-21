@@ -1,15 +1,22 @@
-#ifndef TOOLBARCONTROLLER_H
+﻿#ifndef TOOLBARCONTROLLER_H
 #define TOOLBARCONTROLLER_H
 
 #include <QObject>
 #include <QWidget>
 #include <QHBoxLayout>
 #include <QToolButton>
+#include <QIcon>
 #include <QLineEdit>
 #include <QLabel>
 #include <QProgressBar>
 #include <QGraphicsDropShadowEffect>
 #include <QGraphicsOpacityEffect>
+#include <QParallelAnimationGroup>
+#include <QPushButton>
+#include <QUrl>
+#include <QColor>
+
+#include "BrowserSettings.h"
 
 class BrowserWindow;
 
@@ -104,6 +111,7 @@ private:
     void updateUrlBarStyle(bool chrome);
     void updateTrafficLights(bool chrome);
     void updateLoadingBarStyle(bool chrome);
+    QIcon createSvgIcon(const QString &svg, int size, const QString &color);
 };
 
 #endif
