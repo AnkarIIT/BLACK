@@ -1,4 +1,4 @@
-; Inno Setup Script for BLACK Browser
+﻿; Inno Setup Script for BLACK Browser
 [Setup]
 AppId={{8B44A7E8-5D12-42B1-9457-4E2E0A86E123}
 AppName=BLACK
@@ -35,12 +35,12 @@ Root: HKCR; Subkey: "BLACKHTML"; ValueType: string; ValueData: "BLACK HTML Docum
 Root: HKCR; Subkey: "BLACKHTML\shell\open\command"; ValueType: string; ValueData: """{app}\BLACK.exe"" ""%1"""; Flags: uninsdeletekey
 Root: HKCR; Subkey: "BLACKHTML\DefaultIcon"; ValueType: string; ValueData: "{app}\BLACK.exe,0"; Flags: uninsdeletekey
 
-Root: HKCR; Subkey: "http\shell\open\command"; ValueType: string; ValueData: """{app}\BLACK.exe"" ""%1"""; Flags: uninsdeletekey
-Root: HKCR; Subkey: "https\shell\open\command"; ValueType: string; ValueData: """{app}\BLACK.exe"" ""%1"""; Flags: uninsdeletekey
+Root: HKCR; Subkey: "http\shell\open\command"; ValueType: string; ValueData: """{app}\BLACK.exe"" ""%1"""; Tasks: setdefaultbrowser; Flags: uninsdeletekey
+Root: HKCR; Subkey: "https\shell\open\command"; ValueType: string; ValueData: """{app}\BLACK.exe"" ""%1"""; Tasks: setdefaultbrowser; Flags: uninsdeletekey
 
 ; File associations for .html/.htm
-Root: HKCR; Subkey: ".html"; ValueType: string; ValueData: "BLACKHTML"; Flags: uninsdeletevalue
-Root: HKCR; Subkey: ".htm"; ValueType: string; ValueData: "BLACKHTML"; Flags: uninsdeletevalue
+Root: HKCR; Subkey: ".html"; ValueType: string; ValueData: "BLACKHTML"; Tasks: setdefaultbrowser; Flags: uninsdeletevalue
+Root: HKCR; Subkey: ".htm"; ValueType: string; ValueData: "BLACKHTML"; Tasks: setdefaultbrowser; Flags: uninsdeletevalue
 
 ; black:// internal protocol
 Root: HKCR; Subkey: "black"; ValueType: string; ValueData: "URL:BLACK Internal Protocol"; Flags: uninsdeletekey
