@@ -1,4 +1,4 @@
-#ifndef UPDATECHECKER_H
+﻿#ifndef UPDATECHECKER_H
 #define UPDATECHECKER_H
 
 #include <QObject>
@@ -10,6 +10,7 @@
 #include <QVersionNumber>
 #include <QTimer>
 #include <QFile>
+#include <QTemporaryFile>
 #include <QUuid>
 #include <QCryptographicHash>
 #include <QProcess>
@@ -36,6 +37,7 @@ public:
     explicit UpdateChecker(const QString &currentVersion,
                            const QUrl &updateCheckUrl,
                            QObject *parent = nullptr);
+    ~UpdateChecker() override;
 
     QString currentVersion() const { return m_currentVersion; }
     QString latestVersion() const { return m_latestVersion; }
@@ -74,6 +76,8 @@ private:
     bool verifyChecksum(const QString &filePath) const;
     QString computeFileSha256(const QString &filePath) const;
     void cleanupDownload();
+    bool isTrustedUrl(const QUrl &url) const;
+    void discardDownloadedFile();
 
     QString m_currentVersion;
     QUrl m_updateCheckUrl;
@@ -89,10 +93,18 @@ private:
     QNetworkAccessManager m_network;
     QNetworkReply *m_checkReply = nullptr;
     QNetworkReply *m_downloadReply = nullptr;
-    QFile *m_downloadFile = nullptr;
+    QTemporaryFile *m_downloadFile = nullptr;
     QString m_downloadFilePath;
     QCryptographicHash *m_hasher = nullptr;
     QProcess *m_installerProcess = nullptr;
+
+    // Hard ceiling on the downloaded payload. An installer is tens of
+    // megabytes; anything past this is either corrupt or hostile.
+    static constexpr qint64 kMaxDownloadBytes = 256LL * 1024 * 1024;
+    static constexpr qint64 kMaxManifestBytes = 1LL * 1024 * 1024;
+
+    qint64 m_downloadedBytes = 0;
+    bool m_verificationPassed = false;
 };
 
 #endif // UPDATECHECKER_H
