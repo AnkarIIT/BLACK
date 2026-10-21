@@ -1,4 +1,4 @@
-#ifndef SAFEBROWSING_H
+﻿#ifndef SAFEBROWSING_H
 #define SAFEBROWSING_H
 
 #include <QObject>
@@ -81,6 +81,9 @@ private:
     bool hostMatches(const QString &host) const;
     void mergeBlocklist(const QByteArray &data, const QString &source);
     void saveExtraList();
+    // Body of saveExtraList() for callers that already hold m_lock for
+    // writing (QWriteLock is non-recursive, so those paths must not re-lock).
+    void saveExtraListLocked();
     void setupV4Api();
     void fetchV4Updates();
     void applyV4Update(const QByteArray &response);
