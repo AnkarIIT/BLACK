@@ -1,4 +1,4 @@
-#ifndef TRACKERBLOCKER_H
+﻿#ifndef TRACKERBLOCKER_H
 #define TRACKERBLOCKER_H
 
 #include <QWebEngineUrlRequestInterceptor>
@@ -75,6 +75,9 @@ private:
     
     void recordBlockedRequest(const QString &host, const QString &firstPartyHost);
     void recordVisitedSite(const QString &host);
+
+    // True when an installed extension's declarative blocking rule matches.
+    bool isBlockedByExtensionRules(const QWebEngineUrlRequestInfo &info) const;
 
     bool m_incognito = false;
     QSet<QString> m_legacyBlockedHosts;  // Legacy hardcoded list for backwards compat
