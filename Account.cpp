@@ -1,4 +1,4 @@
-#include "Account.h"
+﻿#include "Account.h"
 #include "OSPaths.h"
 #include "VaultCrypto.h"
 #include <QFile>
@@ -6,6 +6,7 @@
 #include <QJsonObject>
 #include <QStandardPaths>
 #include <QDir>
+#include <QStringList>
 
 namespace {
 QString accountFile()
@@ -35,10 +36,15 @@ QByteArray readEncryptedFile(const QString &path)
     if (!file.open(QIODevice::ReadOnly))
         return {};
     const QByteArray raw = file.readAll();
-    if (VaultCrypto::isEnvelope(raw)) {
-        return VaultCrypto::decrypt(raw);
+    // Fail CLOSED. Accepting a non-envelope file as-is meant a hand-written
+    // account.json could inject arbitrary profile fields (name, email and
+    // signedIn:true) that the UI then renders as a genuine signed-in profile.
+    // Only an authenticated envelope is trusted.
+    if (!VaultCrypto::isEnvelope(raw)) {
+        qWarning("account.json is not a vault envelope - refusing to load it as plaintext");
+        return {};
     }
-    return raw; // legacy plaintext
+    return VaultCrypto::decrypt(raw);
 }
 
 bool writeEncryptedFile(const QString &path, const QByteArray &plain)
@@ -46,7 +52,11 @@ bool writeEncryptedFile(const QString &path, const QByteArray &plain)
     const QByteArray blob = VaultCrypto::encrypt(plain);
     if (blob.isEmpty())
         return false;
-    return OSPaths::writeFileAtomic(path, blob);
+    // account.json carries the user's name and email; restrict it to the owner
+    // on POSIX. (On Windows QFile permissions only toggle the read-only
+    // attribute, so protection there comes from DPAPI at rest plus the
+    // per-user %APPDATA% ACL rather than the mode bits.)
+    return OSPaths::writeFileAtomic(path, blob, QFile::ReadOwner | QFile::WriteOwner);
 }
 } // namespace
 
@@ -126,9 +136,18 @@ void Account::signIn(const QString &name)
 void Account::signInWithOAuth(const QString &provider, const QString &name,
                               const QString &email, const QString &avatar)
 {
+    // The provider arrives over the QWebChannel bridge. Without an allowlist a
+    // caller could store an arbitrary string in authMethod, which the UI then
+    // renders as the account's identity source. Only the three documented
+    // identity providers are accepted; anything else is treated as local.
+    static const QStringList kAllowedProviders = {
+        QStringLiteral("google"), QStringLiteral("apple"), QStringLiteral("microsoft")
+    };
+    const QString normalized = provider.trimmed().toLower();
+
     m_signedIn = true;
     m_name = name.trimmed().isEmpty() ? QStringLiteral("Guest") : name.trimmed();
-    m_authMethod = provider.trimmed().isEmpty() ? QStringLiteral("local") : provider.trimmed();
+    m_authMethod = kAllowedProviders.contains(normalized) ? normalized : QStringLiteral("local");
     m_email = email;
     m_avatar = avatar;
     save();
