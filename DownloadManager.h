@@ -1,4 +1,4 @@
-#ifndef DOWNLOADMANAGER_H
+﻿#ifndef DOWNLOADMANAGER_H
 #define DOWNLOADMANAGER_H
 
 #include <QObject>
@@ -69,6 +69,10 @@ public:
 private:
     void updateButtonTooltip();
     void calculateSpeedAndEta(int idx);
+    // Resolve a download request's current row index in m_items, or -1 if the
+    // row is gone. Handlers must never trust a captured position: removing any
+    // row shifts every later one.
+    int indexOfDownload(QWebEngineDownloadRequest *download) const;
 
     QWebEngineProfile *m_profile;
     QPointer<QWidget> m_parentWidget;
