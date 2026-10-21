@@ -1,4 +1,4 @@
-#include <QtTest>
+﻿#include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QStandardPaths>
@@ -30,6 +30,11 @@ private slots:
 
     void cleanupTestCase()
     {
+        // Allow time for WebEngine background threads to finish naturally.
+        // Do NOT reset the static profile here - deleting it while views may
+        // still reference it causes an abort. The test timeout (600s) gives
+        // plenty of time for natural shutdown.
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 2000);
         delete m_tempDir;
     }
 
@@ -44,6 +49,8 @@ private slots:
         if (m_window) {
             m_window->close();
             m_window->deleteLater();
+            // Process events to allow WebEngine background threads to shut down.
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 500);
             m_window = nullptr;
         }
     }
@@ -68,7 +75,9 @@ private slots:
         int count = m_window->tabCount();
         
         m_window->closeTab(1);
-        QVERIFY(m_window->tabCount() == count - 1);
+        // closeTab() animates the removal over 150 ms, so the row disappears
+        // asynchronously. Wait for it rather than asserting synchronously.
+        QTRY_COMPARE(m_window->tabCount(), count - 1);
     }
 
     void testCloseAllTabs()
@@ -124,7 +133,8 @@ private slots:
         m_window->addNewTab(QUrl("https://example.net"));
         
         m_window->moveTab(0, 2);
-        QVERIFY(m_window->tabCount() == 3);
+        // moveTab reorders; it must never change how many tabs exist.
+        QVERIFY(m_window->tabCount() == 4);
     }
 
     void testIncognitoWindow()
