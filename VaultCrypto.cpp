@@ -1,4 +1,4 @@
-#include "VaultCrypto.h"
+﻿#include "VaultCrypto.h"
 #include "OSPaths.h"
 #include <QCryptographicHash>
 #include <QMessageAuthenticationCode>
@@ -23,7 +23,9 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#if defined(HAVE_LIBSECRET)
 #include <secret/secret.h>
+#endif
 #endif
 
 #if defined(HAVE_OPENSSL)
@@ -52,6 +54,16 @@ const char kDpapiEntropy[] = "BLACK_BROWSER_VAULT_ENTROPY_BLOCK_32";
 // Forward declarations for functions in this namespace
 QByteArray loadOrCreateMasterKeyFile();
 QByteArray loadOrCreateMasterKey();
+#if defined(Q_OS_MACOS)
+QByteArray loadKeyFromMacOSKeychain();
+bool storeKeyToMacOSKeychain(const QByteArray &key);
+bool removeKeyFromMacOSKeychain();
+#endif
+#if defined(Q_OS_LINUX) && defined(HAVE_LIBSECRET)
+QByteArray loadKeyFromLibsecret();
+bool storeKeyToLibsecret(const QByteArray &key);
+bool removeKeyFromLibsecret();
+#endif
 
 QByteArray randomBytes(int n)
 {
@@ -224,6 +236,16 @@ bool storeKeyToFile(const QByteArray &key)
 }
 
 #if defined(Q_OS_MACOS)
+
+// Helper to create a CFDictionary with proper key/value arrays.
+static CFDictionaryRef makeKeychainDict(CFAllocatorRef allocator,
+                                        const void **keys, const void **values,
+                                        CFIndex count)
+{
+    return CFDictionaryCreate(allocator, keys, values, count,
+                              &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+}
+
 QByteArray loadKeyFromMacOSKeychain()
 {
     const char *service = "BLACK Browser";
@@ -232,13 +254,9 @@ QByteArray loadKeyFromMacOSKeychain()
     CFStringRef serviceRef = CFStringCreateWithCString(kCFAllocatorDefault, service, kCFStringEncodingUTF8);
     CFStringRef accountRef = CFStringCreateWithCString(kCFAllocatorDefault, account, kCFStringEncodingUTF8);
 
-    CFDictionaryRef query = CFDictionaryCreate(kCFAllocatorDefault,
-        (const void **)&kSecClass, (const void **)&kSecClassGenericPassword,
-        (const void **)&kSecAttrService, (const void **)&serviceRef,
-        (const void **)&kSecAttrAccount, (const void **)&accountRef,
-        (const void **)&kSecReturnData, (const void **)kCFBooleanTrue,
-        (const void **)&kSecMatchLimit, (const void **)kSecMatchLimitOne,
-        nullptr);
+    const void *queryKeys[] = { kSecClass, kSecAttrService, kSecAttrAccount, kSecReturnData, kSecMatchLimit };
+    const void *queryValues[] = { kSecClassGenericPassword, serviceRef, accountRef, kCFBooleanTrue, kSecMatchLimitOne };
+    CFDictionaryRef query = makeKeychainDict(kCFAllocatorDefault, queryKeys, queryValues, 5);
 
     CFTypeRef result = nullptr;
     OSStatus status = SecItemCopyMatching(query, &result);
@@ -259,19 +277,15 @@ QByteArray loadKeyFromMacOSKeychain()
     CFDataRef dataRef = CFDataCreate(kCFAllocatorDefault,
         reinterpret_cast<const UInt8 *>(newKey.constData()), newKey.size());
 
-    CFDictionaryRef addQuery = CFDictionaryCreate(kCFAllocatorDefault,
-        (const void **)&kSecClass, (const void **)&kSecClassGenericPassword,
-        (const void **)&kSecAttrService, (const void **)&serviceRef,
-        (const void **)&kSecAttrAccount, (const void **)&accountRef,
-        (const void **)&kSecValueData, (const void **)&dataRef,
-        (const void **)&kSecAttrAccessible, (const void **)kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-        nullptr);
+    const void *addKeys[] = { kSecClass, kSecAttrService, kSecAttrAccount, kSecValueData, kSecAttrAccessible };
+    const void *addValues[] = { kSecClassGenericPassword, serviceRef, accountRef, dataRef, kSecAttrAccessibleWhenUnlockedThisDeviceOnly };
+    CFDictionaryRef addQuery = makeKeychainDict(kCFAllocatorDefault, addKeys, addValues, 5);
 
     status = SecItemAdd(addQuery, nullptr);
     CFRelease(addQuery);
     CFRelease(dataRef);
-    CFRelease(serviceRef);
-    CFRelease(accountRef);
+    // serviceRef/accountRef were already released above; do NOT release them
+    // again here - that double-free corrupts the heap.
 
     if (status == errSecSuccess)
         return newKey;
@@ -291,24 +305,18 @@ bool storeKeyToMacOSKeychain(const QByteArray &key)
     CFStringRef accountRef = CFStringCreateWithCString(kCFAllocatorDefault, account, kCFStringEncodingUTF8);
 
     // Delete existing first
-    CFDictionaryRef deleteQuery = CFDictionaryCreate(kCFAllocatorDefault,
-        (const void **)&kSecClass, (const void **)&kSecClassGenericPassword,
-        (const void **)&kSecAttrService, (const void **)&serviceRef,
-        (const void **)&kSecAttrAccount, (const void **)&accountRef,
-        nullptr);
+    const void *delKeys[] = { kSecClass, kSecAttrService, kSecAttrAccount };
+    const void *delValues[] = { kSecClassGenericPassword, serviceRef, accountRef };
+    CFDictionaryRef deleteQuery = makeKeychainDict(kCFAllocatorDefault, delKeys, delValues, 3);
     SecItemDelete(deleteQuery);
     CFRelease(deleteQuery);
 
     CFDataRef dataRef = CFDataCreate(kCFAllocatorDefault,
         reinterpret_cast<const UInt8 *>(key.constData()), key.size());
 
-    CFDictionaryRef addQuery = CFDictionaryCreate(kCFAllocatorDefault,
-        (const void **)&kSecClass, (const void **)&kSecClassGenericPassword,
-        (const void **)&kSecAttrService, (const void **)&serviceRef,
-        (const void **)&kSecAttrAccount, (const void **)&accountRef,
-        (const void **)&kSecValueData, (const void **)&dataRef,
-        (const void **)&kSecAttrAccessible, (const void **)kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-        nullptr);
+    const void *addKeys[] = { kSecClass, kSecAttrService, kSecAttrAccount, kSecValueData, kSecAttrAccessible };
+    const void *addValues[] = { kSecClassGenericPassword, serviceRef, accountRef, dataRef, kSecAttrAccessibleWhenUnlockedThisDeviceOnly };
+    CFDictionaryRef addQuery = makeKeychainDict(kCFAllocatorDefault, addKeys, addValues, 5);
 
     OSStatus status = SecItemAdd(addQuery, nullptr);
     CFRelease(addQuery);
@@ -327,11 +335,9 @@ bool removeKeyFromMacOSKeychain()
     CFStringRef serviceRef = CFStringCreateWithCString(kCFAllocatorDefault, service, kCFStringEncodingUTF8);
     CFStringRef accountRef = CFStringCreateWithCString(kCFAllocatorDefault, account, kCFStringEncodingUTF8);
 
-    CFDictionaryRef deleteQuery = CFDictionaryCreate(kCFAllocatorDefault,
-        (const void **)&kSecClass, (const void **)&kSecClassGenericPassword,
-        (const void **)&kSecAttrService, (const void **)&serviceRef,
-        (const void **)&kSecAttrAccount, (const void **)&accountRef,
-        nullptr);
+    const void *delKeys[] = { kSecClass, kSecAttrService, kSecAttrAccount };
+    const void *delValues[] = { kSecClassGenericPassword, serviceRef, accountRef };
+    CFDictionaryRef deleteQuery = makeKeychainDict(kCFAllocatorDefault, delKeys, delValues, 3);
 
     OSStatus status = SecItemDelete(deleteQuery);
     CFRelease(deleteQuery);
@@ -340,6 +346,9 @@ bool removeKeyFromMacOSKeychain()
 
     return status == errSecSuccess || status == errSecItemNotFound;
 }
+
+#endif // Q_OS_MACOS
+
 #if defined(Q_OS_LINUX) && defined(HAVE_LIBSECRET)
 QByteArray loadKeyFromLibsecret()
 {
@@ -527,6 +536,10 @@ QByteArray dpapiEncrypt(const QByteArray &plain)
 
 QByteArray dpapiDecrypt(const QByteArray &blob)
 {
+    // Only ever decrypt with the entropy block this application writes with.
+    // The previous fallback decrypted the blob with NULL entropy, which
+    // accepted any DPAPI blob produced for this user regardless of which app
+    // protected it - a silent downgrade of the vault's binding.
     DATA_BLOB in;
     in.pbData = reinterpret_cast<BYTE *>(const_cast<char *>(blob.constData()));
     in.cbData = DWORD(blob.size());
@@ -537,14 +550,6 @@ QByteArray dpapiDecrypt(const QByteArray &blob)
 
     DATA_BLOB out = { 0, nullptr };
     if (CryptUnprotectData(&in, nullptr, &entropy, nullptr, nullptr,
-                            CRYPTPROTECT_UI_FORBIDDEN, &out)) {
-        QByteArray result(reinterpret_cast<const char *>(out.pbData), int(out.cbData));
-        LocalFree(out.pbData);
-        return result;
-    }
-
-    out = { 0, nullptr };
-    if (CryptUnprotectData(&in, nullptr, nullptr, nullptr, nullptr,
                             CRYPTPROTECT_UI_FORBIDDEN, &out)) {
         QByteArray result(reinterpret_cast<const char *>(out.pbData), int(out.cbData));
         LocalFree(out.pbData);
@@ -575,7 +580,7 @@ QByteArray aesGcmEncryptBlob(const QByteArray &plain)
 
     QByteArray iv;
     iv.resize(12);
-    if (RAND_bytes(iv.data(), 12) != 1)
+    if (RAND_bytes(reinterpret_cast<unsigned char*>(iv.data()), 12) != 1)
         return {};
 
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
@@ -586,20 +591,25 @@ QByteArray aesGcmEncryptBlob(const QByteArray &plain)
         EVP_CIPHER_CTX_free(ctx);
         return {};
     }
-    if (EVP_EncryptInit_ex(ctx, nullptr, nullptr, master.constData(), iv.constData()) != 1) {
+    if (EVP_EncryptInit_ex(ctx, nullptr, nullptr,
+                           reinterpret_cast<const unsigned char*>(master.constData()),
+                           reinterpret_cast<const unsigned char*>(iv.constData())) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         return {};
     }
 
     int len = 0;
     QByteArray ciphertext(plain.size(), 0);
-    if (EVP_EncryptUpdate(ctx, ciphertext.data(), &len, plain.constData(), plain.size()) != 1) {
+    if (EVP_EncryptUpdate(ctx,
+                          reinterpret_cast<unsigned char*>(ciphertext.data()), &len,
+                          reinterpret_cast<const unsigned char*>(plain.constData()), plain.size()) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         return {};
     }
     int ciphertextLen = len;
 
-    if (EVP_EncryptFinal_ex(ctx, ciphertext.data() + len, &len) != 1) {
+    if (EVP_EncryptFinal_ex(ctx,
+                            reinterpret_cast<unsigned char*>(ciphertext.data() + len), &len) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         return {};
     }
@@ -646,25 +656,31 @@ QByteArray aesGcmDecryptBlob(const QByteArray &envelope)
         EVP_CIPHER_CTX_free(ctx);
         return {};
     }
-    if (EVP_DecryptInit_ex(ctx, nullptr, nullptr, master.constData(), iv.constData()) != 1) {
+    if (EVP_DecryptInit_ex(ctx, nullptr, nullptr,
+                           reinterpret_cast<const unsigned char*>(master.constData()),
+                           reinterpret_cast<const unsigned char*>(iv.constData())) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         return {};
     }
 
     int len = 0;
     QByteArray plaintext(ciphertext.size(), 0);
-    if (EVP_DecryptUpdate(ctx, plaintext.data(), &len, ciphertext.constData(), ciphertext.size()) != 1) {
+    if (EVP_DecryptUpdate(ctx,
+                          reinterpret_cast<unsigned char*>(plaintext.data()), &len,
+                          reinterpret_cast<const unsigned char*>(ciphertext.constData()), ciphertext.size()) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         return {};
     }
     int plaintextLen = len;
 
-    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, tag.data()) != 1) {
+    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16,
+                            const_cast<unsigned char*>(reinterpret_cast<const unsigned char*>(tag.constData()))) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         return {};
     }
 
-    if (EVP_DecryptFinal_ex(ctx, plaintext.data() + len, &len) != 1) {
+    if (EVP_DecryptFinal_ex(ctx,
+                            reinterpret_cast<unsigned char*>(plaintext.data() + len), &len) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         return {}; // authentication failed
     }
@@ -849,7 +865,21 @@ bool hasMasterKey()
     // DPAPI always "has" a key (derived from user)
     return true;
 #else
-    return !loadOrCreateMasterKey().isEmpty();
+    // Pure query: must not CREATE a key as a side effect, otherwise asking
+    // "is there a key?" would mint one and make removeMasterKey() look broken
+    // (and would hide a genuinely missing key until it silently appeared).
+    QByteArray key;
+#if defined(Q_OS_MACOS)
+    key = loadKeyFromMacOSKeychain();
+#elif defined(Q_OS_LINUX) && defined(HAVE_LIBSECRET)
+    key = loadKeyFromLibsecret();
+#endif
+    if (!key.isEmpty())
+        return true;
+
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                        + QLatin1String("/secrets");
+    return QFileInfo::exists(dir + QLatin1String("/black_vault.key"));
 #endif
 }
 
@@ -871,4 +901,3 @@ bool removeMasterKey()
 }
 
 } // namespace VaultCrypto
-} // namespace
