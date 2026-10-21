@@ -1,4 +1,4 @@
-#include "ShelfStore.h"
+﻿#include "ShelfStore.h"
 #include "OSPaths.h"
 #include "VaultCrypto.h"
 #include <QFile>
@@ -9,6 +9,7 @@
 #include <QDateTime>
 #include <QUrl>
 #include <QSet>
+#include <QTimer>
 
 namespace {
 const int kDefaultMaxEntries = 500;
@@ -241,7 +242,7 @@ void ShelfStore::saveArray(const QJsonArray &array) const
         // Encryption failed - don't write plaintext, abort silently
         return;
     }
-    OSPaths::writeFileAtomic(path, encrypted);
+    OSPaths::writeFileAtomic(path, encrypted, QFile::ReadOwner | QFile::WriteOwner);
 }
 
 void ShelfStore::setMaxEntries(int max)
