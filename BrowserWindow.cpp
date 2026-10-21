@@ -1,4 +1,4 @@
-#include "BrowserWindow.h"
+﻿#include "BrowserWindow.h"
 #include "ChromeLayer.h"
 #include "SafariWebView.h"
 #include "SafariWebPage.h"
@@ -7,8 +7,8 @@
 #include "BrowserSettings.h"
 #include "ShelfStore.h"
 #include "PasswordStore.h"
-// ExtensionManager is used via singleton instance()
-class ExtensionManager;
+#include "ExtensionManager.h"
+#include "ProfileManager.h"
 #include "Account.h"
 #include "AppearanceManager.h"
 #include "SafeBrowsing.h"
@@ -34,6 +34,13 @@ class ExtensionManager;
 #include "ProductivityManager.h"
 #include "AdvancedSecurity.h"
 #include "DeveloperTools.h"
+#include "CookiePartition.h"
+#include "FingerprintProtection.h"
+#include "TabGroupManager.h"
+#include "ReaderMode.h"
+#include "TranslationManager.h"
+#include "SyncManager.h"
+#include "WebAuthn.h"
 #include <QFrame>
 #include <QFrame>
 #include <QStyle>
@@ -95,6 +102,21 @@ class ExtensionManager;
 #include <QGestureEvent>
 #include <QTapGesture>
 #include <QGesture>
+#include <QNativeGestureEvent>
+#include <QInputDevice>
+#include <QAuthenticator>
+#include <QInputDialog>
+#include <QLineEdit>
+#include <QSslCertificate>
+#include <QBuffer>
+#include <QDrag>
+#include <QMimeData>
+#include <QNetworkRequest>
+#include <QPrinter>
+#include <QPrintDialog>
+#include <QDesktopServices>
+#include <QTemporaryFile>
+#include <cmath>
 #include <functional>
 #include <utility>
 
@@ -105,10 +127,12 @@ class ExtensionManager;
 
 // Safari-style User-Agent shared by the main and private-window profiles so
 // both present an identical fingerprint to sites. (Declared in BrowserWindow.h.)
+// The OS/platform token necessarily differs per OS, but both profiles on the
+// same machine send this exact string, including the honest BLACK/1.0 suffix.
 QString getSafariUserAgent()
 {
 #if defined(Q_OS_MACOS)
-    return QStringLiteral("Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15");
+    return QStringLiteral("Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15 BLACK/1.0");
 #elif defined(Q_OS_WIN)
     return QStringLiteral("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15 BLACK/1.0");
 #elif defined(Q_OS_LINUX)
@@ -185,7 +209,7 @@ private:
 };
 }
 
-// ── Safari Color Palette (dynamic, follows system theme) ─────────────────────
+// ΓöÇΓöÇ Safari Color Palette (dynamic, follows system theme) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 static QString bgWindow()      { return SafariTheme::instance().bgWindow; }
 static QString bgToolbar()     { return SafariTheme::instance().bgToolbar; }
 static QString bgTabBar()      { return SafariTheme::instance().bgTabBar; }
@@ -205,7 +229,7 @@ static QString hover()         { return SafariTheme::instance().hover; }
 static QString searchBg()      { return SafariTheme::instance().searchBg; }
 static QString selectedBg()    { return SafariTheme::instance().selectedBg; }
 
-// ── Chrome Palette (Classic Chrome layout) ───────────────────────────────────
+// ΓöÇΓöÇ Chrome Palette (Classic Chrome layout) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Automatic reload budget before a crashed tab lands on the crash page.
 static const int kMaxRendererCrashReloads = 2;
 static const int kMaxTabThumbnails = 50; // Limit total thumbnails to prevent memory growth
@@ -222,7 +246,7 @@ static ChromePalette chromePalette()
         : ChromeTheme::light();
 }
 
-// ── SVG Icons (Safari-style, stroke-based) ─────────────────────────────────
+// ΓöÇΓöÇ SVG Icons (Safari-style, stroke-based) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 static const QString svgBack       = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"15 18 9 12 15 6\"/></svg>";
 static const QString svgForward    = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"9 18 15 12 9 6\"/></svg>";
 static const QString svgSidebar    = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><line x1=\"9\" y1=\"3\" x2=\"9\" y2=\"21\"/></svg>";
@@ -258,7 +282,7 @@ static const QString svgVolumeMute = "<svg xmlns=\"http://www.w3.org/2000/svg\" 
 static const QString svgPadlock     = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"4\" y=\"11\" width=\"16\" height=\"9\" rx=\"2\"/><path d=\"M8 11V7a4 4 0 0 1 8 0v4\"/></svg>";
 static const QString svgInfo        = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><line x1=\"12\" y1=\"8\" x2=\"12\" y2=\"13\"/><circle cx=\"12\" cy=\"16.2\" r=\"0.6\"/></svg>";
 
-// ── Page Theme (applied to web pages so they match the browser) ─────────────
+// ΓöÇΓöÇ Page Theme (applied to web pages so they match the browser) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Dark: colour-scheme signal + forced contrast so sites with hardcoded light
 // text/backgrounds (e.g. Google/Gmail landing pages) stay readable. Media
 // (img/video/canvas/iframe/svg) and form controls are left untouched.
@@ -281,7 +305,7 @@ static const QString kPageThemeClassScript = QStringLiteral(
     "el.classList.remove('black-dark','black-light');"
     "el.classList.add(dark?'black-dark':'black-light');})(%1);");
 
-// ── Responsive platform detection ────────────────────────────────────────────
+// ΓöÇΓöÇ Responsive platform detection ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Sets data-platform on <html> ("phone"/"tablet"/"desktop") purely client-side,
 // using the same viewport breakpoints as responsive.css (--bp-phone: 480px,
 // --bp-tablet: 1024px). Runs at DocumentReady and re-evaluates on resize and
@@ -302,7 +326,7 @@ static const char *kPagePlatformScript =
     "})();";
 
 
-// ── Password Manager (saves on form submit, autofills saved logins) ─────────
+// ΓöÇΓöÇ Password Manager (saves on form submit, autofills saved logins) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Runs in the isolated ApplicationWorld on http/https pages. Hosts are stored
 // under a normalized key (hostname, lowercased, "www." stripped) so a login
 // saved on "www.example.com" autofills on "example.com" and vice-versa, and so
@@ -398,7 +422,7 @@ static QString buildPasswordScript()
     return lib + QLatin1Char('\n') + kPasswordHandlerScript;
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇ Helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 static QString truncate(const QString &s, int max = 20) {    return s.length() > max ? s.left(max - 1) + QStringLiteral("\u2026") : s;
 }
 
@@ -456,7 +480,14 @@ static void logCrashEvent(const QString &url, int crashCount, const QString &act
     QJsonObject root;
     root[QStringLiteral("events")] = events;
     file.resize(0);
+    // QFile::resize() truncates but does NOT reset the file position, which is
+    // still sitting at the old EOF after readAll(). Writing here would seek back
+    // to that offset and leave the file padded with NUL bytes, so the next
+    // load's fromJson() would fail and silently discard every prior event.
+    file.seek(0);
     file.write(QJsonDocument(root).toJson());
+    file.flush();
+    file.close();
 }
 
 static QString searchUrlFor(const QString &query) {
@@ -621,25 +652,17 @@ m_updateChecker = new UpdateChecker(QStringLiteral(BLACK_VERSION_STRING),
     m_webChannel->registerObject(QStringLiteral("safeBrowsing"), &SafeBrowsing::instance());
     m_webChannel->registerObject(QStringLiteral("permissions"), m_permissionsBridge);
     m_webChannel->registerObject(QStringLiteral("updater"), m_updateChecker);
-    m_webChannel->registerObject(QStringLiteral("webauthn"), m_webAuthnManager);
     m_webChannel->registerObject(QStringLiteral("profileManager"), &ProfileManager::instance());
-    m_webChannel->registerObject(QStringLiteral("syncManager"), m_syncManager);
-    m_webChannel->registerObject(QStringLiteral("walletManager"), m_walletManager);
-    m_webChannel->registerObject(QStringLiteral("rewardsManager"), m_rewardsManager);
-    m_webChannel->registerObject(QStringLiteral("searchAffiliation"), m_searchAffiliation);
-    m_webChannel->registerObject(QStringLiteral("performanceManager"), m_performanceManager);
-    m_webChannel->registerObject(QStringLiteral("wasmExtensionSupport"), m_wasmExtensionSupport);
-    m_webChannel->registerObject(QStringLiteral("developerTools"), m_developerTools);
-    m_webChannel->registerObject(QStringLiteral("i18nManager"), m_i18nManager);
-    m_webChannel->registerObject(QStringLiteral("collaborationManager"), m_collaborationManager);
-    m_webChannel->registerObject(QStringLiteral("aiAgentManager"), m_aiAgentManager);
-    m_webChannel->registerObject(QStringLiteral("voiceInterface"), m_voiceInterface);
-    m_webChannel->registerObject(QStringLiteral("productivityManager"), m_productivityManager);
-    m_webChannel->registerObject(QStringLiteral("advancedSecurity"), m_advancedSecurity);
+    // NOTE: webauthn / syncManager / walletManager / performanceManager and the
+    // rest are registered AFTER they are constructed, further down. Registering
+    // them here passed uninitialized pointer members to QWebChannel, which
+    // later dereferences them (registerObject -> deregisterObject ->
+    // object->disconnect()); several were then registered a second time, so
+    // that undefined behaviour ran at construction time.
 
     // Password-only bridge for external pages. SafariWebPage exposes this
     // channel to no one except the native autofill content script, and only in
-    // the private kPasswordWorld — extension content scripts (ApplicationWorld)
+    // the private kPasswordWorld ΓÇö extension content scripts (ApplicationWorld)
     // and page scripts (main world) cannot reach it. The full bridge above is
     // only ever installed on internal qrc: pages.
     m_passwordChannel = new QWebChannel(this);
@@ -650,8 +673,7 @@ m_updateChecker = new UpdateChecker(QStringLiteral(BLACK_VERSION_STRING),
     // Google render their official dark/light themes via prefers-color-scheme.
 #if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
     m_profile->settings()->setAttribute(QWebEngineSettings::ForceDarkMode, false);
-    // Enable Picture-in-Picture
-    m_profile->settings()->setAttribute(QWebEngineSettings::PictureInPictureEnabled, true);
+    // PictureInPictureEnabled is not available in Qt 6.8; PiP is handled via JS API
 #endif
 
     QWebEngineScript styleScript;
@@ -674,7 +696,7 @@ m_updateChecker = new UpdateChecker(QStringLiteral(BLACK_VERSION_STRING),
     m_profile->scripts()->insert(platformScript);
 
     // Password manager: private-world script on every page (saves + autofills).
-    // It runs in kPasswordWorld — NOT ApplicationWorld — because extension
+    // It runs in kPasswordWorld ΓÇö NOT ApplicationWorld ΓÇö because extension
     // content scripts live in ApplicationWorld, and a world an extension can
     // read is a world it can exfiltrate from. Only this script sees the
     // password-only bridge (SafariWebPage installs it in kPasswordWorld), so
@@ -716,6 +738,7 @@ m_updateChecker = new UpdateChecker(QStringLiteral(BLACK_VERSION_STRING),
     m_syncManager = new SyncManager(this);
     m_syncManager->initialize(this, m_passwords, m_bookmarks, m_history,
                               &BrowserSettings::instance(), m_extensions, m_account);
+    m_webChannel->registerObject(QStringLiteral("syncManager"), m_syncManager);
 
     // AI Manager
     m_aiManager = new AIManager(this);
@@ -724,6 +747,7 @@ m_updateChecker = new UpdateChecker(QStringLiteral(BLACK_VERSION_STRING),
 
     // Wallet Manager
     m_walletManager = new WalletManager(this);
+    m_webChannel->registerObject(QStringLiteral("walletManager"), m_walletManager);
     m_walletManager->registerWeb3Provider(m_webChannel);
 
     // Rewards Manager
@@ -745,6 +769,7 @@ m_updateChecker = new UpdateChecker(QStringLiteral(BLACK_VERSION_STRING),
     m_performanceManager->setWebEngineProfile(m_profile);
     m_performanceManager->setOptimizationLevel(PerformanceManager::OptimizationLevel::Balanced);
     m_performanceManager->startProfiling();
+    m_webChannel->registerObject(QStringLiteral("performanceManager"), m_performanceManager);
 
     // WASM Extension Support
     m_wasmExtensionSupport = new WasmExtensionSupport(this);
@@ -818,6 +843,7 @@ m_updateChecker = new UpdateChecker(QStringLiteral(BLACK_VERSION_STRING),
 
     // Initialize WebAuthn manager
     m_webAuthnManager = new WebAuthnManager(this);
+    m_webChannel->registerObject(QStringLiteral("webauthn"), m_webAuthnManager);
 
     // Initialize Reader Mode
     m_readerMode = new ReaderMode(this);
@@ -864,6 +890,8 @@ m_updateChecker = new UpdateChecker(QStringLiteral(BLACK_VERSION_STRING),
     // Wire the settings button exactly once. It must not live inside
     // applyTheme(), which runs on every theme change and would stack duplicate
     // connections (the modal menu would then open once per stacked connect).
+    m_settingsButton->setAccessibleName(QStringLiteral("Settings"));
+    m_settingsButton->setAccessibleDescription(QStringLiteral("Open browser settings"));
     connect(m_settingsButton, &QToolButton::clicked, this, &BrowserWindow::showSettingsMenu);
 }
 
@@ -875,16 +903,27 @@ BrowserWindow::~BrowserWindow() {
 }
 
 static QWebEngineProfile *s_customWebProfile = nullptr;
+static QWebEngineProfile *s_defaultProfile = nullptr;
 
 QWebEngineProfile *BrowserWindow::webProfile()
 {
     if (s_customWebProfile) {
         return s_customWebProfile;
     }
-    static QWebEngineProfile *profile = []() {
-        return new QWebEngineProfile(QStringLiteral("BLACK"), nullptr);
-    }();
-    return profile;
+    if (!s_defaultProfile) {
+        s_defaultProfile = new QWebEngineProfile(QStringLiteral("BLACK"), nullptr);
+    }
+    return s_defaultProfile;
+}
+
+bool BrowserWindow::resetWebProfileForTesting()
+{
+    if (s_defaultProfile) {
+        delete s_defaultProfile;
+        s_defaultProfile = nullptr;
+        return true;
+    }
+    return false;
 }
 
 void BrowserWindow::setWebProfile(QWebEngineProfile *profile)
@@ -892,7 +931,7 @@ void BrowserWindow::setWebProfile(QWebEngineProfile *profile)
     s_customWebProfile = profile;
 }
 
-// ── Public Page Loading Methods ─────────────────────────────────────────────
+// ΓöÇΓöÇ Public Page Loading Methods ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 void BrowserWindow::loadStartPage() {
     QUrl target = QUrl(QStringLiteral("qrc:/startpage_enhanced.html"));
     const QString preference = BrowserSettings::instance().newWindowsWith();
@@ -911,15 +950,26 @@ void BrowserWindow::loadStartPage() {
     }
 }
 
-// ── Window Control ──────────────────────────────────────────────────────────
+// ΓöÇΓöÇ Window Control ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 void BrowserWindow::closeWindow() { if (m_ownsSession) saveSession(); close(); }
 void BrowserWindow::minimizeWindow() { showMinimized(); }
 void BrowserWindow::maximizeWindow() {
     if (isMaximized()) showNormal(); else showMaximized();
 }
 
-// ── Mouse Events (frameless window) ────────────────────────────────────────
+// ΓöÇΓöÇ Mouse Events (frameless window) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 void BrowserWindow::mousePressEvent(QMouseEvent *event) {
+    // Mouse back/forward buttons (button 4/5): navigate the active tab.
+    if (event->button() == Qt::BackButton || event->button() == Qt::ForwardButton) {
+        if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget())) {
+            if (event->button() == Qt::BackButton)
+                v->back();
+            else
+                v->forward();
+        }
+        event->accept();
+        return;
+    }
     if (event->button() == Qt::LeftButton && event->pos().y() < 52) {
         QWidget *child = childAt(event->pos());
         if (!child || child == m_toolbar || child == m_central) {
@@ -1005,7 +1055,7 @@ void BrowserWindow::mouseDoubleClickEvent(QMouseEvent *event) {
     }
 }
 
-// ── Touch / Gesture support (tablets & phones) ──────────────────────────────
+// ΓöÇΓöÇ Touch / Gesture support (tablets & phones) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Lets a finger drag the frameless window from the title-bar area and
 // double-tap it to maximize/restore, mirroring mouse behaviour on touch
 // devices. The web view itself consumes raw touch for page gestures, so we
@@ -1055,6 +1105,52 @@ bool BrowserWindow::event(QEvent *event)
         }
         break;
     }
+    case QEvent::NativeGesture: {
+        // Trackpad gestures over the page: pinch-to-zoom and smart-zoom.
+        // ZoomNativeGesture::value() is an incremental scale delta, applied
+        // as scale *= (1 + value) per the Qt docs. Clamped to the documented
+        // QWebEnginePage zoom range (0.25 - 5.0).
+        auto *ge = static_cast<QNativeGestureEvent *>(event);
+        auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget());
+        if (!v || !v->page())
+            break;
+        // Only act when the gesture lands on the page itself. Accepting
+        // toolbar/sidebar/dialog gestures would zoom or navigate the tab
+        // behind an unrelated control.
+        if (QWidget *target = childAt(ge->position().toPoint())) {
+            if (target != m_tabStack && !m_tabStack->isAncestorOf(target))
+                break;
+        }
+        if (ge->gestureType() == Qt::ZoomNativeGesture) {
+            v->setZoomFactor(qBound(0.25, v->zoomFactor() * (1.0 + ge->value()), 5.0));
+            event->accept();
+            return true;
+        }
+        if (ge->gestureType() == Qt::SmartZoomNativeGesture) {
+            v->setZoomFactor(qFuzzyCompare(v->zoomFactor(), 1.0) ? 1.25 : 1.0);
+            event->accept();
+            return true;
+        }
+        if (ge->gestureType() == Qt::SwipeNativeGesture) {
+            // Swipe angle in degrees (Qt docs). Horizontal swipes navigate:
+            // rightward (~0 deg) = back, leftward (~180 deg) = forward,
+            // matching the Safari/Chrome macOS two-finger convention.
+            // Vertical swipes are ignored.
+            qreal angle = std::fmod(ge->value(), 360.0);
+            if (angle < 0.0)
+                angle += 360.0;
+            if (angle < 45.0 || angle >= 315.0) {
+                v->back();
+            } else if (angle >= 135.0 && angle < 225.0) {
+                v->forward();
+            } else {
+                break;
+            }
+            event->accept();
+            return true;
+        }
+        break;
+    }
     default:
         break;
     }
@@ -1084,7 +1180,7 @@ void BrowserWindow::changeEvent(QEvent *event) {
 #endif
 }
 
-// ── Icon Helper ─────────────────────────────────────────────────────────────
+// ΓöÇΓöÇ Icon Helper ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 QIcon BrowserWindow::createSvgIcon(const QString &svgData, int size, const QString &color) {
     QString filled = svgData.contains(QStringLiteral("%1")) ? svgData.arg(color) : svgData;
     QSvgRenderer renderer(filled.toUtf8());
@@ -1096,12 +1192,19 @@ QIcon BrowserWindow::createSvgIcon(const QString &svgData, int size, const QStri
     return QIcon(pix);
 }
 
-// ── Traffic Light Helper ────────────────────────────────────────────────────
+// ΓöÇΓöÇ Traffic Light Helper ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 bool BrowserWindow::isTouchDevice() const
 {
-    // Qt 6 doesn't expose a simple touchPoints() API anymore.
-    // We can check for touch devices via QTouchDevice, but for now just
-    // return false - touch icon scaling is a nice-to-have, not essential.
+    // Qt 6 enumerates input devices via QInputDevice (QTouchDevice is Qt 5).
+    // Touchscreens always qualify; small-form-factor devices (tablet/phone
+    // per PlatformAdaptor) are touch-first even before any touch event has
+    // been seen, since Qt only reports some devices after first use.
+    for (const QInputDevice *dev : QInputDevice::devices()) {
+        if (dev && dev->type() == QInputDevice::DeviceType::TouchScreen)
+            return true;
+    }
+    if (const PlatformAdaptor *adaptor = PlatformAdaptor::instance())
+        return adaptor->isTablet() || adaptor->isPhone();
     return false;
 }
 
@@ -1157,9 +1260,9 @@ QToolButton* BrowserWindow::createTrafficLight(const QString &color, const QStri
     return btn;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ── Setup Main UI (Safari Style) ──────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+// ΓöÇΓöÇ Setup Main UI (Safari Style) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 void BrowserWindow::setupUi()
 {
     m_central = new QWidget(this);
@@ -1170,7 +1273,7 @@ void BrowserWindow::setupUi()
     rootLayout->setContentsMargins(0, 0, 0, 0);
     rootLayout->setSpacing(0);
 
-    // ── Toolbar ────────────────────────────────────────────────────────────
+    // ΓöÇΓöÇ Toolbar ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     m_toolbar = new QWidget(m_central);
     m_toolbar->setObjectName(QStringLiteral("Toolbar"));
     m_toolbar->setFixedHeight(44);
@@ -1210,15 +1313,21 @@ void BrowserWindow::setupUi()
     }
 
     m_sidebarButton->setToolTip(QStringLiteral("Toggle Sidebar"));
+    m_sidebarButton->setAccessibleName(QStringLiteral("Sidebar"));
+    m_sidebarButton->setAccessibleDescription(QStringLiteral("Toggle the sidebar panel"));
     connect(m_sidebarButton, &QToolButton::clicked, this, &BrowserWindow::toggleSidebar);
     toolbarLayout->addWidget(m_sidebarButton);
 
     toolbarLayout->addSpacing(2);
 
     m_backButton->setToolTip(QStringLiteral("Back"));
+    m_backButton->setAccessibleName(QStringLiteral("Back"));
+    m_backButton->setAccessibleDescription(QStringLiteral("Go back to the previous page in history"));
     toolbarLayout->addWidget(m_backButton);
 
     m_forwardButton->setToolTip(QStringLiteral("Forward"));
+    m_forwardButton->setAccessibleName(QStringLiteral("Forward"));
+    m_forwardButton->setAccessibleDescription(QStringLiteral("Go forward to the next page in history"));
     toolbarLayout->addWidget(m_forwardButton);
 
     // Reload now lives inside the address bar (right edge).
@@ -1228,6 +1337,8 @@ void BrowserWindow::setupUi()
 
     // URL Bar (container with shield icon + borderless line edit)
     m_urlBar->setPlaceholderText(QStringLiteral("Search or enter website name"));
+    m_urlBar->setAccessibleName(QStringLiteral("Address Bar"));
+    m_urlBar->setAccessibleDescription(QStringLiteral("Enter a URL or search term"));
     m_urlBar->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     const int urlHeight = isTouchDevice() ? 40 : 30;
     m_urlBar->setMinimumHeight(urlHeight);
@@ -1249,8 +1360,8 @@ void BrowserWindow::setupUi()
 
     m_shieldInside = new QToolButton(m_urlContainer);
     m_shieldInside->setFixedSize(18, 18);
-    m_shieldInside->setToolTip(QStringLiteral("Privacy Report"));
-    m_shieldInside->setAccessibleName(QStringLiteral("Privacy Report"));
+    m_shieldInside->setToolTip(QStringLiteral("Privacy Protection"));
+    m_shieldInside->setAccessibleName(QStringLiteral("Privacy Protection"));
     m_shieldInside->setAccessibleDescription(QStringLiteral("Shows privacy protection status for this site"));
     urlLayout->addWidget(m_shieldInside);
 
@@ -1269,7 +1380,7 @@ void BrowserWindow::setupUi()
 
     m_reloadButton->setFixedSize(22, 22);
     m_reloadButton->setToolTip(QStringLiteral("Reload"));
-    m_reloadButton->setAccessibleName(QStringLiteral("Reload Page"));
+    m_reloadButton->setAccessibleName(QStringLiteral("Reload"));
     m_reloadButton->setAccessibleDescription(QStringLiteral("Reloads the current page"));
     urlLayout->addWidget(m_reloadButton);
 
@@ -1344,7 +1455,7 @@ void BrowserWindow::setupUi()
 
     rootLayout->addWidget(m_toolbar);
 
-    // ── Loading Bar ────────────────────────────────────────────────────────
+    // ΓöÇΓöÇ Loading Bar ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     m_loadingBar = new QProgressBar(m_central);
     m_loadingBar->setObjectName(QStringLiteral("LoadingBar"));
     m_loadingBar->setFixedHeight(3);
@@ -1354,7 +1465,7 @@ void BrowserWindow::setupUi()
     m_loadingBar->setVisible(false);
     rootLayout->addWidget(m_loadingBar);
 
-    // ── Content area (sidebar + tab stack) ─────────────────────────────────
+    // ΓöÇΓöÇ Content area (sidebar + tab stack) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     m_sidebar = new QFrame(m_central);
     m_sidebar->setObjectName(QStringLiteral("Sidebar"));
     m_sidebar->setFixedWidth(260);
@@ -1395,7 +1506,7 @@ void BrowserWindow::setupUi()
 
     rootLayout->addLayout(contentRow, 1);
 
-    // ── Connect Navigation ─────────────────────────────────────────────────
+    // ΓöÇΓöÇ Connect Navigation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     connect(m_backButton, &QToolButton::clicked, this, [this]() {
         if (auto *v = qobject_cast<QWebEngineView*>(m_tabStack->currentWidget()))
             v->back();
@@ -1423,9 +1534,9 @@ void BrowserWindow::setupUi()
     });
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ── Tab Bar Setup ─────────────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+// ΓöÇΓöÇ Tab Bar Setup ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 void BrowserWindow::setupTabBar()
 {
     const bool compact = (BrowserSettings::instance().tabLayout() == QLatin1String("Compact"));
@@ -1447,6 +1558,7 @@ void BrowserWindow::setupTabBar()
     m_addTabButton->setToolTip(QStringLiteral("New Tab"));
     m_addTabButton->setAccessibleName(QStringLiteral("New Tab"));
     m_addTabButton->setAccessibleDescription(QStringLiteral("Open a new tab"));
+    m_addTabButton->setFocusPolicy(Qt::StrongFocus);
     connect(m_addTabButton, &QToolButton::clicked, this, &BrowserWindow::addTabAction);
 
     // Insert tab bar into root layout (between toolbar and tab stack)
@@ -1458,9 +1570,9 @@ void BrowserWindow::setupTabBar()
     m_tabBarLayout->addSpacing(4);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ── Sidebar Setup ─────────────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+// ΓöÇΓöÇ Sidebar Setup ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 void BrowserWindow::setupSidebar()
 {
     m_sidebarLayout = new QVBoxLayout(m_sidebar);
@@ -1648,7 +1760,7 @@ void BrowserWindow::preloadFavicon(const QUrl &url)
     // Fetch favicon asynchronously using DuckDuckGo's favicon service (privacy-friendly)
     // DuckDuckGo doesn't track users and provides a simple favicon API
     QString faviconUrl = QStringLiteral("https://icons.duckduckgo.com/ip3/") + host + QStringLiteral(".ico");
-    QNetworkRequest request(QUrl(faviconUrl));
+    QNetworkRequest request{QUrl(faviconUrl)};
     request.setRawHeader("User-Agent", "BLACK Browser");
     QNetworkReply *reply = m_netManager.get(request);
     connect(reply, &QNetworkReply::finished, this, [this, reply, host]() {
@@ -1739,9 +1851,9 @@ void BrowserWindow::updateDownloadsSidebar()
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ── Tab Overview Overlay ──────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+// ΓöÇΓöÇ Tab Overview Overlay ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 void BrowserWindow::setupTabOverlay()
 {
     m_overviewOverlay = new QWidget(this);
@@ -2049,9 +2161,9 @@ void BrowserWindow::filterOverviewGrid(const QString &query)
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ── Tab Management ────────────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+// ΓöÇΓöÇ Tab Management ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 void BrowserWindow::addNewTab(const QUrl &url) {
     addTabView(url, nullptr);
 }
@@ -2153,8 +2265,18 @@ SafariWebView* BrowserWindow::addTabView(const QUrl &url, QWebEngineNewWindowReq
                     const bool onCrashPage = loadedUrl.scheme() == QStringLiteral("qrc")
                                              && loadedUrl.path() == QStringLiteral("/crash.html");
                     if (!onCrashPage) {
-                        m_tabs[i].crashCount = 0;
-                        m_tabs[i].showingCrashPage = false;
+                        // Do NOT reset the crash budget on every successful
+                        // load. A page that renders and then kills its renderer
+                        // (OOM, GPU fault, allocation bomb) re-armed the budget
+                        // on each cycle, so kMaxRendererCrashReloads could
+                        // never trip and the tab reloaded forever. The counter
+                        // is cleared when the URL actually changes, so normal
+                        // navigation still resets it.
+                        const QString currentUrl = m_tabs[i].url;
+                        if (loadedUrl.toString() != currentUrl) {
+                            m_tabs[i].crashCount = 0;
+                            m_tabs[i].showingCrashPage = false;
+                        }
                     }
                     saveHistoryItem(m_tabs[i].title, m_tabs[i].url);
                     // Refresh the visible tab's thumbnail so the overview stays fresh.
@@ -2225,6 +2347,23 @@ SafariWebView* BrowserWindow::addTabView(const QUrl &url, QWebEngineNewWindowReq
         handlePermissionRequestOld(page, securityOrigin, feature);
     });
 #endif
+
+    // Page-initiated fullscreen (HTML5 video / Element.requestFullscreen).
+    // Accepting alone is not enough: the app must actually make the view
+    // fullscreen, otherwise the element fills only its viewport rectangle.
+    connect(view->page(), &QWebEnginePage::fullScreenRequested,
+            this, &BrowserWindow::handleFullScreenRequest);
+
+    // HTTP auth (intranet/captive portals) and proxy auth: prompt instead of
+    // failing silently.
+    connect(view->page(), &QWebEnginePage::authenticationRequired,
+            this, &BrowserWindow::handleAuthenticationRequired);
+    connect(view->page(), &QWebEnginePage::proxyAuthenticationRequired,
+            this, &BrowserWindow::handleProxyAuthenticationRequired);
+
+    // Mutual-TLS client certificates: let the user pick, or proceed without.
+    connect(view->page(), &QWebEnginePage::selectClientCertificate,
+            this, &BrowserWindow::handleClientCertificateSelection);
 
     if (request) {
         request->openIn(view->page());
@@ -2298,9 +2437,29 @@ void BrowserWindow::closeTab(int index) {
         fadeAnim->setDuration(150);
         fadeAnim->setStartValue(1.0);
         fadeAnim->setEndValue(0.0);
-        connect(fadeAnim, &QPropertyAnimation::finished, this, [this, index, v, tabWidget, opacityEffect, fadeAnim]() {
+        connect(fadeAnim, &QPropertyAnimation::finished, this, [this, v, tabWidget, opacityEffect, fadeAnim]() {
             fadeAnim->deleteLater();
             opacityEffect->deleteLater();
+
+            // The fade takes 150ms. During that window the tab list can be
+            // mutated - another closeTab() (Ctrl+W / close button / context
+            // menu) or a drag-reorder. Capturing the INDEX and calling
+            // m_tabs.removeAt(index) on it therefore removed whichever tab
+            // happened to live at that position, while v was already being
+            // destroyed - leaving a TabInfo whose .view pointed at a deleted
+            // QWebEngineView (use-after-free) and silently dropping a tab.
+            //
+            // Resolve the live position from the view instead.
+            int index = -1;
+            for (int i = 0; i < m_tabs.count(); ++i) {
+                if (m_tabs.at(i).view == v) {
+                    index = i;
+                    break;
+                }
+            }
+            if (index < 0)
+                return;     // already removed by another close path
+
             clearTabThumbnail(index);
             m_tabStack->removeWidget(v);
             v->deleteLater();
@@ -2399,6 +2558,72 @@ void BrowserWindow::toggleMuteTab(int index) {
         m_tabs[index].isMuted = mute;
         rebuildTabBar();
     }
+}
+
+TabInfo BrowserWindow::tabInfo(int index) const
+{
+    if (index < 0 || index >= m_tabs.count())
+        return TabInfo();
+    return m_tabs.at(index);
+}
+
+void BrowserWindow::moveTab(int fromIndex, int toIndex)
+{
+    if (fromIndex < 0 || fromIndex >= m_tabs.count())
+        return;
+    if (toIndex < 0 || toIndex >= m_tabs.count() || fromIndex == toIndex)
+        return;
+
+    // Remember which view was active so it stays active after the reorder.
+    QWebEngineView *activeView = (m_currentTabIndex >= 0 && m_currentTabIndex < m_tabs.count())
+                                     ? m_tabs.at(m_currentTabIndex).view : nullptr;
+
+    TabInfo moved = m_tabs.takeAt(fromIndex);
+    m_tabs.insert(toIndex, moved);
+
+    // Re-sync the stacked widget to the new tab order so the visible page
+    // always matches the highlighted tab (same trick as togglePinTab()).
+    QList<QWebEngineView*> views;
+    views.reserve(m_tabs.size());
+    for (const TabInfo &tab : m_tabs)
+        views.append(tab.view);
+    for (QWebEngineView *v : views)
+        m_tabStack->removeWidget(v);
+    for (QWebEngineView *v : views)
+        m_tabStack->addWidget(v);
+
+    if (activeView) {
+        for (int i = 0; i < m_tabs.count(); ++i) {
+            if (m_tabs.at(i).view == activeView) {
+                m_currentTabIndex = i;
+                break;
+            }
+        }
+    }
+    m_tabStack->setCurrentIndex(m_currentTabIndex);
+
+    rebuildTabBar();
+    rebuildSidebarTabList();
+    if (m_overviewVisible) rebuildOverviewGrid();
+}
+
+void BrowserWindow::closeAllTabs()
+{
+    // Close every tab immediately (no fade animation) and open one fresh start
+    // tab, so the window is never left with zero tabs. Synchronous, unlike
+    // closeTab() which animates the close over 150 ms.
+    const QList<TabInfo> tabs = m_tabs;
+    for (const TabInfo &tab : tabs) {
+        if (!tab.view)
+            continue;
+        if (m_webAuthnManager)
+            m_webAuthnManager->unregisterPage(tab.view->page());
+        m_tabStack->removeWidget(tab.view);
+        tab.view->deleteLater();
+    }
+    m_tabs.clear();
+    m_currentTabIndex = -1;
+    addNewTab(newTabUrl());
 }
 
 void BrowserWindow::addTabAction() {
@@ -2866,11 +3091,27 @@ void BrowserWindow::printPage()
     if (!view)
         return;
 
-    view->page()->print(nullptr, [this](bool success) {
-        if (!success) {
-            QMessageBox::warning(this, tr("Print Failed"), tr("Failed to print the page."));
+    // Qt 6: printToPdf generates PDF, then open with system default PDF viewer
+    view->page()->printToPdf([this](const QByteArray &pdfData) {
+        if (pdfData.isEmpty()) {
+            QMessageBox::warning(this, tr("Print Failed"), tr("Failed to generate PDF for printing."));
+            return;
         }
-    });
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        // Save PDF to temp file and open with system default PDF viewer
+        QTemporaryFile tempFile;
+        if (tempFile.open()) {
+            tempFile.write(pdfData);
+            tempFile.flush();
+            tempFile.close();
+
+            QDesktopServices::openUrl(QUrl::fromLocalFile(tempFile.fileName()));
+        }
+#else
+        Q_UNUSED(pdfData);
+        QMessageBox::warning(this, tr("Print Failed"), tr("Printing requires Qt 6+"));
+#endif
+    }, QPageLayout());
 }
 
 void BrowserWindow::savePageAsPdf()
@@ -2892,13 +3133,19 @@ void BrowserWindow::savePageAsPdf()
         fileName += QStringLiteral(".pdf");
 
     QPageLayout layout(QPageSize(QPageSize::A4), QPageLayout::Portrait, QMarginsF(15, 15, 15, 15));
-    view->page()->printToPdf(fileName, layout, [this, fileName](bool success) {
-        if (success) {
+    view->page()->printToPdf([this, fileName](const QByteArray &pdfData) {
+        if (pdfData.isEmpty()) {
+            QMessageBox::warning(this, tr("Save Failed"), tr("Failed to generate PDF."));
+            return;
+        }
+        QFile file(fileName);
+        if (file.open(QIODevice::WriteOnly)) {
+            file.write(pdfData);
             QMessageBox::information(this, tr("Saved as PDF"), tr("Page saved to %1").arg(fileName));
         } else {
-            QMessageBox::warning(this, tr("Save Failed"), tr("Failed to save page as PDF."));
+            QMessageBox::warning(this, tr("Save Failed"), tr("Failed to write PDF file."));
         }
-    });
+    }, layout);
 }
 
 void BrowserWindow::openDevTools()
@@ -3034,7 +3281,7 @@ void BrowserWindow::toggleAIAssistant()
                             addMessage('user', message);
                             sendToAI(message);
                         };
-                        input.addEventListener('keypress', function(e) {
+                        document.getElementById('ai-input').addEventListener('keypress', function(e) {
                             if (e.key === 'Enter') document.getElementById('ai-send').click();
                         });
                         
@@ -3066,9 +3313,10 @@ void BrowserWindow::toggleAIAssistant()
                         }
                         
                         window.__blackAIAssistantVisible = true;
-                    })();
-        })();
-        """);
+                    }
+                }
+            })();
+        )");
     }
 }
 
@@ -3090,20 +3338,6 @@ void BrowserWindow::translatePage()
         }
         m_translationManager->translatePage(view, targetLang);
     }
-}
-    if (!view)
-        return;
-
-    const QUrl url = view->url();
-    if (url.scheme() != QLatin1String("http") && url.scheme() != QLatin1String("https")) {
-        return;
-    }
-
-    // Use Google Translate via translate.google.com
-    // This opens the current page in Google Translate
-    QUrl translateUrl(QStringLiteral("https://translate.google.com/translate?sl=auto&tl=en&u=")
-                      + url.toString(QUrl::FullyEncoded));
-    view->setUrl(translateUrl);
 }
 
 void BrowserWindow::handleCertificateError(QWebEngineCertificateError error) {
@@ -3158,9 +3392,6 @@ QString BrowserWindow::permissionDisplayName(QWebEnginePermission::PermissionTyp
         return QStringLiteral("your screen and audio");
     case QWebEnginePermission::PermissionType::ClipboardReadWrite: return QStringLiteral("clipboard access");
     case QWebEnginePermission::PermissionType::LocalFontsAccess:   return QStringLiteral("fonts installed on this device");
-#if QT_VERSION >= QT_VERSION_CHECK(6, 4, 0)
-    case QWebEnginePermission::PermissionType::PictureInPicture:   return QStringLiteral("picture-in-picture");
-#endif
     default: return QStringLiteral("a restricted feature");
     }
 }
@@ -3277,6 +3508,114 @@ void BrowserWindow::handlePermissionRequestOld(QWebEnginePage *page, const QUrl 
 }
 #endif
 
+void BrowserWindow::handleFullScreenRequest(QWebEngineFullScreenRequest request)
+{
+    // Find the tab whose page issued the request.
+    QWebEnginePage *page = qobject_cast<QWebEnginePage *>(sender());
+    QWebEngineView *view = nullptr;
+    for (const TabInfo &t : m_tabs) {
+        if (t.view && t.view->page() == page) {
+            view = t.view;
+            break;
+        }
+    }
+    if (request.toggleOn()) {
+        if (!view) {
+            request.reject();
+            return;
+        }
+        request.accept();
+        m_fullscreenView = view;
+        m_pageFullscreen = true;
+        m_fullscreenWasMaximized = isMaximized();
+        showFullScreen();
+    } else {
+        request.accept();
+        if (m_pageFullscreen) {
+            m_pageFullscreen = false;
+            m_fullscreenView.clear();
+            if (m_fullscreenWasMaximized)
+                showMaximized();
+            else
+                showNormal();
+        }
+    }
+}
+
+void BrowserWindow::handleAuthenticationRequired(const QUrl &requestUrl, QAuthenticator *authenticator)
+{
+    if (!authenticator)
+        return;
+    bool ok = false;
+    const QString user = QInputDialog::getText(
+        this, tr("Authentication Required"),
+        tr("Enter username for %1").arg(requestUrl.host()),
+        QLineEdit::Normal, authenticator->user(), &ok);
+    if (!ok)
+        return;
+    const QString password = QInputDialog::getText(
+        this, tr("Authentication Required"),
+        tr("Enter password for %1").arg(requestUrl.host()),
+        QLineEdit::Password, QString(), &ok);
+    if (!ok)
+        return;
+    authenticator->setUser(user);
+    authenticator->setPassword(password);
+}
+
+void BrowserWindow::handleProxyAuthenticationRequired(const QUrl &requestUrl, QAuthenticator *authenticator,
+                                                      const QString &proxyHost)
+{
+    if (!authenticator)
+        return;
+    bool ok = false;
+    const QString user = QInputDialog::getText(
+        this, tr("Proxy Authentication Required"),
+        tr("Enter username for proxy %1 (requesting %2)").arg(proxyHost, requestUrl.host()),
+        QLineEdit::Normal, authenticator->user(), &ok);
+    if (!ok)
+        return;
+    const QString password = QInputDialog::getText(
+        this, tr("Proxy Authentication Required"),
+        tr("Enter password for proxy %1").arg(proxyHost),
+        QLineEdit::Password, QString(), &ok);
+    if (!ok)
+        return;
+    authenticator->setUser(user);
+    authenticator->setPassword(password);
+}
+
+void BrowserWindow::handleClientCertificateSelection(QWebEngineClientCertificateSelection selection)
+{
+    const QList<QSslCertificate> certs = selection.certificates();
+    if (certs.isEmpty()) {
+        selection.selectNone();
+        return;
+    }
+    QStringList items;
+    items.reserve(certs.size());
+    for (const QSslCertificate &c : certs) {
+        const QString name = c.subjectInfo(QSslCertificate::CommonName).join(QStringLiteral(", "));
+        items.append(QStringLiteral("%1 (expires %2)")
+                         .arg(name.isEmpty() ? tr("(unnamed certificate)") : name,
+                              c.expiryDate().toString(Qt::ISODate)));
+    }
+    bool ok = false;
+    const QString picked = QInputDialog::getItem(
+        this, tr("Select Certificate"),
+        tr("The site %1 requests a client certificate:").arg(selection.host().toString()),
+        items, 0, false, &ok);
+    if (!ok) {
+        selection.selectNone();
+        return;
+    }
+    const int idx = items.indexOf(picked);
+    if (idx < 0 || idx >= certs.size())
+        selection.selectNone();
+    else
+        selection.select(certs.at(idx));
+}
+
 void BrowserWindow::rebuildTabBar()
 {
     // Chrome mode renders tabs inside the chrome strip; Safari uses the
@@ -3342,6 +3681,10 @@ void BrowserWindow::rebuildTabBar()
             tabWidget->installEventFilter(this);
             tabWidget->setProperty("tabIndex", i);
             tabWidget->setProperty("isTab", true);
+
+            // Pinned tabs lay their favicon out in a grid; the normal (unpinned)
+            // branch below builds its own QHBoxLayout named tabLayout.
+            QGridLayout *gridLayout = new QGridLayout(tabWidget);
             gridLayout->setContentsMargins(4, 4, 4, 4);
             gridLayout->setSpacing(0);
 
@@ -3484,9 +3827,9 @@ void BrowserWindow::refreshTabLabel(int index)
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ── Sidebar Toggle ────────────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+// ΓöÇΓöÇ Sidebar Toggle ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 void BrowserWindow::toggleSidebar()
 {
     m_sidebarVisible = !m_sidebarVisible;
@@ -3592,9 +3935,9 @@ void BrowserWindow::rebuildSidebarTabList()
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ── Event Filter ──────────────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+// ΓöÇΓöÇ Event Filter ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 bool BrowserWindow::eventFilter(QObject *obj, QEvent *event) {
     if (event->type() == QEvent::MouseButtonPress) {
         auto *me = static_cast<QMouseEvent*>(event);
@@ -3875,9 +4218,9 @@ void BrowserWindow::animateUrlBar(int targetWidth)
     group->start();
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ── URL Bar Suggestions ───────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+// ΓöÇΓöÇ URL Bar Suggestions ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 void BrowserWindow::setupUrlSuggestions() {
     m_urlSuggest = new QFrame(this, Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::WindowDoesNotAcceptFocus);
     m_urlSuggest->setAttribute(Qt::WA_ShowWithoutActivating);
@@ -4039,9 +4382,9 @@ void BrowserWindow::activateUrlSuggestion(int index) {
     m_urlBar->clearFocus();
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ── Slots ─────────────────────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+// ΓöÇΓöÇ Slots ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 void BrowserWindow::navigateToUrl() {
     QString input = m_urlBar->text().trimmed();
     if (input.isEmpty()) return;
@@ -4080,7 +4423,7 @@ void BrowserWindow::updateUrlBar(const QUrl &url) {
     if (m_shieldInside) {
         if (secure) {
             m_shieldInside->setIcon(createSvgIcon(svgShield, 16, QStringLiteral("#34c759"))); // Green secure shield
-            m_shieldInside->setToolTip(QStringLiteral("Connection is secure (HTTPS) — BLACK Protection Active"));
+            m_shieldInside->setToolTip(QStringLiteral("Connection is secure (HTTPS) ΓÇö BLACK Protection Active"));
         } else if (url.scheme() == QStringLiteral("http")) {
             m_shieldInside->setIcon(createSvgIcon(svgShield, 16, QStringLiteral("#ff3b30"))); // Red unsecure shield
             m_shieldInside->setToolTip(QStringLiteral("Connection is Not Secure (HTTP)"));
@@ -4180,9 +4523,9 @@ void BrowserWindow::setWindowTitleFromTab() {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ── Keyboard Shortcuts ────────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+// ΓöÇΓöÇ Keyboard Shortcuts ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 void BrowserWindow::setupKeyboardShortcuts()
 {
     // Clear existing shortcuts
@@ -4294,9 +4637,9 @@ void BrowserWindow::setupKeyboardShortcuts()
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ── Theme ─────────────────────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+// ΓöÇΓöÇ Theme ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 void BrowserWindow::updateUrlContainerStyle()
 {
     const bool chrome = chromeMode();
@@ -4352,6 +4695,10 @@ void BrowserWindow::applyTheme()
                             m_shareButton, m_downloadsButton, m_tabOverviewButton, m_readerModeButton, m_translateButton, m_pipButton, m_settingsButton,
                             m_extensionsButton, m_profileButton }) {
         b->setStyleSheet(navBtnStyle);
+        // Every toolbar control must be reachable by keyboard (WCAG 2.1.1).
+        // QToolButton defaults to Qt::NoFocus, which makes the whole toolbar
+        // invisible to keyboard and assistive-technology users.
+        b->setFocusPolicy(Qt::StrongFocus);
     }
     // Reload sits inside the address bar, so it gets a tighter hit area.
     m_reloadButton->setFixedSize(touchIconSize(22), touchIconSize(22));
@@ -4547,9 +4894,9 @@ void BrowserWindow::applyUiLayoutToView(QWebEngineView *view)
         "})('%1');").arg(layoutValue));
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ── Renderer Crash Recovery ────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+// ΓöÇΓöÇ Renderer Crash Recovery ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 void BrowserWindow::handleRenderProcessCrash(QWebEngineView *view)
 {
     if (!view)
@@ -4645,9 +4992,9 @@ void BrowserWindow::updateWebViewBackgrounds()
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ── Context Menu ──────────────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+// ΓöÇΓöÇ Context Menu ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 void BrowserWindow::contextMenuEvent(QContextMenuEvent *event) {
     QMenu menu(this);
     menu.setStyleSheet(QString(
@@ -4687,9 +5034,9 @@ void BrowserWindow::contextMenuEvent(QContextMenuEvent *event) {
     event->accept();
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ── Find in Page implementation ───────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+// ΓöÇΓöÇ Find in Page implementation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 void BrowserWindow::setupFindBar() {
     m_findBar = new QWidget(m_central);
     m_findBar->setObjectName(QStringLiteral("FindBar"));
@@ -4874,7 +5221,8 @@ QWidget* BrowserWindow::buildDownloadRow(int index, const DownloadItemInfo &item
         infoCol->addWidget(subLbl);
     } else {
         QLabel *statusLbl = new QLabel(item.state == 1 ? QStringLiteral("\u2713 Completed")
-                                                       : QStringLiteral("\u26A0 Failed"), row);
+                                      : item.state == 3 ? QStringLiteral("\u275A\u275A Paused")
+                                                        : QStringLiteral("\u26A0 Failed"), row);
         statusLbl->setStyleSheet(QString("color: %1; background: transparent; font-size: 11px; font-weight: 600;")
             .arg(item.state == 1 ? accent() : QStringLiteral("#ff453a")));
         infoCol->addWidget(statusLbl);
@@ -4918,9 +5266,43 @@ QWidget* BrowserWindow::buildDownloadRow(int index, const DownloadItemInfo &item
             "QToolButton:hover { background-color: %1; }"
         ).arg(hover()));
         connect(cancelBtn, &QToolButton::clicked, this, [this, index]() {
-            if (m_downloads && index < m_downloads->items().count()
-                && m_downloads->items()[index].request)
-                m_downloads->items()[index].request->cancel();
+            if (m_downloads && index < m_downloads->items().count())
+                m_downloads->cancelDownload(index);
+        });
+        rl->addWidget(cancelBtn);
+    } else if (item.state == 3) {
+        // Paused: offer resume (the pause glyph doubles as resume here would
+        // confuse; use the play glyph) plus cancel.
+        QToolButton *resumeBtn = new QToolButton(row);
+        resumeBtn->setIcon(createSvgIcon(QStringLiteral(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"%1\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"5 3 19 12 5 21 5 3\"/></svg>"), 14, textSecondary()));
+        resumeBtn->setIconSize(QSize(14, 14));
+        resumeBtn->setFixedSize(touchIconSize(24), touchIconSize(24));
+        resumeBtn->setToolTip(QStringLiteral("Resume Download"));
+        resumeBtn->setCursor(Qt::PointingHandCursor);
+        resumeBtn->setStyleSheet(QString(
+            "QToolButton { background: transparent; border: none; border-radius: 6px; }"
+            "QToolButton:hover { background-color: %1; }"
+        ).arg(hover()));
+        connect(resumeBtn, &QToolButton::clicked, this, [this, index]() {
+            if (m_downloads && index < m_downloads->items().count())
+                m_downloads->resumeDownload(index);
+        });
+        rl->addWidget(resumeBtn);
+
+        QToolButton *cancelBtn = new QToolButton(row);
+        cancelBtn->setIcon(createSvgIcon(svgX, 14, textSecondary()));
+        cancelBtn->setIconSize(QSize(14, 14));
+        cancelBtn->setFixedSize(touchIconSize(24), touchIconSize(24));
+        cancelBtn->setToolTip(QStringLiteral("Cancel Download"));
+        cancelBtn->setCursor(Qt::PointingHandCursor);
+        cancelBtn->setStyleSheet(QString(
+            "QToolButton { background: transparent; border: none; border-radius: 6px; }"
+            "QToolButton:hover { background-color: %1; }"
+        ).arg(hover()));
+        connect(cancelBtn, &QToolButton::clicked, this, [this, index]() {
+            if (m_downloads && index < m_downloads->items().count())
+                m_downloads->cancelDownload(index);
         });
         rl->addWidget(cancelBtn);
     } else if (item.state == 2 && !item.url.isEmpty()) {
@@ -4936,7 +5318,7 @@ QWidget* BrowserWindow::buildDownloadRow(int index, const DownloadItemInfo &item
         ).arg(hover()));
         connect(retryBtn, &QToolButton::clicked, this, [this, index]() {
             if (m_downloads && index < m_downloads->items().count())
-                addNewTab(QUrl(m_downloads->items()[index].url));
+                m_downloads->retryDownload(index);
         });
         rl->addWidget(retryBtn);
     }
