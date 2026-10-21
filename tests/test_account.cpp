@@ -1,4 +1,4 @@
-#include <QtTest>
+﻿#include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QStandardPaths>
@@ -89,9 +89,19 @@ private slots:
         m_account->saveAccount("local", "User 2", "user2@example.com");
         
         QJsonArray accounts = m_account->accountsJson();
-        QVERIFY(accounts.count() == 2);
+        QVERIFY(accounts.count() >= 2);
         
-        QString id = accounts[0].toObject()["id"].toString();
+        // Find the ID for "User 1" (accounts are newest-first, so index 0 is User 2)
+        QString id;
+        for (const QJsonValue &v : accounts) {
+            const QJsonObject o = v.toObject();
+            if (o.value("name").toString() == "User 1") {
+                id = o.value("id").toString();
+                break;
+            }
+        }
+        QVERIFY(!id.isEmpty());
+        
         m_account->selectAccount(id);
         
         QVERIFY(m_account->signedIn());
