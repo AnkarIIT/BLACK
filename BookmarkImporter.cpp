@@ -1,4 +1,4 @@
-#include "BookmarkImporter.h"
+﻿#include "BookmarkImporter.h"
 #include "OSPaths.h"
 #include "ShelfStore.h"
 
@@ -84,13 +84,30 @@ bool BookmarkImporter::loadBookmarks(const QString &browserId, QJsonArray &out) 
     if (!tmp.isValid())
         return false;
     const QString copyPath = tmp.filePath(QStringLiteral("Bookmarks"));
+
+    // The source is another application's profile file and is therefore
+    // UNTRUSTED input. Refuse implausible sizes before copying/parsing rather
+    // than buffering an arbitrary file into memory on the GUI thread.
+    const QFileInfo sourceInfo(source);
+    if (!sourceInfo.exists() || sourceInfo.isDir())
+        return false;
+    if (sourceInfo.size() > kMaxBookmarksFileBytes) {
+        qWarning("BookmarkImporter: refusing to parse %s (%lld bytes exceeds the %lld byte limit)",
+                 qPrintable(source), static_cast<long long>(sourceInfo.size()),
+                 static_cast<long long>(kMaxBookmarksFileBytes));
+        return false;
+    }
+
     if (!QFile::copy(source, copyPath))
         return false;
 
     QFile file(copyPath);
     if (!file.open(QIODevice::ReadOnly))
         return false;
-    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    // Re-check post-copy: the file may have grown between the stat and the copy.
+    if (file.size() > kMaxBookmarksFileBytes)
+        return false;
+    const QJsonDocument doc = QJsonDocument::fromJson(file.read(kMaxBookmarksFileBytes));
     if (!doc.isObject())
         return false;
 
