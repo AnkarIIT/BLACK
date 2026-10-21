@@ -1,9 +1,10 @@
-#include <QtTest>
+﻿#include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QStandardPaths>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QWebEngineScript>
 #include "../ExtensionManager.h"
 #include "../VaultCrypto.h"
 #include "../OSPaths.h"
