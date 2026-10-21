@@ -1,4 +1,4 @@
-#include "PermissionsBridge.h"
+﻿#include "PermissionsBridge.h"
 
 #include "VaultCrypto.h"
 #include "OSPaths.h"
@@ -84,23 +84,47 @@ bool PermissionsBridge::isContentSetting(int type) const
     return type >= Cookies && type <= TopLevelStorageAccess;
 }
 
-QJsonArray PermissionsBridge::getPermissions()
+QJsonObject PermissionsBridge::loadPermissionsObject()
 {
-    QJsonArray result;
     const QString path = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
                          + QLatin1Char('/') + QStringLiteral("permissions.json");
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly))
-        return result;
+        return {};
 
     const QByteArray raw = file.readAll();
+    if (raw.isEmpty())
+        return {};
+
+    // Fail CLOSED. VaultCrypto::decrypt() returns an empty buffer for EVERY
+    // failure - not-an-envelope, AEAD tag mismatch, corruption, wrong key -
+    // so treating an empty result as "fall back to the raw bytes" meant a
+    // tampered or wholly attacker-written permissions.json was parsed as
+    // trusted JSON. Any process able to write that file could then grant
+    // itself Notifications, ClipboardReadWrite, Geolocation and friends with
+    // no authentication at all. Gate on isEnvelope() and hard-fail instead.
+    if (!VaultCrypto::isEnvelope(raw)) {
+        qWarning("permissions.json is not a vault envelope - refusing to load it as plaintext");
+        return {};
+    }
+
     const QByteArray plain = VaultCrypto::decrypt(raw);
-    const QByteArray payload = plain.isEmpty() ? raw : plain;
-    const QJsonDocument doc = QJsonDocument::fromJson(payload);
-    if (!doc.isObject())
+    if (plain.isEmpty()) {
+        qWarning("permissions.json failed authentication - ignoring stored permissions");
+        return {};
+    }
+
+    const QJsonDocument doc = QJsonDocument::fromJson(plain);
+    return doc.isObject() ? doc.object() : QJsonObject();
+}
+
+QJsonArray PermissionsBridge::getPermissions()
+{
+    QJsonArray result;
+    const QJsonObject obj = loadPermissionsObject();
+    if (obj.isEmpty())
         return result;
 
-    const QJsonObject obj = doc.object();
     QJsonObject byOrigin;
     for (auto it = obj.constBegin(); it != obj.constEnd(); ++it) {
         const QString key = it.key();
@@ -120,7 +144,14 @@ QJsonArray PermissionsBridge::getPermissions()
         perm[QStringLiteral("typeName")] = typeName(type);
         perm[QStringLiteral("category")] = categoryName(type);
         perm[QStringLiteral("state")] = state;
-        byOrigin[origin].toArray().append(perm);
+        // NOTE: byOrigin[origin].toArray() returns a DETACHED COPY, so
+        // appending to it and discarding the result silently dropped every
+        // permission ever recorded - the per-site permission list in Settings
+        // was permanently empty and no grant could be revoked. Build the array
+        // first, append, then store it back.
+        QJsonArray perms = byOrigin.value(origin).toArray();
+        perms.append(perm);
+        byOrigin[origin] = perms;
     }
 
     for (auto it = byOrigin.constBegin(); it != byOrigin.constEnd(); ++it) {
@@ -138,20 +169,10 @@ QJsonObject PermissionsBridge::getPermissionsForOrigin(const QString &origin)
     result[QStringLiteral("origin")] = origin;
     QJsonArray permissions;
 
-    const QString path = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
-                         + QLatin1Char('/') + QStringLiteral("permissions.json");
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly))
+    const QJsonObject obj = loadPermissionsObject();
+    if (obj.isEmpty())
         return result;
 
-    const QByteArray raw = file.readAll();
-    const QByteArray plain = VaultCrypto::decrypt(raw);
-    const QByteArray payload = plain.isEmpty() ? raw : plain;
-    const QJsonDocument doc = QJsonDocument::fromJson(payload);
-    if (!doc.isObject())
-        return result;
-
-    const QJsonObject obj = doc.object();
     for (auto it = obj.constBegin(); it != obj.constEnd(); ++it) {
         const QString key = it.key();
         const int state = it.value().toInt();
@@ -182,16 +203,10 @@ void PermissionsBridge::setPermission(const QString &origin, int type, int state
                          + QLatin1Char('/') + QStringLiteral("permissions.json");
     QDir().mkpath(QFileInfo(path).absolutePath());
 
-    QFile file(path);
-    QJsonObject obj;
-    if (file.open(QIODevice::ReadOnly)) {
-        const QByteArray raw = file.readAll();
-        const QByteArray plain = VaultCrypto::decrypt(raw);
-        const QByteArray payload = plain.isEmpty() ? raw : plain;
-        QJsonDocument doc = QJsonDocument::fromJson(payload);
-        if (doc.isObject())
-            obj = doc.object();
-    }
+    // Read-modify-write against the authenticated store only (fail closed -
+    // see loadPermissionsObject()). Writing back on top of an unauthenticated
+    // file would let a tampered store silently keep its attacker-set values.
+    QJsonObject obj = loadPermissionsObject();
 
     const QString key = keyFor(origin, type);
     if (state == Default) {
@@ -204,7 +219,7 @@ void PermissionsBridge::setPermission(const QString &origin, int type, int state
     const QByteArray blob = VaultCrypto::encrypt(newPayload);
     if (blob.isEmpty())
         return;
-    if (!OSPaths::writeFileAtomic(path, blob)) {
+    if (!OSPaths::writeFileAtomic(path, blob, QFile::ReadOwner | QFile::WriteOwner)) {
         qWarning() << "Failed to save permissions";
         return;
     }
@@ -285,20 +300,10 @@ QJsonArray PermissionsBridge::getContentSettingCategories()
 
 int PermissionsBridge::getDefaultState(int type)
 {
-    const QString path = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
-                         + QLatin1Char('/') + QStringLiteral("permissions.json");
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly))
+    const QJsonObject obj = loadPermissionsObject();
+    if (obj.isEmpty())
         return (type == Cookies || type == Images || type == JavaScript) ? Allow : Ask;
 
-    const QByteArray raw = file.readAll();
-    const QByteArray plain = VaultCrypto::decrypt(raw);
-    const QByteArray payload = plain.isEmpty() ? raw : plain;
-    const QJsonDocument doc = QJsonDocument::fromJson(payload);
-    if (!doc.isObject())
-        return (type == Cookies || type == Images || type == JavaScript) ? Allow : Ask;
-
-    const QJsonObject obj = doc.object();
     const QString key = defaultKeyFor(type);
     if (obj.contains(key))
         return obj[key].toInt();
@@ -315,16 +320,8 @@ void PermissionsBridge::setDefaultState(int type, int state)
                          + QLatin1Char('/') + QStringLiteral("permissions.json");
     QDir().mkpath(QFileInfo(path).absolutePath());
 
-    QFile file(path);
-    QJsonObject obj;
-    if (file.open(QIODevice::ReadOnly)) {
-        const QByteArray raw = file.readAll();
-        const QByteArray plain = VaultCrypto::decrypt(raw);
-        const QByteArray payload = plain.isEmpty() ? raw : plain;
-        QJsonDocument doc = QJsonDocument::fromJson(payload);
-        if (doc.isObject())
-            obj = doc.object();
-    }
+    // Fail-closed authenticated read (see loadPermissionsObject()).
+    QJsonObject obj = loadPermissionsObject();
 
     const QString key = defaultKeyFor(type);
     if (state == Ask && type != Cookies && type != Images && type != JavaScript) {
@@ -337,7 +334,7 @@ void PermissionsBridge::setDefaultState(int type, int state)
     const QByteArray blob = VaultCrypto::encrypt(newPayload);
     if (blob.isEmpty())
         return;
-    if (!OSPaths::writeFileAtomic(path, blob)) {
+    if (!OSPaths::writeFileAtomic(path, blob, QFile::ReadOwner | QFile::WriteOwner)) {
         qWarning() << "Failed to save default permission state";
         return;
     }
@@ -353,7 +350,7 @@ void PermissionsBridge::savePermissionsTest(const QJsonObject &obj)
     const QByteArray blob = VaultCrypto::encrypt(plain);
     if (blob.isEmpty())
         return;
-    if (!OSPaths::writeFileAtomic(path, blob)) {
+    if (!OSPaths::writeFileAtomic(path, blob, QFile::ReadOwner | QFile::WriteOwner)) {
         qWarning() << "Failed to save permissions test data";
         return;
     }
