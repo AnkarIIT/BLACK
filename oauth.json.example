@@ -1,5 +1,6 @@
-{
-  "dev_mode": true,
+﻿{
+  "_comment": "Copy to <AppDataDirectory>/oauth.json and fill in real client IDs. NOTE: do NOT set dev_mode here. With dev_mode=true every provider reports itself configured and startAuth() short-circuits to a hardcoded mock identity (\"Ankar (Dev)\") without ever contacting the real provider - sign-in would appear to succeed while no tokens are issued.",
+  "dev_mode": false,
   "google": {
     "clientId": "MOCK_GOOGLE_CLIENT_ID"
   },
