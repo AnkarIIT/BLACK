@@ -1,4 +1,4 @@
-#ifndef SAFARITHEME_H
+﻿#ifndef SAFARITHEME_H
 #define SAFARITHEME_H
 
 #include <QObject>
@@ -17,14 +17,14 @@ public:
 
     Q_PROPERTY(int themeScheme READ themeScheme NOTIFY themeSchemeChanged)
     Q_PROPERTY(int themePreference READ themePreference NOTIFY themeSchemeChanged)
-    Q_PROPERTY(int contrast READ contrast NOTIFY contrastChanged)
+    Q_PROPERTY(int contrast READ contrastInt NOTIFY contrastChanged)
 
     Scheme scheme() const { return m_scheme; }
     int themeScheme() const { return static_cast<int>(m_scheme); }
     int themePreference() const { return static_cast<int>(m_preference); }
     Preference preference() const { return m_preference; }
-    Contrast contrast() const { return m_contrast; }
-    int contrast() const { return static_cast<int>(m_contrast); }
+    Contrast contrastEnum() const { return m_contrast; }
+    int contrastInt() const { return static_cast<int>(m_contrast); }
 
     void setPreference(Preference preference);
     Q_INVOKABLE void setThemePreference(int preference);
