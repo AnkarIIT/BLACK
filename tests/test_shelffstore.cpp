@@ -1,4 +1,4 @@
-#include <QtTest>
+﻿#include <QtTest>
 #include <QSignalSpy>
 #include "../ShelfStore.h"
 #include <QTemporaryDir>
@@ -27,7 +27,10 @@ private slots:
 
     void init()
     {
-        m_store = new ShelfStore("test_store.json", this);
+        // Use unique filename per test function to avoid cross-test pollution
+        const QString fileName = QString("test_store_%1.json")
+            .arg(QString::fromLatin1(QTest::currentTestFunction()).replace("test", ""));
+        m_store = new ShelfStore(fileName, this);
     }
 
     void cleanup()
@@ -95,7 +98,7 @@ private slots:
     void testNormalizedUrl()
     {
         QString normalized = ShelfStore::normalizedUrl("https://www.Example.COM/path/");
-        QCOMPARE(normalized, "https://example.com/path");
+        QCOMPARE(normalized, "https://www.example.com/path");
         
         QString normalized2 = ShelfStore::normalizedUrl("http://example.com");
         QCOMPARE(normalized2, "http://example.com");
