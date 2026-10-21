@@ -1,4 +1,4 @@
-#ifndef TABMANAGER_H
+﻿#ifndef TABMANAGER_H
 #define TABMANAGER_H
 
 #include <QObject>
@@ -13,6 +13,8 @@
 class QWebEngineNewWindowRequest;
 class QWebChannel;
 class TabController;
+
+struct TabInfo;
 
 class TabManager : public QObject
 {
@@ -58,7 +60,8 @@ public:
     void setActivateNewTabs(bool activate);
     void setNewTabUrl(const QUrl &url);
 
-    // TabController signals (forwarded)
+signals:
+    // TabController signals (forwarded) so QML/JS can subscribe via TabManager.
     void tabAdded(int index);
     void tabRemoved(int index);
     void currentTabChanged(int index);
