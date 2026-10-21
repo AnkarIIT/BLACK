@@ -1,7 +1,8 @@
-#include "UpdateChecker.h"
+﻿#include "UpdateChecker.h"
 #include <QStandardPaths>
 #include <QDir>
 #include <QFile>
+#include <QTemporaryFile>
 #include <QProcess>
 #include <QDesktopServices>
 #include <QJsonArray>
@@ -16,6 +17,50 @@ UpdateChecker::UpdateChecker(const QString &currentVersion,
 {
 }
 
+UpdateChecker::~UpdateChecker()
+{
+    // A destroyed checker must never leave a downloaded installer behind on
+    // disk, and must not leave a still-running installer process orphaned.
+    if (m_installerProcess && m_installerProcess->state() != QProcess::NotRunning) {
+        m_installerProcess->kill();
+        m_installerProcess->waitForFinished(3000);
+    }
+    discardDownloadedFile();
+    delete m_downloadFile;
+    m_downloadFile = nullptr;
+}
+
+// Update payloads are code execution. Only ever talk to the release hosts we
+// ship, over TLS, and never follow a redirect to somewhere else.
+bool UpdateChecker::isTrustedUrl(const QUrl &url) const
+{
+    if (url.scheme().compare(QLatin1String("https"), Qt::CaseInsensitive) != 0)
+        return false;
+
+    static const QStringList kTrustedHosts = {
+        QStringLiteral("api.github.com"),
+        QStringLiteral("github.com"),
+        QStringLiteral("objects.githubusercontent.com"),
+        QStringLiteral("release-assets.githubusercontent.com"),
+        QStringLiteral("codeload.github.com"),
+    };
+
+    const QString host = url.host().toLower();
+    for (const QString &allowed : kTrustedHosts) {
+        if (host == allowed)
+            return true;
+    }
+    return false;
+}
+
+void UpdateChecker::discardDownloadedFile()
+{
+    if (!m_downloadFilePath.isEmpty()) {
+        QFile::remove(m_downloadFilePath);
+        m_downloadFilePath.clear();
+    }
+}
+
 void UpdateChecker::checkForUpdates()
 {
     if (m_checking || m_downloading) {
@@ -26,9 +71,21 @@ void UpdateChecker::checkForUpdates()
     m_lastError.clear();
     emit updateStatusChanged();
 
+    if (!isTrustedUrl(m_updateCheckUrl)) {
+        m_checking = false;
+        m_lastError = QStringLiteral("Refusing to contact an untrusted update endpoint: %1")
+                          .arg(m_updateCheckUrl.toString());
+        emit updateStatusChanged();
+        emit checkFinished(false);
+        return;
+    }
+
     QNetworkRequest request(m_updateCheckUrl);
     request.setRawHeader("User-Agent", "BLACK-Browser-UpdateChecker/1.0");
     request.setRawHeader("Accept", "application/json");
+    request.setMaximumRedirectsAllowed(0);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::ManualRedirectPolicy);
 
     m_checkReply = m_network.get(request);
     connect(m_checkReply, &QNetworkReply::finished, this, &UpdateChecker::onCheckReplyFinished);
@@ -57,6 +114,14 @@ void UpdateChecker::onCheckReplyFinished()
     const QByteArray data = m_checkReply->readAll();
     m_checkReply->deleteLater();
     m_checkReply = nullptr;
+
+    if (data.size() > kMaxManifestBytes) {
+        m_lastError = QStringLiteral("Update manifest is implausibly large (%1 bytes); refusing")
+                          .arg(data.size());
+        emit updateStatusChanged();
+        emit checkFinished(false);
+        return;
+    }
 
     const QJsonDocument doc = QJsonDocument::fromJson(data);
     if (!doc.isObject()) {
@@ -115,6 +180,16 @@ void UpdateChecker::onCheckReplyFinished()
         return;
     }
 
+    // The manifest is attacker-controllable if the endpoint is ever
+    // compromised, so the URL it hands us is validated before it is stored.
+    if (!isTrustedUrl(downloadUrl)) {
+        m_lastError = QStringLiteral("Refusing update from a non-release host: %1")
+                          .arg(downloadUrl.host());
+        emit updateStatusChanged();
+        emit checkFinished(false);
+        return;
+    }
+
     m_latestVersion = version;
     m_updateUrl = downloadUrl;
     m_releaseNotes = notes;
@@ -155,12 +230,19 @@ void UpdateChecker::installUpdate()
     }
 
     m_downloadFilePath = m_downloadFile->fileName();
+    m_downloadedBytes = 0;
+    m_verificationPassed = false;
 
-    // Initialize streaming SHA256 hasher
-    m_hasher = new QCryptographicHash(QCryptographicHash::Sha256, this);
+    // Initialize streaming SHA256 hasher (QCryptographicHash is not a
+    // QObject and takes only the algorithm argument).
+    m_hasher = new QCryptographicHash(QCryptographicHash::Sha256);
 
     QNetworkRequest request(m_updateUrl);
     request.setRawHeader("User-Agent", "BLACK-Browser-UpdateChecker/1.0");
+    request.setMaximumRedirectsAllowed(2);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::NoLessSafeRedirectPolicy);
+
     m_downloadReply = m_network.get(request);
 
     connect(m_downloadReply, &QNetworkReply::downloadProgress,
@@ -187,6 +269,7 @@ void UpdateChecker::cancelDownload()
     if (m_downloadReply) {
         m_downloadReply->abort();
     }
+    discardDownloadedFile();
     cleanupDownload();
     emit downloadFinished(false, QStringLiteral("Download cancelled by user"));
 }
@@ -208,14 +291,27 @@ void UpdateChecker::onDownloadReadyRead()
         return;
     }
 
-    if (m_downloadFile->write(chunk) != chunk.size()) {
+    // Bound the payload before it reaches the disk. An installer is tens of
+    // MB; a multi-hundred-MB "installer" is a denial-of-service at best.
+    if (m_downloadedBytes + chunk.size() > kMaxDownloadBytes) {
         m_downloadReply->abort();
-        m_lastError = QStringLiteral("Failed to write download chunk to disk");
+        m_lastError = QStringLiteral("Update payload exceeds the maximum allowed size");
+        discardDownloadedFile();
         cleanupDownload();
         emit downloadFinished(false, m_lastError);
         return;
     }
 
+    if (m_downloadFile->write(chunk) != chunk.size()) {
+        m_downloadReply->abort();
+        m_lastError = QStringLiteral("Failed to write download chunk to disk");
+        discardDownloadedFile();
+        cleanupDownload();
+        emit downloadFinished(false, m_lastError);
+        return;
+    }
+
+    m_downloadedBytes += chunk.size();
     m_hasher->addData(chunk);
 }
 
@@ -231,6 +327,9 @@ void UpdateChecker::onDownloadFinished()
 
     if (m_downloadReply->error() != QNetworkReply::NoError) {
         error = m_downloadReply->errorString();
+        // A truncated or failed transfer must not leave the partial payload
+        // sitting in %TEMP% where anything could later pick it up.
+        discardDownloadedFile();
     } else {
         // Flush any remaining data
         if (m_downloadFile) {
@@ -238,39 +337,58 @@ void UpdateChecker::onDownloadFinished()
             m_downloadFile->close();
         }
 
-        // Verify checksum if provided
-        if (!m_expectedSha256.isEmpty()) {
+        // Integrity gate. An update is arbitrary code execution on the user's
+        // machine, so an update with no verifiable digest is NEVER executed.
+        // A checksum served by the same response as the URL only protects
+        // against corruption, not against a compromised endpoint - but it is
+        // still required, and its absence is a hard failure rather than a
+        // warning that gets skipped.
+        if (m_expectedSha256.isEmpty()) {
+            error = QStringLiteral(
+                "Refusing to install: the update manifest carries no SHA-256 digest, "
+                "so the download cannot be authenticated.");
+            qWarning() << "Update verification skipped - no digest in manifest; aborting";
+            discardDownloadedFile();
+        } else {
             const QString actualSha256 = computeFileSha256(m_downloadFilePath);
-            if (!actualSha256.isEmpty() && actualSha256.toLower() != m_expectedSha256) {
+            if (actualSha256.isEmpty()) {
+                error = QStringLiteral("Failed to compute checksum of downloaded file");
+                discardDownloadedFile();
+            } else if (actualSha256.toLower() != m_expectedSha256) {
                 error = QStringLiteral("Checksum verification failed: expected %1, got %2")
                             .arg(m_expectedSha256, actualSha256);
                 qWarning() << "Update checksum mismatch:" << error;
-                QFile::remove(m_downloadFilePath);
-            } else if (actualSha256.isEmpty()) {
-                error = QStringLiteral("Failed to compute checksum of downloaded file");
-                QFile::remove(m_downloadFilePath);
+                emit verificationFailed(error);
+                discardDownloadedFile();
             } else {
+                m_verificationPassed = true;
                 success = true;
             }
-        } else {
-            qWarning() << "No SHA256 provided in update manifest - skipping verification";
-            success = true;
         }
 
         if (success) {
-            // Launch the installer with proper error handling
-            m_installerProcess = new QProcess(this);
-            connect(m_installerProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-                    this, &UpdateChecker::onInstallerFinished);
-
-            QStringList args;
-            args << QStringLiteral("/VERYSILENT") << QStringLiteral("/SUPPRESSMSGBOXES")
-                 << QStringLiteral("/NORESTART") << QStringLiteral("/LOG");
-
-            if (!m_installerProcess->start(m_downloadFilePath, args)) {
-                error = QStringLiteral("Failed to launch installer: %1").arg(m_installerProcess->errorString());
+            // Defence in depth: the flag can only be set by the verified
+            // branch above. Never launch anything that did not pass.
+            if (!m_verificationPassed) {
                 success = false;
-                QFile::remove(m_downloadFilePath);
+                error = QStringLiteral("Refusing to launch an unverified update payload");
+                discardDownloadedFile();
+            } else {
+                // Launch the installer with proper error handling
+                m_installerProcess = new QProcess(this);
+                connect(m_installerProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                        this, &UpdateChecker::onInstallerFinished);
+
+                QStringList args;
+                args << QStringLiteral("/VERYSILENT") << QStringLiteral("/SUPPRESSMSGBOXES")
+                     << QStringLiteral("/NORESTART") << QStringLiteral("/LOG");
+
+                m_installerProcess->start(m_downloadFilePath, args);
+                if (!m_installerProcess->waitForStarted(5000)) {
+                    error = QStringLiteral("Failed to launch installer: %1").arg(m_installerProcess->errorString());
+                    success = false;
+                    discardDownloadedFile();
+                }
             }
         }
     }
@@ -295,9 +413,7 @@ void UpdateChecker::onInstallerFinished(int exitCode, QProcess::ExitStatus exitS
     }
 
     // Clean up downloaded installer after launch attempt
-    if (!m_downloadFilePath.isEmpty()) {
-        QFile::remove(m_downloadFilePath);
-    }
+    discardDownloadedFile();
 
     cleanupDownload();
     emit downloadFinished(success, error);
@@ -305,9 +421,10 @@ void UpdateChecker::onInstallerFinished(int exitCode, QProcess::ExitStatus exitS
 
 bool UpdateChecker::verifyChecksum(const QString &filePath) const
 {
-    if (m_expectedSha256.isEmpty()) {
-        return true; // No checksum to verify
-    }
+    // An absent digest is a failure, matching the install-time gate: a payload
+    // that cannot be authenticated is never trusted.
+    if (m_expectedSha256.isEmpty())
+        return false;
     const QString actual = computeFileSha256(filePath);
     return !actual.isEmpty() && actual.toLower() == m_expectedSha256;
 }
@@ -340,25 +457,32 @@ void UpdateChecker::cleanupDownload()
         m_downloadReply->deleteLater();
         m_downloadReply = nullptr;
     }
+    // Centralised removal: any path that abandons a download (error, cancel,
+    // oversized payload, destroyed object) must not leave an executable
+    // installer behind in the temp directory.
+    discardDownloadedFile();
     if (m_downloadFile) {
         if (m_downloadFile->isOpen()) {
             m_downloadFile->close();
         }
-        // Don't auto-remove here - we handle removal explicitly after verification/launch
         m_downloadFile->deleteLater();
         m_downloadFile = nullptr;
     }
     if (m_hasher) {
-        m_hasher->deleteLater();
+        delete m_hasher;
         m_hasher = nullptr;
     }
-    if (m_installerProcess) {
+    // Never deleteLater() a process that may still be running - that kills the
+    // installer mid-flight and orphans it. onInstallerFinished() owns cleanup
+    // of a process that actually started.
+    if (m_installerProcess && m_installerProcess->state() == QProcess::NotRunning) {
         m_installerProcess->deleteLater();
-        m_installerProcess = nullptr;
     }
+    m_installerProcess = nullptr;
 
     m_downloading = false;
-    m_downloadFilePath.clear();
+    m_downloadedBytes = 0;
+    m_verificationPassed = false;
     emit updateStatusChanged();
 }
 
