@@ -1,40 +1,13 @@
-#include <QtTest>
+﻿#include <QtTest>
 #include <QSignalSpy>
 #include <QTemporaryDir>
-#include <QStandardPaths>
 #include <QWebEngineProfile>
-#include <QWebEngineDownloadRequest>
 #include "../DownloadManager.h"
-#include "../BrowserSettings.h"
 
-class MockDownloadRequest : public QWebEngineDownloadRequest
-{
-    Q_OBJECT
-public:
-    MockDownloadRequest(const QString &fileName, const QString &url, qint64 totalBytes = 1000, QObject *parent = nullptr)
-        : QWebEngineDownloadRequest(parent), m_fileName(fileName), m_url(url), m_totalBytes(totalBytes), m_receivedBytes(0), m_state(DownloadInProgress) {}
-
-    QString downloadFileName() const override { return m_fileName; }
-    QString downloadDirectory() const override { return QStandardPaths::writableLocation(QStandardPaths::DownloadLocation); }
-    QUrl url() const override { return QUrl(m_url); }
-    qint64 receivedBytes() const override { return m_receivedBytes; }
-    qint64 totalBytes() const override { return m_totalBytes; }
-    DownloadState state() const override { return m_state; }
-    void setReceivedBytes(qint64 bytes) { m_receivedBytes = bytes; emit receivedBytesChanged(); }
-    void setState(DownloadState state) { m_state = state; emit stateChanged(state); }
-    void accept() override {}
-    void pause() override { if (m_state == DownloadInProgress) { m_state = DownloadPaused; emit stateChanged(m_state); } }
-    void resume() override { if (m_state == DownloadPaused) { m_state = DownloadInProgress; emit stateChanged(m_state); } }
-    void cancel() override { m_state = DownloadCancelled; emit stateChanged(m_state); }
-
-private:
-    QString m_fileName;
-    QString m_url;
-    qint64 m_totalBytes;
-    qint64 m_receivedBytes;
-    DownloadState m_state;
-};
-
+// NOTE: QWebEngineDownloadRequest has no public constructor and none of its
+// methods are virtual, so it cannot be subclassed or mocked. This suite
+// therefore covers everything testable without a live download: construction,
+// invalid-index safety, list management, and the signal surface.
 class TestDownloadManager : public QObject
 {
     Q_OBJECT
@@ -50,7 +23,7 @@ private slots:
         m_tempDir = new QTemporaryDir();
         QVERIFY(m_tempDir->isValid());
         qputenv("QT_TESTING", "1");
-        
+
         m_profile = QWebEngineProfile::defaultProfile();
         QVERIFY(m_profile);
     }
@@ -77,23 +50,32 @@ private slots:
     {
         QVERIFY(m_manager);
         QCOMPARE(m_manager->completedCount(), 0);
+        QVERIFY(m_manager->items().isEmpty());
     }
 
     void testClearCompleted()
     {
+        QSignalSpy spy(m_manager, &DownloadManager::itemsChanged);
+        QVERIFY(spy.isValid());
         m_manager->clearCompleted();
         QCOMPARE(m_manager->completedCount(), 0);
+        // clearCompleted() always emits itemsChanged().
+        QCOMPARE(spy.count(), 1);
     }
 
     void testClearAll()
     {
+        QSignalSpy spy(m_manager, &DownloadManager::itemsChanged);
+        QVERIFY(spy.isValid());
         m_manager->clearAll();
         QCOMPARE(m_manager->completedCount(), 0);
+        // clearAll() always emits itemsChanged().
+        QCOMPARE(spy.count(), 1);
     }
 
-    void testPauseResumeCancelRetry()
+    void testInvalidIndicesDoNotCrash()
     {
-        // Test with invalid indices - should not crash
+        // Out-of-range indices must be ignored, never crash.
         m_manager->pauseDownload(-1);
         m_manager->pauseDownload(999);
         m_manager->resumeDownload(-1);
@@ -104,14 +86,8 @@ private slots:
         m_manager->retryDownload(999);
         m_manager->showInFolder(-1);
         m_manager->showInFolder(999);
-        
-        QVERIFY(true); // No crash
-    }
 
-    void testDownloadProgressSignal()
-    {
-        QSignalSpy spy(m_manager, &DownloadManager::downloadProgress);
-        QVERIFY(spy.isValid());
+        QVERIFY(true); // No crash
     }
 
     void testItemsChangedSignal()
