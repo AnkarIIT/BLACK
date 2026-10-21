@@ -1,4 +1,4 @@
-#ifndef BROWSERWINDOW_H
+﻿#ifndef BROWSERWINDOW_H
 #define BROWSERWINDOW_H
 
 #include <QMainWindow>
@@ -10,6 +10,8 @@
 #include <QWebEnginePermission>
 #endif
 #include <QWebEngineCertificateError>
+#include <QWebEngineFullScreenRequest>
+#include <QWebEngineClientCertificateSelection>
 #include <QLineEdit>
 #include <QToolButton>
 #include <QPushButton>
@@ -21,7 +23,8 @@
 #include <QUrl>
 
 // Safari-style User-Agent shared by the main and private-window profiles so
-// both present an identical fingerprint to sites.
+// both present an identical fingerprint to sites (same string on the same OS,
+// including the BLACK/1.0 suffix on every platform).
 QString getSafariUserAgent();
 #include <QLabel>
 #include <QScrollArea>
@@ -32,24 +35,17 @@ QString getSafariUserAgent();
 #include <QPointer>
 
 class QProgressBar;
+class QAuthenticator;
 class SafariWebView;
-class QWebEngineNewWindowRequest;
-class QWebEngineDownloadRequest;
-class QWebEngineProfile;
-class QWebChannel;
-class QGraphicsDropShadowEffect;
-class ChromeLayer;
-class ShelfStore;
-class PasswordStore;
-class ExtensionManager;
-class Account;
-class BookmarkImporter;
-class PermissionsBridge;
-class WebAuthnManager;
-class ReaderMode;
-class FingerprintProtection;
-class CookiePartition;
-class TranslationManager;
+class CollaborationManager;
+class AIAgentManager;
+class VoiceInterface;
+class ProductivityManager;
+class AdvancedSecurity;
+class WebRTCManager;
+class DeveloperTools;
+class WasmExtensionSupport;
+class I18nManager;
 class TabGroupManager;
 class SyncManager;
 class SyncEngine;
@@ -59,11 +55,23 @@ class WalletManager;
 class RewardsManager;
 class SearchAffiliation;
 class PerformanceManager;
-class WasmExtensionSupport;
-class WebRTCManager;
-class DeveloperTools;
-class I18nManager;
+class ReaderMode;
+class FingerprintProtection;
+class CookiePartition;
+class TranslationManager;
+class ChromeLayer;
 class ShelfStore;
+class PasswordStore;
+class ExtensionManager;
+class Account;
+class BookmarkImporter;
+class PermissionsBridge;
+class WebAuthnManager;
+class QWebChannel;
+class QGraphicsDropShadowEffect;
+class QWebEngineNewWindowRequest;
+class QWebEngineProfile;
+class QWebEngineDownloadRequest;
 #include "UpdateChecker.h"
 
 struct TabInfo {
@@ -104,6 +112,28 @@ public:
 
     // Opens the Settings sheet (used by --open-settings debug flag).
     void openSettingsForTesting();
+
+    // Test-only: resets the static web profile so WebEngine background threads
+    // can be cleaned up between test runs. Returns true if a profile was reset.
+    static bool resetWebProfileForTesting();
+
+    // ΓöÇΓöÇ Read-only tab accessors ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    // Exposed for tooling and the test suite. They never mutate state.
+    int tabCount() const { return m_tabs.count(); }
+    int currentTabIndex() const { return m_currentTabIndex; }
+    // Returns a default-constructed TabInfo when index is out of range.
+    TabInfo tabInfo(int index) const;
+
+    bool isIncognito() const { return m_incognito; }
+
+    // Closes every tab immediately (no fade animation) and opens one fresh start
+    // tab, so the window is never left with zero tabs. Synchronous, unlike
+    // closeTab() which animates the close over 150 ms.
+    void closeAllTabs();
+
+    // Reorders the tab at fromIndex to toIndex and keeps the tab stack in sync,
+    // so the visible page always matches the highlighted tab.
+    void moveTab(int fromIndex, int toIndex);
 
 protected:
     void mousePressEvent(QMouseEvent *event) override;
@@ -167,10 +197,34 @@ private:
     void applyUiLayoutToView(QWebEngineView *view);
     void applySidebarLayout(bool chrome);
     void handleRenderProcessCrash(QWebEngineView *view);
+    void handleFullScreenRequest(QWebEngineFullScreenRequest request);
+    void handleAuthenticationRequired(const QUrl &requestUrl, QAuthenticator *authenticator);
+    void handleProxyAuthenticationRequired(const QUrl &requestUrl, QAuthenticator *authenticator,
+                                           const QString &proxyHost);
+    void handleClientCertificateSelection(QWebEngineClientCertificateSelection selection);
     void updateUrlContainerStyle();
     void updateWebViewBackgrounds();
 
+    // Tab thumbnail lifecycle (driven by captureOverviewThumbnails()).
+    void captureThumbnailAsync(QWebEngineView *view, int tabIndex);
+    void pruneThumbnails();
+    void clearTabThumbnail(int index);
+
+    // Refreshes the downloads summary row in the sidebar.
+    void updateDownloadsSidebar();
+
+    // Back/forward history popup and page actions (Print / Save as PDF).
+    void showHistoryMenu(QToolButton *button, bool isBack);
+    void printPage();
+    void savePageAsPdf();
+
     friend class ChromeLayer;
+    // The test suite drives tab management and inspects the window's toolbar
+    // widgets directly; friendship keeps those internals private to everyone
+    // else while letting the tests exercise the real, shipped controls.
+    friend class TestBrowserWindow;
+    friend class TestAccessibility;
+    friend class TestTabThumbnailDownload;
 
     QIcon createSvgIcon(const QString &svgData, int size = 18, const QString &color = "#1d1d1f");
     QIcon profileAvatarIcon(int size);
@@ -357,25 +411,33 @@ private:
     BookmarkImporter *m_bookmarkImporter;
     PermissionsBridge *m_permissionsBridge;
     UpdateChecker *m_updateChecker;
-    WebAuthnManager *m_webAuthnManager;
-    ReaderMode *m_readerMode;
-    FingerprintProtection *m_fingerprintProtection;
-    CookiePartition *m_cookiePartition;
-    TranslationManager *m_translationManager;
-    TabGroupManager *m_tabGroupManager;
-    SyncManager *m_syncManager;
-    AIManager *m_aiManager;
-    WalletManager *m_walletManager;
-    RewardsManager *m_rewardsManager;
-    SearchAffiliation *m_searchAffiliation;
-    PerformanceManager *m_performanceManager;
-    WebRTCManager *m_webRTCManager;
-    I18nManager *m_i18nManager;
-    CollaborationManager *m_collaborationManager;
-    AIAgentManager *m_aiAgentManager;
-    VoiceInterface *m_voiceInterface;
-    ProductivityManager *m_productivityManager;
-    AdvancedSecurity *m_advancedSecurity;
+    // The managers below are constructed part-way through the constructor and
+    // only THEN handed to QWebChannel::registerObject. They carry explicit
+    // = nullptr initializers so that any future code path that touches one
+    // before construction deterministically sees null instead of indeterminate
+    // stack garbage (registering an uninitialized pointer here previously led
+    // to undefined behaviour inside QWebChannel).
+    WebAuthnManager *m_webAuthnManager = nullptr;
+    ReaderMode *m_readerMode = nullptr;
+    FingerprintProtection *m_fingerprintProtection = nullptr;
+    CookiePartition *m_cookiePartition = nullptr;
+    TranslationManager *m_translationManager = nullptr;
+    TabGroupManager *m_tabGroupManager = nullptr;
+    SyncManager *m_syncManager = nullptr;
+    AIManager *m_aiManager = nullptr;
+    WalletManager *m_walletManager = nullptr;
+    RewardsManager *m_rewardsManager = nullptr;
+    SearchAffiliation *m_searchAffiliation = nullptr;
+    PerformanceManager *m_performanceManager = nullptr;
+    WebRTCManager *m_webRTCManager = nullptr;
+    I18nManager *m_i18nManager = nullptr;
+    CollaborationManager *m_collaborationManager = nullptr;
+    AIAgentManager *m_aiAgentManager = nullptr;
+    VoiceInterface *m_voiceInterface = nullptr;
+    ProductivityManager *m_productivityManager = nullptr;
+    AdvancedSecurity *m_advancedSecurity = nullptr;
+    WasmExtensionSupport *m_wasmExtensionSupport = nullptr;
+    DeveloperTools *m_developerTools = nullptr;
     ShelfStore *m_readingList;
     QMap<QString, bool> m_permissionChoices;
 
@@ -397,6 +459,11 @@ private:
     void preloadFavicon(const QUrl &url);
     QNetworkAccessManager m_netManager;
     QMap<QString, QPixmap> m_faviconCache;
+
+    // Page-initiated fullscreen state (HTML5 video / Element.requestFullscreen).
+    QPointer<QWebEngineView> m_fullscreenView;
+    bool m_pageFullscreen = false;
+    bool m_fullscreenWasMaximized = false;
 };
 
 #endif
