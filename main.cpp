@@ -1,4 +1,4 @@
-#include <QApplication>
+﻿#include <QApplication>
 #include <QGuiApplication>
 #include <QScreen>
 #include <QStandardPaths>
@@ -17,6 +17,7 @@
 #include <QHash>
 #include <QTextStream>
 #include <QRegularExpression>
+#include <QLocale>
 #include "BrowserWindow.h"
 #include "BrowserSettings.h"
 #include "TrackerBlocker.h"
@@ -28,6 +29,7 @@
 #include <QWebEngineScript>
 #include "Account.h"
 #include "FilterListParser.h"
+#include "OnboardingBridge.h"
 #include "OAuthManager.h"
 #include "BookmarkImporter.h"
 #include "ShelfStore.h"
@@ -57,7 +59,7 @@ bool isFirstRun() {
     return true;
 }
 
-// ── Single-instance hand-off state ────────────────────────────────────────
+// ΓöÇΓöÇ Single-instance hand-off state ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // URLs a secondary instance asked us to open are queued here until the main
 // window exists (it may still be inside the first-run onboarding flow when a
 // hand-off connection arrives).
@@ -170,7 +172,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    // ────────────────────────────────────────────────────────────────────
+    // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     // Application-wide dark/light QSS so every native Qt dialog follows
     // BLACK's theme instead of the OS default: JavaScript alert/confirm/
     // prompt (QWebEnginePage), certificate-error message boxes, permission
@@ -180,7 +182,7 @@ int main(int argc, char *argv[])
     // active browser theme; the per-widget stylesheets used by the chrome
     // (BrowserWindow) win over these generic rules for the widgets they
     // style explicitly.
-    // ────────────────────────────────────────────────────────────────────
+    // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     {
         const auto buildQss = []() -> QString {
             const SafariTheme &t = SafariTheme::instance();
@@ -245,14 +247,14 @@ int main(int argc, char *argv[])
         app.setStyleSheet(buildQss());
     }
 
-    // ════════════════════════════════════════════════════════════════════
+    // ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
     // Single-instance guard
     // Only one process may own the shared profile directory (QtWebEngine
     // storage, session.json, settings.json). A second BLACK.exe hands its
-    // command-line URLs to the running instance — which opens them in a new
-    // tab — and exits immediately, so two processes can never clobber profile
+    // command-line URLs to the running instance ΓÇö which opens them in a new
+    // tab ΓÇö and exits immediately, so two processes can never clobber profile
     // data or session history.
-    // ════════════════════════════════════════════════════════════════════
+    // ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
     const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir().mkpath(dataDir);
 
@@ -328,6 +330,11 @@ int main(int argc, char *argv[])
     settings->setAttribute(QWebEngineSettings::DnsPrefetchEnabled, false);
     settings->setAttribute(QWebEngineSettings::PdfViewerEnabled, true);
     settings->setAttribute(QWebEngineSettings::AutoLoadImages, true);
+
+    // Spellcheck (was never enabled, so form fields had no red underlines).
+    profile->setSpellCheckEnabled(true);
+    profile->setSpellCheckLanguages(
+        QStringList{ QLocale::system().name().replace(QLatin1Char('_'), QLatin1Char('-')) });
 
     // Set Safari-style User-Agent based on platform detection
     profile->setHttpUserAgent(getSafariUserAgent());
@@ -445,8 +452,8 @@ int main(int argc, char *argv[])
         BrowserWindow::setWebProfile(currentProfile);
     }
     
-    BrowserWindow window;
-    g_activeWindow = &window;
+    BrowserWindow *window = new BrowserWindow();
+    g_activeWindow = window;
 
     PlatformAdaptor *adaptor = PlatformAdaptor::instance();
     QSize desired;
@@ -461,21 +468,25 @@ int main(int argc, char *argv[])
     if (screen) {
         const QRect avail = screen->availableGeometry();
         const QSize cap = QSize(avail.width() * 9 / 10, avail.height() * 9 / 10);
-        window.resize(desired.boundedTo(cap));
-        window.move(avail.center() - QPoint(window.width() / 2, window.height() / 2));
+        window->resize(desired.boundedTo(cap));
+        window->move(avail.center() - QPoint(window->width() / 2, window->height() / 2));
     } else {
-        window.resize(desired);
+        window->resize(desired);
     }
 
     // First-run startup behavior: if onboarding has never been completed,
     // show the local start page. A separate first-run cinematic is shown
     // earlier if this is the very first launch.
-    window.show();
+    window->show();
+    // Debug-only entry point for the automated UI tests. A release build must
+    // not expose a hidden command-line flag that force-opens the settings UI.
+#ifndef QT_NO_DEBUG
     if (QApplication::arguments().contains(QStringLiteral("--open-settings"))) {
-        QTimer::singleShot(1500, &window, &BrowserWindow::openSettingsForTesting);
+        QTimer::singleShot(1500, window, &BrowserWindow::openSettingsForTesting);
     }
+#endif
     if (isFirstRun()) {
-        window.loadStartPage();
+        window->loadStartPage();
     } else {
         // Normal run: honor "Safari opens with"
         const QString openWith = BrowserSettings::instance().opensWith();
@@ -483,13 +494,13 @@ int main(int argc, char *argv[])
             || openWith == QStringLiteral("All non-private windows from last session")) {
             // Session was already restored in the constructor; keep those tabs.
         } else if (openWith == QStringLiteral("New private window")) {
-            window.loadStartPage();
+            window->loadStartPage();
             auto *priv = new BrowserWindow(true);
             priv->setAttribute(Qt::WA_DeleteOnClose);
-            priv->resize(window.size());
+            priv->resize(window->size());
             priv->show();
         } else {
-            window.loadStartPage();
+            window->loadStartPage();
         }
     }
 
@@ -498,7 +509,7 @@ int main(int argc, char *argv[])
     routeOpenRequest(parseHandoffUrls(commandLineUrls().join(QLatin1Char('\n')).toUtf8()));
     if (!g_pendingUrls.isEmpty()) {
         for (const QUrl &url : g_pendingUrls)
-            window.addNewTab(url);
+            window->addNewTab(url);
         g_pendingUrls.clear();
     }
 
