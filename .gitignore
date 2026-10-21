@@ -1,10 +1,12 @@
-# Build & Framework binaries (TOO LARGE FOR GITHUB)
+﻿# Build & Framework binaries (TOO LARGE FOR GITHUB)
 Qt/
 build/
 build-linux/
 .vscode/
 
-# Build artifacts
+# Build artifacts (compiled output only - these patterns are global, so they
+# would also hide any legitimately-committed .exe/.dll if one is ever added;
+# use `git add -f` in that case)
 *.exe
 *.dll
 *.pdb
@@ -20,5 +22,13 @@ aqtinstall.log
 # Visual reference mockups
 welcome_flow.png
 
-# Git state
-.git/
+# Secrets & credentials (never commit)
+oauth.json
+secrets/
+
+# Dependencies
+node_modules/
+
+# Playwright (generated)
+tests/playwright/playwright-report/
+tests/playwright/test-results/
