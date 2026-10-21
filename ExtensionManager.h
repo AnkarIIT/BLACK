@@ -1,4 +1,4 @@
-#ifndef EXTENSIONMANAGER_H
+﻿#ifndef EXTENSIONMANAGER_H
 #define EXTENSIONMANAGER_H
 
 #include <QObject>
@@ -9,10 +9,13 @@
 #include <QMap>
 #include <QSet>
 #include <memory>
+#include <functional>
 
 class QWebEngineScript;
 class QWebEngineProfile;
 class ExtensionContext;
+
+using MessageListener = std::function<void(const QJsonObject&)>;
 
 struct BlockingRule {
     QStringList blockedHosts;
@@ -47,7 +50,7 @@ struct ExtensionManifestV3 {
     QJsonObject key;
     QJsonObject sandbox;
     QJsonObject sidePanel;
-    QJsonObject webAccessibleResources;
+    QJsonArray webAccessibleResources;
 };
 
 struct ExtensionInfo {
@@ -57,11 +60,18 @@ struct ExtensionInfo {
     QString description;
     QString path;
     ExtensionManifestV3 manifest;
+    // Declarative network-blocking rules contributed by this extension's
+    // manifest (activeBlockingRules() aggregates these, and manifest parsing
+    // populates them at load time).
+    BlockingRule blockingRules;
     bool enabled = true;
     bool loaded = false;
     QDateTime installTime;
     QDateTime lastUpdateTime;
     ExtensionContext *context = nullptr;
+
+    // Required for QList/QMap comparisons (e.g., indexOf, removeOne, contains)
+    bool operator==(const ExtensionInfo &other) const { return id == other.id; }
 };
 
 class ExtensionManager : public QObject
@@ -92,7 +102,7 @@ public:
     QList<BlockingRule> activeBlockingRules() const;
     
     Q_INVOKABLE QJsonObject callApi(const QString &extensionId, const QString &apiName, const QString &method, const QJsonArray &args);
-    Q_INVOKABLE void registerMessageListener(const QString &extensionId, const QString &apiName, const QString &eventName, std::function<void(const QJsonObject&)> listener);
+    Q_INVOKABLE void registerMessageListener(const QString &extensionId, const QString &apiName, const QString &eventName, MessageListener listener);
     
     QWebEngineProfile* defaultProfile() const;
 
@@ -106,13 +116,16 @@ signals:
 private:
     void scan();
     bool parseManifest(const QString &path, ExtensionManifestV3 &manifest);
-    bool validateManifest(const ExtensionManifestV3 &manifest);
-    ExtensionInfo* createExtensionInfo(const QString &id, const QString &path);
+    // NOTE: manifest validation lives in the file-local validateManifest()
+    // free function in ExtensionManager.cpp. Do NOT redeclare it here: an
+    // unqualified call inside a member would bind to a member declaration and
+    // fail at link time (the free function would be shadowed, not used).
+    ExtensionInfo createExtensionInfo(const QString &id, const QString &path);
     void setupExtensionContext(ExtensionInfo *info);
     void teardownExtensionContext(ExtensionInfo *info);
     
     QList<ExtensionInfo> m_extensions;
-    QMap<QString, std::unique_ptr<ExtensionContext>> m_contexts;
+    QMap<QString, std::shared_ptr<ExtensionContext>> m_contexts;
     QWebEngineProfile *m_profile = nullptr;
 };
 
