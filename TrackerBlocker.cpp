@@ -1,4 +1,4 @@
-#include "TrackerBlocker.h"
+﻿#include "TrackerBlocker.h"
 #include "SafeBrowsing.h"
 #include "OSPaths.h"
 #include "ExtensionManager.h"
@@ -25,7 +25,58 @@ QString dataFile(const QString &fileName)
     return dir + QLatin1Char('/') + fileName;
 }
 
+// Convert a glob pattern (with * and ?) to a regular expression.
+QString globToRegex(const QString &glob)
+{
+    QString regex;
+    regex.reserve(glob.size() * 2);
+    for (const QChar ch : glob) {
+        switch (ch.unicode()) {
+        case '*': regex += QLatin1String(".*"); break;
+        case '?': regex += QLatin1String("."); break;
+        case '.': regex += QLatin1String("\\."); break;
+        case '+': regex += QLatin1String("\\+"); break;
+        case '^': regex += QLatin1String("\\^"); break;
+        case '$': regex += QLatin1String("\\$"); break;
+        case '(': regex += QLatin1String("\\("); break;
+        case ')': regex += QLatin1String("\\)"); break;
+        case '[': regex += QLatin1String("\\["); break;
+        case ']': regex += QLatin1String("\\]"); break;
+        case '{': regex += QLatin1String("\\{"); break;
+        case '}': regex += QLatin1String("\\}"); break;
+        case '\\': regex += QLatin1String("\\\\"); break;
+        case '|': regex += QLatin1String("\\|"); break;
+        default:  regex += ch; break;
+        }
+    }
+    return regex;
+}
+
 const int kMaxSitesPerDay = 200;
+
+// Convert QWebEngineUrlRequestInfo::ResourceType enum to string for FilterListParser
+QString resourceTypeToString(QWebEngineUrlRequestInfo::ResourceType type)
+{
+    switch (type) {
+    case QWebEngineUrlRequestInfo::ResourceTypeMainFrame:         return QStringLiteral("main_frame");
+    case QWebEngineUrlRequestInfo::ResourceTypeSubFrame:          return QStringLiteral("sub_frame");
+    case QWebEngineUrlRequestInfo::ResourceTypeStylesheet:        return QStringLiteral("stylesheet");
+    case QWebEngineUrlRequestInfo::ResourceTypeScript:            return QStringLiteral("script");
+    case QWebEngineUrlRequestInfo::ResourceTypeImage:             return QStringLiteral("image");
+    case QWebEngineUrlRequestInfo::ResourceTypeFontResource:      return QStringLiteral("font");
+    case QWebEngineUrlRequestInfo::ResourceTypeSubResource:       return QStringLiteral("sub_resource");
+    case QWebEngineUrlRequestInfo::ResourceTypeObject:            return QStringLiteral("object");
+    case QWebEngineUrlRequestInfo::ResourceTypeMedia:             return QStringLiteral("media");
+    case QWebEngineUrlRequestInfo::ResourceTypeWorker:            return QStringLiteral("worker");
+    case QWebEngineUrlRequestInfo::ResourceTypeSharedWorker:      return QStringLiteral("shared_worker");
+    case QWebEngineUrlRequestInfo::ResourceTypeServiceWorker:     return QStringLiteral("service_worker");
+    case QWebEngineUrlRequestInfo::ResourceTypePing:              return QStringLiteral("ping");
+    case QWebEngineUrlRequestInfo::ResourceTypeWebSocket:         return QStringLiteral("websocket");
+    case QWebEngineUrlRequestInfo::ResourceTypeCspReport:         return QStringLiteral("csp_report");
+    case QWebEngineUrlRequestInfo::ResourceTypePluginResource:    return QStringLiteral("plugin_resource");
+    default:                                                      return QStringLiteral("other");
+    }
+}
 
 bool isIpv4Literal(const QString &host)
 {
@@ -229,6 +280,22 @@ void TrackerBlocker::interceptRequest(QWebEngineUrlRequestInfo &info)
 
         if (SafeBrowsing::instance().isBlocked(requestUrl)) {
             info.redirect(SafeBrowsing::warningUrl(requestUrl));
+            return;
+        }
+
+        // Extension declarative blocking rules and dynamic filter-list matches
+        // used to be checked only for sub-resources, because this branch
+        // returned first. That made every rule from every installed extension
+        // dead for TOP-LEVEL navigations: an extension blocking evil.com still
+        // let the user navigate straight to it. Apply the same checks here
+        // before allowing the page through.
+        if (isBlockedByExtensionRules(info)) {
+            info.block(true);
+            return;
+        }
+        if (m_filterParser && m_filterParser->matches(requestUrl, QString(), resourceTypeToString(info.resourceType()))) {
+            info.block(true);
+            return;
         }
         return;
     }
@@ -336,7 +403,12 @@ bool TrackerBlocker::isBlockedByExtensionRules(const QWebEngineUrlRequestInfo &i
 
         // Check path patterns
         for (const QString &blockedPath : rule.blockedPaths) {
-            QRegularExpression pathRe(globToRegex(blockedPath));
+            // Anchor the pattern. ExtensionManager::patternToRegex() anchors its
+            // output ("^" + ... + "$"), but here the raw glob was compiled
+            // unanchored, so a rule for "tracker.js" also matched
+            // "/assets/tracker.js.map" or "/x/nottracker.jsx/" - over-blocking
+            // that breaks otherwise-harmless pages.
+            QRegularExpression pathRe(QRegularExpression::anchoredPattern(globToRegex(blockedPath)));
             if (pathRe.match(path).hasMatch()) {
                 if (rule.blockedTypes.isEmpty() || rule.blockedTypes.contains(resourceType)) {
                     return true;
@@ -566,8 +638,7 @@ void TrackerBlocker::saveData()
         root.insert(day, dayObj);
     }
 
-    OSPaths::writeFileAtomic(dataFile(QStringLiteral("privacy.json")),
-                             QJsonDocument(root).toJson());
+    OSPaths::writeFileAtomic(dataFile(QStringLiteral("privacy.json")), QJsonDocument(root).toJson(), QFile::ReadOwner | QFile::WriteOwner);
 }
 
 #include "TrackerBlocker.moc"
