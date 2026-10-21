@@ -1,4 +1,4 @@
-#ifndef OAUTHMANAGER_H
+﻿#ifndef OAUTHMANAGER_H
 #define OAUTHMANAGER_H
 
 #include <QObject>
@@ -159,7 +159,8 @@ private:
     bool openBrowser(const QUrl &url) const;
 
     void exchangeCodeForToken(const QString &code, Provider provider);
-    void fetchUserProfile(const QString &accessToken, Provider provider);
+    void fetchUserProfile(const QString &accessToken, const QString &refreshToken,
+                          Provider provider);
     void finishConnection(const QString &accessToken, const QString &refreshToken,
                           Provider provider, const QJsonObject &user, int expiresIn = 3600);
 
