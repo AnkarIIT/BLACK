@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -1062,9 +1062,29 @@
                             // Show up to 8 bookmarks
                             const displayItems = items.slice(0, 8);
                             displayItems.forEach(function (item) {
+                                // Everything below is attacker-influenceable: item.url can be a
+                                // javascript:/data: URI and item.title comes from an arbitrary
+                                // remote document.title. Skip unsafe URLs and never interpolate
+                                // either value into innerHTML - build the DOM instead.
                                 const url = item.url;
-                                const title = item.title || new URL(url).hostname;
-                                const hostname = new URL(url).hostname.replace('www.', '');
+                                if (typeof url !== 'string' || !url.trim()) return;
+                                // Bookmark entries are stored raw, so a
+                                // bare-domain entry ("example.com") must go
+                                // through the same normalisation the omnibox
+                                // uses before it is validated - otherwise
+                                // legitimate domain-only bookmarks silently
+                                // vanish from the grid.
+                                const safeUrl = normalizeUrl(url);
+                                if (!isSafeUrl(safeUrl)) return;
+                                let hostname;
+                                try {
+                                    hostname = new URL(safeUrl).hostname.replace('www.', '');
+                                } catch (e) {
+                                    return;
+                                }
+                                const title = (typeof item.title === 'string' && item.title.trim())
+                                    ? item.title
+                                    : hostname;
                                 const initial = hostname.charAt(0).toUpperCase();
                                 // Generate a color based on hostname for the icon
                                 let hash = 0;
@@ -1072,9 +1092,19 @@
                                 const hue = Math.abs(hash) % 360;
                                 const bgColor = `hsl(${hue}, 65%, 45%)`;
                                 const a = document.createElement('a');
-                                a.href = url;
+                                a.href = safeUrl;
                                 a.className = 'favorite-item';
-                                a.innerHTML = '<div class="icon-box" style="background-color:' + bgColor + '; color: #fff;">' + initial + '</div><div class="favorite-name">' + title + '</div>';
+                                a.rel = 'noopener noreferrer';
+                                const iconBox = document.createElement('div');
+                                iconBox.className = 'icon-box';
+                                iconBox.style.backgroundColor = bgColor;
+                                iconBox.style.color = '#fff';
+                                iconBox.textContent = initial;
+                                const nameEl = document.createElement('div');
+                                nameEl.className = 'favorite-name';
+                                nameEl.textContent = title;
+                                a.appendChild(iconBox);
+                                a.appendChild(nameEl);
                                 grid.appendChild(a);
                             });
                         } catch (e) {
