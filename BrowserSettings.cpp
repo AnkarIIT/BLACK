@@ -1,4 +1,4 @@
-#include "BrowserSettings.h"
+﻿#include "BrowserSettings.h"
 #include "OSPaths.h"
 #include <QFile>
 #include <QJsonDocument>
@@ -317,7 +317,8 @@ void BrowserSettings::resetShortcut(const QString &action)
 {
     QJsonObject obj = readSettingsObject();
     QJsonObject shortcuts = obj.value(QStringLiteral("shortcuts")).toObject();
-    if (shortcuts.remove(action)) {
+    if (shortcuts.contains(action)) {
+        shortcuts.remove(action);
         obj.insert(QStringLiteral("shortcuts"), shortcuts);
         if (!writeSettingsObject(obj)) {
             return;
