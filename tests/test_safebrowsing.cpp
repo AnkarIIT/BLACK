@@ -1,4 +1,4 @@
-#include <QtTest>
+﻿#include <QtTest>
 #include <QSignalSpy>
 #include <QUrl>
 #include "../SafeBrowsing.h"
@@ -49,7 +49,7 @@ private slots:
         // Non-HTTP(S) schemes should not be checked
         QVERIFY(!SafeBrowsing::instance().isBlocked(QUrl("ftp://appleid-verify.com/file")));
         QVERIFY(!SafeBrowsing::instance().isBlocked(QUrl("file:///path/to/file")));
-        QVERIFY(!SafeBrowsing::instance().isBlocked(QUrl("data:text/html,<script>alert(1)</script>"));
+        QVERIFY(!SafeBrowsing::instance().isBlocked(QUrl("data:text/html,<script>alert(1)</script>")));
     }
 
     void testSessionAllowance()
@@ -90,7 +90,7 @@ private slots:
     void testUnicodeNormalization()
     {
         // Test Punycode normalization for IDN homograph protection
-        // xn--pple-43d.com is "apple.com" with homograph 'а' (cyrillic)
+        // xn--pple-43d.com is "apple.com" with homograph '╨░' (cyrillic)
         // This test verifies the normalization happens
         QUrl url("http://xn--pple-43d.com");
         // The domain should be normalized to punycode form
