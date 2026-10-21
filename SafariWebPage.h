@@ -1,4 +1,4 @@
-#ifndef SAFARIWEBPAGE_H
+﻿#ifndef SAFARIWEBPAGE_H
 #define SAFARIWEBPAGE_H
 
 #include <QWebEnginePage>
@@ -59,6 +59,10 @@ private:
     // written back through `input`.
     int showJsDialog(const QString &message, const QString &okText,
                      const QString &cancelText, QString *input, bool showInput) const;
+
+    // One-line origin banner prepended to JS dialog text so a page-styled
+    // prompt can never pass as a browser message.
+    static QString originLabel(const QUrl &origin);
 
     QPointer<QWebChannel> m_webChannel;
     QPointer<QWebChannel> m_passwordChannel;
