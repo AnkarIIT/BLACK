@@ -1,4 +1,4 @@
-#include "SafeBrowsing.h"
+﻿#include "SafeBrowsing.h"
 
 #include <QFile>
 #include <QJsonArray>
@@ -15,6 +15,31 @@
 #include <QDateTime>
 #include <functional>
 #include <algorithm>
+#include <QMutex>
+#include <QMutexLocker>
+#include <QPointer>
+
+namespace {
+
+// Completion state for a batch of blocklist downloads.
+//
+// The replies arrive asynchronously, long after refreshBlocklists() has
+// returned, so this state must outlive that stack frame. It is heap-allocated,
+// self-owning, and deleted exactly once by whichever reply completes the
+// batch (or by the SafeBrowsing destructor if the replies never arrive).
+struct RefreshState {
+    QMutex mutex;
+    int completed = 0;
+    int total = 0;
+    bool anySuccess = false;
+    QString errorMessages;
+};
+
+// Upper bound on a downloaded blocklist. The real lists are a few MB; this
+// caps what a hostile or broken endpoint can push us to buffer in memory.
+constexpr qint64 kMaxBlocklistBytes = 64LL * 1024 * 1024;
+
+} // namespace
 
 // Known phishing / credential-harvesting domains (embedded fallback list).
 const char *const SafeBrowsing::kEmbeddedHosts[] = {
@@ -132,6 +157,14 @@ bool SafeBrowsing::isBlocked(const QUrl &url) const
     const QByteArray ace = QUrl::toAce(url.host());
     if (!ace.isEmpty())
         host = QString::fromLatin1(ace).toLower();
+    // Strip a trailing root dot: "evil.com." resolves to the same host as
+    // "evil.com" but would otherwise dodge every exact/suffix blocklist match.
+    while (host.size() > 1 && host.endsWith(QLatin1Char('.')))
+        host.chop(1);
+    // An IP literal is never in a hostname blocklist; normalizing is
+    // meaningless and would only cost a toAce() round-trip.
+    if (host.startsWith(QLatin1Char('[')) || host.isEmpty())
+        return false;
 
     QReadLocker locker(&m_lock);
     // Check session allowances (one-time bypass)
@@ -149,11 +182,14 @@ bool SafeBrowsing::isBlocked(const QUrl &url) const
 
 void SafeBrowsing::checkUrlAsync(const QUrl &url, std::function<void(bool, ThreatTypes)> callback)
 {
-    // In V4 mode, check full URL against prefix lists
-    if (m_apiMode != ApiMode::GoogleV4 || m_v4Lists.isEmpty()) {
-        // Fallback to sync check
-        callback(isBlocked(url), ThreatTypes());
-        return;
+    // Read m_apiMode under the lock; it is written by setApiMode().
+    {
+        QReadLocker locker(&m_lock);
+        if (m_apiMode != ApiMode::GoogleV4 || m_v4Lists.isEmpty()) {
+            locker.unlock();
+            callback(isBlocked(url), ThreatTypes());
+            return;
+        }
     }
 
     // Compute full URL hashes and check against V4 lists
@@ -179,7 +215,11 @@ void SafeBrowsing::checkUrlAsync(const QUrl &url, std::function<void(bool, Threa
         }
     }
 
-    bool blocked = !threats.isEmpty();
+    bool blocked = (threats == 0);
+    // Release the read lock before emitting: a connected slot that calls back
+    // into any write-locked method would otherwise self-deadlock.
+    locker.unlock();
+
     if (blocked)
         emit threatFound(url, threats);
 
@@ -269,33 +309,68 @@ void SafeBrowsing::refreshBlocklists()
         // Add more sources as needed
     }
 
-    int completed = 0;
-    int total = sources.size();
-    bool anySuccess = false;
-    QString errorMessages;
+    // The replies arrive long after this function returns, so completion state
+    // must NOT be captured by reference onto this stack frame. A heap-shared,
+    // self-owning record keeps it alive for exactly as long as the requests do.
+    const int total = sources.size();
+    if (total <= 0)
+        return;
+
+    auto *shared = new RefreshState;
+    shared->total = total;
+    // Safety net: if the replies never all arrive (process teardown, dropped
+    // connection), release the record rather than leaking it.
+    QPointer<QObject> guard(this);
+    connect(this, &QObject::destroyed, [shared]() { delete shared; });
+    Q_UNUSED(guard);
 
     for (const QUrl &sourceUrl : sources) {
         QNetworkRequest request(sourceUrl);
         request.setRawHeader("User-Agent", "BLACK Browser Safe Browsing");
         QNetworkReply *reply = m_net->get(request);
-        connect(reply, &QNetworkReply::finished, this, [this, reply, sourceUrl, &completed, total, &anySuccess, &errorMessages]() {
+        connect(reply, &QNetworkReply::finished, this, [this, reply, sourceUrl, shared]() {
             reply->deleteLater();
             if (reply->error() != QNetworkReply::NoError) {
-                errorMessages += QStringLiteral("Failed to fetch %1: %2\n").arg(sourceUrl.toString(), reply->errorString());
+                QMutexLocker lock(&shared->mutex);
+                shared->errorMessages += QStringLiteral("Failed to fetch %1: %2\n")
+                                             .arg(sourceUrl.toString(), reply->errorString());
             } else {
                 const QByteArray data = reply->readAll();
-                mergeBlocklist(data, sourceUrl.toString());
-                anySuccess = true;
+                // Data is size-capped here to avoid an unbounded remote list
+                // exhausting memory or the disk.
+                if (data.size() <= kMaxBlocklistBytes) {
+                    mergeBlocklist(data, sourceUrl.toString());
+                    QMutexLocker lock(&shared->mutex);
+                    shared->anySuccess = true;
+                } else {
+                    QMutexLocker lock(&shared->mutex);
+                    shared->errorMessages += QStringLiteral("Blocklist from %1 too large; ignored\n")
+                                                 .arg(sourceUrl.toString());
+                }
             }
-            completed++;
-            if (completed == total) {
-                if (anySuccess) {
+
+            bool finished = false;
+            {
+                QMutexLocker lock(&shared->mutex);
+                ++shared->completed;
+                finished = (shared->completed == shared->total);
+            }
+            if (finished) {
+                QString errors;
+                bool ok = false;
+                {
+                    QMutexLocker lock(&shared->mutex);
+                    ok = shared->anySuccess;
+                    errors = shared->errorMessages;
+                }
+                delete shared;
+                if (ok) {
                     saveExtraList();
                     // Remove stale entries after refresh
                     removeStaleEntries();
                     emit blocklistsRefreshed(true, QStringLiteral("Blocklists refreshed successfully"));
                 } else {
-                    emit blocklistsRefreshed(false, QStringLiteral("Blocklist refresh failed: ") + errorMessages);
+                    emit blocklistsRefreshed(false, QStringLiteral("Blocklist refresh failed: ") + errors);
                 }
             }
         });
@@ -392,54 +467,70 @@ void SafeBrowsing::applyV4Update(const QByteArray &response)
     QJsonObject root = doc.object();
     QJsonArray listUpdateResponses = root["listUpdateResponses"].toArray();
 
-    QWriteLocker locker(&m_lock);
+    {
+        QWriteLocker locker(&m_lock);
 
-    for (const QJsonValue &val : listUpdateResponses) {
-        QJsonObject resp = val.toObject();
-        QString threatType = resp["threatType"].toString().toLower();
-        QString platformType = resp["platformType"].toString();
-        QString threatEntryType = resp["threatEntryType"].toString();
+        for (const QJsonValue &val : listUpdateResponses) {
+            QJsonObject resp = val.toObject();
+            QString threatType = resp["threatType"].toString().toLower();
+            QString platformType = resp["platformType"].toString();
+            QString threatEntryType = resp["threatEntryType"].toString();
 
-        QString listKey = threatType + "_" + platformType + "_" + threatEntryType;
+            QString listKey = threatType + "_" + platformType + "_" + threatEntryType;
 
-        // Process additions
-        QJsonArray additions = resp["additions"].toArray();
-        for (const QJsonValue &addVal : additions) {
-            QJsonObject add = addVal.toObject();
-            QString rawHashes = add["rawHashes"].toString();
-            int prefixSize = add["prefixSize"].toInt();
-            // Decode and add prefixes to our list
-            QByteArray hashes = QByteArray::fromBase64(rawHashes.toLatin1());
-            for (int i = 0; i < hashes.size(); i += prefixSize) {
-                if (i + prefixSize <= hashes.size()) {
-                    QByteArray prefix = hashes.mid(i, prefixSize);
-                    m_v4Lists[listKey].append(prefix.toHex());
+            // Process additions
+            QJsonArray additions = resp["additions"].toArray();
+            for (const QJsonValue &addVal : additions) {
+                QJsonObject add = addVal.toObject();
+                QString rawHashes = add["rawHashes"].toString();
+                int prefixSize = add["prefixSize"].toInt();
+                if (prefixSize <= 0)
+                    continue;   // guard: a zero/negative stride would spin or under-read
+                // Decode and add prefixes to our list
+                QByteArray hashes = QByteArray::fromBase64(rawHashes.toLatin1());
+                for (int i = 0; i < hashes.size(); i += prefixSize) {
+                    if (i + prefixSize <= hashes.size()) {
+                        QByteArray prefix = hashes.mid(i, prefixSize);
+                        m_v4Lists[listKey].append(prefix.toHex());
+                    }
                 }
             }
-        }
 
-        // Process removals
-        QJsonArray removals = resp["removals"].toArray();
-        for (const QJsonValue &remVal : removals) {
-            QJsonObject rem = remVal.toObject();
-            QString rawHashes = rem["rawHashes"].toString();
-            int prefixSize = rem["prefixSize"].toInt();
-            QByteArray hashes = QByteArray::fromBase64(rawHashes.toLatin1());
-            QByteArray &listData = m_v4Lists[listKey];
-            for (int i = 0; i < hashes.size(); i += prefixSize) {
-                if (i + prefixSize <= hashes.size()) {
-                    QByteArray prefix = hashes.mid(i, prefixSize);
-                    listData.remove(listData.indexOf(prefix.toHex()), prefixSize * 2); // hex = 2 chars per byte
+            // Process removals
+            QJsonArray removals = resp["removals"].toArray();
+            for (const QJsonValue &remVal : removals) {
+                QJsonObject rem = remVal.toObject();
+                QString rawHashes = rem["rawHashes"].toString();
+                int prefixSize = rem["prefixSize"].toInt();
+                if (prefixSize <= 0)
+                    continue;
+                QByteArray hashes = QByteArray::fromBase64(rawHashes.toLatin1());
+                QByteArray &listData = m_v4Lists[listKey];
+                for (int i = 0; i < hashes.size(); i += prefixSize) {
+                    if (i + prefixSize <= hashes.size()) {
+                        QByteArray prefix = hashes.mid(i, prefixSize);
+                        const QByteArray hex = prefix.toHex();
+                        const int at = listData.indexOf(hex);
+                        // indexOf() returns -1 when absent; removing at -1
+                        // would erase an unrelated span. Skip instead.
+                        if (at >= 0)
+                            listData.remove(at, hex.size());
+                    }
                 }
             }
-        }
 
-        // Update state
-        if (resp.contains("newClientState")) {
-            m_v4Lists[listKey + "_state"] = resp["newClientState"].toString().toLatin1();
+            // Update client state. Must use the SAME key that fetchV4Updates()
+            // reads back, otherwise the incremental sync never round-trips and
+            // the full list is re-downloaded every cycle.
+            if (resp.contains("newClientState")) {
+                const QString stateKey = threatType.toLower() + "_state";
+                m_v4Lists[stateKey] = QByteArray::fromBase64(
+                        resp["newClientState"].toString().toLatin1());
+            }
         }
     }
 
+    // Outside the lock: both of these re-acquire it.
     saveExtraList();
     emit changed();
     emit blocklistsRefreshed(true, QStringLiteral("Safe Browsing V4 lists updated"));
@@ -502,19 +593,27 @@ void SafeBrowsing::mergeBlocklist(const QByteArray &data, const QString &source)
             }
         }
     }
-
+    // Emitted outside the write-lock scope: a slot may call back in.
     emit changed();
 }
 
 void SafeBrowsing::saveExtraList()
 {
+    // Takes the write lock itself; safe to call from any context.
+    QWriteLocker locker(&m_lock);
+    saveExtraListLocked();
+}
+
+// Body of saveExtraList() for callers that ALREADY hold m_lock for writing.
+// QWriteLock is non-recursive, so these paths must not re-acquire it.
+void SafeBrowsing::saveExtraListLocked()
+{
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir().mkpath(dir);
     QFile file(dir + QLatin1Char('/') + QStringLiteral("safebrowsing.json"));
-    if (!file.open(QIODevice::WriteOnly))
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
         return;
 
-    QWriteLocker locker(&m_lock);
     QJsonObject root;
     for (auto it = m_blocked.constBegin(); it != m_blocked.constEnd(); ++it) {
         const BlockedEntry &entry = it.value();
@@ -550,29 +649,37 @@ bool SafeBrowsing::hostMatches(const QString &host) const
 
 void SafeBrowsing::removeStaleEntries()
 {
-    QWriteLocker locker(&m_lock);
-    QDateTime cutoff = QDateTime::currentDateTime().addDays(-kMaxEntryAgeDays);
     int removed = 0;
-    for (auto it = m_blocked.begin(); it != m_blocked.end(); ) {
-        // Never remove embedded entries
-        bool isEmbedded = false;
-        for (int i = 0; kEmbeddedHosts[i]; ++i) {
-            if (it.key() == QLatin1String(kEmbeddedHosts[i])) {
-                isEmbedded = true;
-                break;
+    bool dirty = false;
+    {
+        // Scope the write lock tightly. saveExtraList() re-acquires the same
+        // non-recursive lock, so it MUST be called after the locker is
+        // destroyed - holding the lock across the call self-deadlocks.
+        QWriteLocker locker(&m_lock);
+        const QDateTime cutoff = QDateTime::currentDateTime().addDays(-kMaxEntryAgeDays);
+        for (auto it = m_blocked.begin(); it != m_blocked.end(); ) {
+            // Never remove embedded entries
+            bool isEmbedded = false;
+            for (int i = 0; kEmbeddedHosts[i]; ++i) {
+                if (it.key() == QLatin1String(kEmbeddedHosts[i])) {
+                    isEmbedded = true;
+                    break;
+                }
+            }
+            if (!isEmbedded && it.value().added < cutoff) {
+                it = m_blocked.erase(it);
+                ++removed;
+            } else {
+                ++it;
             }
         }
-        if (!isEmbedded && it.value().added < cutoff) {
-            it = m_blocked.erase(it);
-            ++removed;
-        } else {
-            ++it;
-        }
+        dirty = removed > 0;
     }
-    if (removed > 0) {
+
+    if (dirty) {
         qDebug() << "SafeBrowsing: removed" << removed << "stale blocklist entries";
-        saveExtraList();
-        emit changed();
+        saveExtraList();     // takes the lock itself - safe here
+        emit changed();       // emitted outside the lock
     }
 }
 
