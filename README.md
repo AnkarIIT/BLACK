@@ -4,6 +4,47 @@
 [![C++](https://img.shields.io/badge/C%2B%2B-17-blue)](https://isocpp.org)
 [![CMake](https://img.shields.io/badge/CMake-3.16%2B-064f8c)](https://cmake.org)
 [![Chromium](https://img.shields.io/badge/Engine-Chromium%20122-white)](https://www.chromium.org)
+[![Codespaces](https://img.shields.io/badge/Codespaces-Ready-blue)](https://github.com/codespaces/new?repo=AnkarIIT/BLACK)
+
+**A local-first, Safari-inspired desktop browser with a live Chrome/Safari layout switch — built on Qt 6 and Qt WebEngine.**
+
+---
+
+## 🚀 Quick Start: Get `BLACK` Binary in 5 Minutes
+
+### Option 1: GitHub Codespaces (No Install, Free, Works Everywhere) ⭐ **Recommended**
+[![Open in Codespaces](https://github.com/codespaces/badge.svg)](https://github.com/codespaces/new?repo=AnkarIIT/BLACK)
+
+1. Click the badge above → **"Create codespace on main"**
+2. Wait 2-3 min for container setup (auto-installs Qt + WebEngine)
+3. Open terminal (`Ctrl+``) → run: `./build.sh`
+4. Download `build/BLACK` from file explorer (right-click → Download)
+
+### Option 2: Local Windows Build
+**Prerequisites:** Visual Studio 2022 + "Desktop C++" workload, Qt 6.7+ MSVC 2022 64-bit, CMake
+
+```powershell
+# 1. Edit build.ps1 line 4: $QtPath = "C:\Qt\6.7.2\msvc2022_64"  (match your install)
+# 2. Run in PowerShell (Admin recommended):
+Set-ExecutionPolicy -Scope Process Bypass
+.\build.ps1
+```
+→ Executable at `build\Release\BLACK.exe`
+
+### Option 3: Local Linux Build
+```bash
+# Ubuntu/Debian: sudo apt install qt6-base-dev qt6-webengine-dev qt6-svg-dev cmake ninja-build g++
+# Fedora: sudo dnf install qt6-qtbase-devel qt6-qtwebengine-devel qt6-qtsvg-devel cmake ninja-build gcc-c++
+./build.sh
+```
+→ Executable at `build/BLACK`
+
+---
+
+## ⚠️ GitHub Actions Note
+**CI builds on GitHub Actions currently fail** because Qt's download servers (`download.qt.io`) are blocked from GitHub runners. The Codespaces method above works because it has full internet access. See [BUILD.md](BUILD.md) for details.
+
+---
 
 **A local-first, Safari-inspired desktop browser with a live Chrome/Safari layout switch — built on Qt 6 and Qt WebEngine.**
 

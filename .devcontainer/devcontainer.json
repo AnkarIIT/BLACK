@@ -15,5 +15,7 @@
     }
   },
   "postCreateCommand": "bash .devcontainer/setup-qt.sh",
-  "remoteUser": "vscode"
+  "remoteUser": "vscode",
+  "forwardPorts": [],
+  "postStartCommand": "source ~/.bashrc && echo 'Dev container ready. Run ./build.sh to build BLACK.'"
 }
