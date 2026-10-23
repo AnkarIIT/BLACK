@@ -16,14 +16,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Qt 6 (MSVC 64-bit)
-        uses: jurplel/install-qt-action@v3
-        with:
-          version: "6.7.2"
-          host: "windows"
-          target: "desktop"
-          arch: "win64_msvc2022_64"
-          cache: false
+      - name: Install Qt 6 via official installer
+        run: |
+          $qtInstaller = "qt-unified-windows-x64-online.exe"
+          $url = "https://download.qt.io/official_releases/online_installers/$qtInstaller"
+          Write-Host "Downloading Qt installer..."
+          Invoke-WebRequest -Uri $url -OutFile $qtInstaller
+          Write-Host "Installing Qt 6.7.2 (MSVC 2022 64-bit)..."
+          .\$qtInstaller --verbose --script /dev/stdin <<'EOF'
+Component.installationPrefix = 'C:/Qt';
+Component.autoAnswer = true;
+Component.installComponents = ['qt.qt6.672.win64_msvc2022_64', 'qt.qt6.672.qtwebengine.win64_msvc2022_64', 'qt.qt6.672.qtsvg.win64_msvc2022_64'];
+EOF
+        shell: pwsh
+
+      - name: Set Qt environment
+        run: |
+          echo "QT_ROOT=C:/Qt/6.7.2/msvc2022_64" >> $env:GITHUB_ENV
+          echo "C:/Qt/6.7.2/msvc2022_64/bin" >> $env:GITHUB_PATH
+        shell: pwsh
 
       - name: Install CMake
         uses: lukka/get-cmake@latest

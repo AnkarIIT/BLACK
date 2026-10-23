@@ -16,15 +16,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Qt 6 (with WebEngine)
-        uses: jurplel/install-qt-action@v3
-        with:
-          version: "6.7.2"
-          host: "linux"
-          target: "desktop"
-          arch: "gcc_64"
-          modules: "qtwebengine qtsvg"
-          cache: false
+      - name: Install Qt 6 via official installer
+        run: |
+          QT_INSTALLER="qt-unified-linux-x64-online.run"
+          wget -q "https://download.qt.io/official_releases/online_installers/$QT_INSTALLER" -O "$QT_INSTALLER"
+          chmod +x "$QT_INSTALLER"
+          ./$QT_INSTALLER --verbose --script /dev/stdin <<'EOF'
+Component.installationPrefix = '/opt/Qt';
+Component.autoAnswer = true;
+Component.installComponents = ['qt.qt6.672.gcc_64', 'qt.qt6.672.qtwebengine.gcc_64', 'qt.qt6.672.qtsvg.gcc_64'];
+EOF
+
+      - name: Set Qt environment
+        run: |
+          echo "QT_ROOT=/opt/Qt/6.7.2/gcc_64" >> $GITHUB_ENV
+          echo "/opt/Qt/6.7.2/gcc_64/bin" >> $GITHUB_PATH
 
       - name: Install system dependencies
         run: |
