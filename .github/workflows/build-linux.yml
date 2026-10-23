@@ -9,24 +9,37 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install Qt 6 (with WebEngine)
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: "6.7.2"
+          host: "linux"
+          target: "desktop"
+          arch: "gcc_64"
+          modules: "qtwebengine qtsvg"
+          cache: false
+
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            qt6-base-dev qt6-webengine-dev qt6-svg-dev \
-            libssl-dev libsecret-1-dev \
+            libglib2.0-0 libnss3 libnspr4 libdbus-1-3 libatk1.0-0 \
+            libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 \
+            libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+            libgbm1 libasound2 libatspi2.0-0 libxshmfence1 \
+            libssl3 libsecret-1-0 \
             cmake ninja-build g++
 
       - name: Configure
         run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake -B build -G Ninja -DCMAKE_PREFIX_PATH="$QT_ROOT" -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         run: |
@@ -35,6 +48,7 @@ jobs:
       - name: Verify executable
         run: |
           ls -la build/BLACK
+          file build/BLACK
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
