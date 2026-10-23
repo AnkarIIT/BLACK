@@ -16,16 +16,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Qt 6 via official installer
+      - name: Install aqt (Qt CLI installer)
         run: |
-          QT_INSTALLER="qt-unified-linux-x64-online.run"
-          wget -q "https://download.qt.io/official_releases/online_installers/$QT_INSTALLER" -O "$QT_INSTALLER"
-          chmod +x "$QT_INSTALLER"
-          ./$QT_INSTALLER --verbose --script /dev/stdin <<'EOF'
-Component.installationPrefix = '/opt/Qt';
-Component.autoAnswer = true;
-Component.installComponents = ['qt.qt6.672.gcc_64', 'qt.qt6.672.qtwebengine.gcc_64', 'qt.qt6.672.qtsvg.gcc_64'];
-EOF
+          pip install aqtinstall
+
+      - name: Install Qt 6.7.2 (GCC 64-bit) with WebEngine + SVG
+        run: |
+          aqt install-qt linux desktop 6.7.2 gcc_64 -m qtwebengine qtsvg -O /opt/Qt
 
       - name: Set Qt environment
         run: |

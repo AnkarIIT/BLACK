@@ -16,19 +16,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Qt 6 via official installer
+      - name: Install aqt (Qt CLI installer)
         run: |
-          $qtInstaller = "qt-unified-windows-x64-online.exe"
-          $url = "https://download.qt.io/official_releases/online_installers/$qtInstaller"
-          Write-Host "Downloading Qt installer..."
-          Invoke-WebRequest -Uri $url -OutFile $qtInstaller
-          Write-Host "Installing Qt 6.7.2 (MSVC 2022 64-bit)..."
-          .\$qtInstaller --verbose --script /dev/stdin <<'EOF'
-Component.installationPrefix = 'C:/Qt';
-Component.autoAnswer = true;
-Component.installComponents = ['qt.qt6.672.win64_msvc2022_64', 'qt.qt6.672.qtwebengine.win64_msvc2022_64', 'qt.qt6.672.qtsvg.win64_msvc2022_64'];
-EOF
-        shell: pwsh
+          pip install aqtinstall
+
+      - name: Install Qt 6.7.2 (MSVC 2022 64-bit) with WebEngine + SVG
+        run: |
+          aqt install-qt windows desktop 6.7.2 win64_msvc2022_64 -m qtwebengine qtsvg -O C:/Qt
 
       - name: Set Qt environment
         run: |
