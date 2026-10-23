@@ -1,0 +1,44 @@
+name: Build Linux
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            qt6-base-dev qt6-webengine-dev qt6-svg-dev \
+            libssl-dev libsecret-1-dev \
+            cmake ninja-build g++
+
+      - name: Configure
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: |
+          cmake --build build --parallel
+
+      - name: Verify executable
+        run: |
+          ls -la build/BLACK
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BLACK-linux
+          path: build/BLACK
+          retention-days: 30

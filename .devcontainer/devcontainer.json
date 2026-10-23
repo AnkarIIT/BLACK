@@ -1,0 +1,19 @@
+{
+  "name": "BLACK Browser Dev Container",
+  "image": "mcr.microsoft.com/devcontainers/cpp:1-ubuntu-24.04",
+  "features": {
+    "ghcr.io/devcontainers/features/cmake:1": {},
+    "ghcr.io/devcontainers/features/ninja:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools",
+        "ms-vscode.cmake-tools",
+        "qt-project.qt-vscode-extension"
+      ]
+    }
+  },
+  "postCreateCommand": "bash .devcontainer/setup-qt.sh",
+  "remoteUser": "vscode"
+}
