@@ -16,19 +16,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download pre-built Qt 6.7.2 (MSVC 2022 64-bit) from GitHub
+      - name: Download pre-built Qt 6.7.2 (MSVC 2022 64-bit) from OSUOSL mirror
         run: |
           $qtDir = "C:/Qt/6.7.2/msvc2022_64"
-          $qtUrl = "https://github.com/qtproject/qtbase/releases/download/v6.7.2/qtbase-everywhere-src-6.7.2.zip"
-          # Use a known working mirror: GitHub's own Qt mirror
-          $altUrl = "https://github.com/benlau/qtci/raw/master/qt-6.7.2-msvc2022_64.7z"
+          # OSUOSL mirror (US-based, reliable from GitHub Actions)
+          $qtUrl = "https://ftp.osuosl.org/pub/blfs/conglomeration/qt6/qt-6.7.2-windows-x86_64-msvc2022_64.7z"
           
-          Write-Host "Downloading Qt from GitHub mirror..."
+          Write-Host "Downloading Qt from OSUOSL mirror..."
           try {
-            Invoke-WebRequest -Uri $altUrl -OutFile "qt.7z" -ErrorAction Stop
+            Invoke-WebRequest -Uri $qtUrl -OutFile "qt.7z" -ErrorAction Stop
           } catch {
-            Write-Warning "Mirror failed, trying official..."
-            Invoke-WebRequest -Uri "https://download.qt.io/official_releases/qt/6.7/6.7.2/qt-6.7.2-windows-x86_64-msvc2022_64.7z" -OutFile "qt.7z"
+            Write-Error "Failed to download Qt from OSUOSL mirror: $_"
+            exit 1
           }
           
           Write-Host "Extracting..."
@@ -38,6 +37,8 @@ jobs:
           # Verify qmake exists
           if (-not (Test-Path "$qtDir/bin/qmake.exe")) {
             Write-Error "qmake not found at $qtDir/bin/qmake.exe"
+            # List what was extracted
+            Get-ChildItem "$qtDir" -Recurse -Depth 2 | Select-Object FullName
             exit 1
           }
         shell: pwsh
