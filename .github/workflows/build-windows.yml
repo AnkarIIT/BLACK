@@ -10,27 +10,37 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Qt 6.7.2 (MSVC 2022 64-bit) with WebEngine + SVG
-        uses: jurplel/install-qt-action@v3
-        with:
-          version: "6.7.2"
-          host: "windows"
-          target: "desktop"
-          arch: "win64_msvc2022_64"
-          modules: "qtwebengine qtsvg"
-          cache: false
-          mirror: "https://download.qt.io"
+      - name: Install Qt6 via Chocolatey (MSVC 2022 64-bit)
+        run: |
+          choco install qt6 --version=6.7.2 -y --params "/target:msvc2022_64"
+        shell: pwsh
 
       - name: Set Qt environment
         run: |
-          echo "QT_ROOT=C:/Qt/6.7.2/msvc2022_64" >> $env:GITHUB_ENV
-          echo "C:/Qt/6.7.2/msvc2022_64/bin" >> $env:GITHUB_PATH
+          $qtPaths = @(
+            "C:/Program Files/Qt/6.7.2/msvc2022_64",
+            "C:/Qt/6.7.2/msvc2022_64",
+            "C:/Program Files/Qt/6.7.1/msvc2022_64",
+            "C:/Qt/6.7.1/msvc2022_64"
+          )
+          foreach ($p in $qtPaths) {
+            if (Test-Path "$p/bin/qmake.exe") {
+              echo "QT_ROOT=$p" >> $env:GITHUB_ENV
+              echo "$p/bin" >> $env:GITHUB_PATH
+              Write-Host "Found Qt at $p"
+              break
+            }
+          }
+          if (-not $env:QT_ROOT) {
+            Write-Error "Qt not found in standard locations"
+            exit 1
+          }
         shell: pwsh
 
       - name: Install CMake
