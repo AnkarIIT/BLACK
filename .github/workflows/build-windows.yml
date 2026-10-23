@@ -16,13 +16,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install aqt (Qt CLI installer)
-        run: |
-          pip install aqtinstall
-
       - name: Install Qt 6.7.2 (MSVC 2022 64-bit) with WebEngine + SVG
-        run: |
-          aqt install-qt windows desktop 6.7.2 win64_msvc2022_64 -m qtwebengine qtsvg -O C:/Qt
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: "6.7.2"
+          host: "windows"
+          target: "desktop"
+          arch: "win64_msvc2022_64"
+          modules: "qtwebengine qtsvg"
+          cache: false
+          mirror: "https://download.qt.io"
 
       - name: Set Qt environment
         run: |
