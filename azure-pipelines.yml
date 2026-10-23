@@ -1,0 +1,35 @@
+# Azure DevOps Pipeline for BLACK Browser
+# Save as: azure-pipelines.yml
+
+trigger:
+  - main
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  QT_VERSION: '6.7.2'
+  QT_PATH: 'C:/Qt/6.7.2/msvc2022_64'
+  BUILD_CONFIG: 'Release'
+
+steps:
+  - task: CMake@1
+    displayName: 'Configure CMake'
+    inputs:
+      cmakeArgs: '-DCMAKE_PREFIX_PATH="$(QT_PATH)" -G "Visual Studio 17 2022" -A x64'
+      workingDirectory: '$(Build.SourcesDirectory)'
+
+  - task: VSBuild@1
+    displayName: 'Build Solution'
+    inputs:
+      solution: 'build/BLACK.sln'
+      configuration: '$(BUILD_CONFIG)'
+      platform: 'x64'
+      vsVersion: '17.0'
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish BLACK.exe'
+    inputs:
+      pathToPublish: 'build/Release/BLACK.exe'
+      artifactName: 'BLACK-windows'
+      publishLocation: 'Container'
