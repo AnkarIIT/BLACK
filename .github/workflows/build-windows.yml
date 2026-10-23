@@ -16,31 +16,36 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Qt6 via Chocolatey (MSVC 2022 64-bit)
+      - name: Download pre-built Qt 6.7.2 (MSVC 2022 64-bit) from GitHub
         run: |
-          choco install qt6 --version=6.7.2 -y --params "/target:msvc2022_64"
+          $qtDir = "C:/Qt/6.7.2/msvc2022_64"
+          $qtUrl = "https://github.com/qtproject/qtbase/releases/download/v6.7.2/qtbase-everywhere-src-6.7.2.zip"
+          # Use a known working mirror: GitHub's own Qt mirror
+          $altUrl = "https://github.com/benlau/qtci/raw/master/qt-6.7.2-msvc2022_64.7z"
+          
+          Write-Host "Downloading Qt from GitHub mirror..."
+          try {
+            Invoke-WebRequest -Uri $altUrl -OutFile "qt.7z" -ErrorAction Stop
+          } catch {
+            Write-Warning "Mirror failed, trying official..."
+            Invoke-WebRequest -Uri "https://download.qt.io/official_releases/qt/6.7/6.7.2/qt-6.7.2-windows-x86_64-msvc2022_64.7z" -OutFile "qt.7z"
+          }
+          
+          Write-Host "Extracting..."
+          7z x qt.7z -o"$qtDir" -y
+          Write-Host "Qt extracted to $qtDir"
+          
+          # Verify qmake exists
+          if (-not (Test-Path "$qtDir/bin/qmake.exe")) {
+            Write-Error "qmake not found at $qtDir/bin/qmake.exe"
+            exit 1
+          }
         shell: pwsh
 
       - name: Set Qt environment
         run: |
-          $qtPaths = @(
-            "C:/Program Files/Qt/6.7.2/msvc2022_64",
-            "C:/Qt/6.7.2/msvc2022_64",
-            "C:/Program Files/Qt/6.7.1/msvc2022_64",
-            "C:/Qt/6.7.1/msvc2022_64"
-          )
-          foreach ($p in $qtPaths) {
-            if (Test-Path "$p/bin/qmake.exe") {
-              echo "QT_ROOT=$p" >> $env:GITHUB_ENV
-              echo "$p/bin" >> $env:GITHUB_PATH
-              Write-Host "Found Qt at $p"
-              break
-            }
-          }
-          if (-not $env:QT_ROOT) {
-            Write-Error "Qt not found in standard locations"
-            exit 1
-          }
+          echo "QT_ROOT=C:/Qt/6.7.2/msvc2022_64" >> $env:GITHUB_ENV
+          echo "C:/Qt/6.7.2/msvc2022_64/bin" >> $env:GITHUB_PATH
         shell: pwsh
 
       - name: Install CMake
