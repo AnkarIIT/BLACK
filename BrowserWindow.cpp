@@ -3455,7 +3455,7 @@ QString BrowserWindow::permissionDisplayNameOld(QWebEnginePage::Feature feature)
     case QWebEnginePage::MouseLock:              return QStringLiteral("pointer lock");
     case QWebEnginePage::DesktopVideoCapture:     return QStringLiteral("your screen");
     case QWebEnginePage::DesktopAudioVideoCapture: return QStringLiteral("your screen and audio");
-#if QT_VERSION >= QT_VERSION_CHECK(6, 4, 0)
+#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
     case QWebEnginePage::PictureInPicture:       return QStringLiteral("picture-in-picture");
 #endif
     default: return QStringLiteral("a restricted feature");
