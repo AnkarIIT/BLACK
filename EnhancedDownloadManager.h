@@ -91,21 +91,14 @@ struct EnhancedDownloadItem {
     // Timing
     QDateTime startTime;
     QDateTime lastUpdateTime;
-    qint64 speedBytesPerSec = 0;
-    qint64 etaSeconds = -1;
     
     // Progress
     double progress = 0.0;  // 0.0 - 1.0
-    qint64 receivedBytes = 0;
-    qint64 totalBytes = -1;
-    qint64 speedBytesPerSec = 0;
-    qint64 etaSeconds = -1;
     
     // Metadata
     QString referrerUrl;
     QString referrerTitle;
     QString userAgent;
-    QString referrerUrl;
     QString suggestedFileName;
     QString mimeType;
     
@@ -118,8 +111,6 @@ struct EnhancedDownloadItem {
     QDateTime startTime;
     QDateTime lastUpdateTime;
     QDateTime completedTime;
-    
-    int stateInt = 0;  // For Q_PROPERTY
 };
 
 } // namespace EnhancedDownload
