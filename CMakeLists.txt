@@ -161,6 +161,14 @@ set(BLACK_SOURCES
     AppearanceManager.h
     BookmarkImporter.cpp
     BookmarkImporter.h
+    BookmarksDao.cpp
+    BookmarksDao.h
+    Bookmark.cpp
+    Bookmark.h
+    HistoryDao.cpp
+    HistoryDao.h
+    History.cpp
+    History.h
     OAuthManager.cpp
     OAuthManager.h
     ChromeLayer.cpp
@@ -173,6 +181,10 @@ set(BLACK_SOURCES
     PermissionsBridge.h
     DownloadManager.cpp
     DownloadManager.h
+    EnhancedDownloadManager.cpp
+    EnhancedDownloadManager.h
+    M3U8Parser.cpp
+    M3U8Parser.h
     UpdateChecker.cpp
     UpdateChecker.h
     TabManager.cpp
@@ -235,7 +247,13 @@ set(BLACK_SOURCES
     AdvancedSecurity.h
     VideoDownloader.cpp
     VideoDownloader.h
-)
+    EnhancedDownloadManager.cpp
+    EnhancedDownloadManager.h
+    M3U8Parser.cpp
+    M3U8Parser.h
+    SettingsDialog.cpp
+    SettingsDialog.h
+    )
 
 qt_add_executable(BLACK ${BLACK_SOURCES})
 
