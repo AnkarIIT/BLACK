@@ -129,14 +129,22 @@ class EnhancedDownloadManager : public QObject
     
 public:
     explicit EnhancedDownloadManager(QWebEngineProfile* profile,
-                                    QWidget* parentWidget,
-                                    QToolButton* button,
-                                    QObject* parent = nullptr);
+                                     QWidget* parentWidget,
+                                     QToolButton* button,
+                                     QObject* parent = nullptr);
     ~EnhancedDownloadManager() override;
     
     // Types
     using EnhancedItem = EnhancedDownload::EnhancedDownloadItem;
     using ItemList = QList<EnhancedItem>;
+    
+    // Download item struct (defined here so it can be used in public API)
+    struct DownloadItem {
+        EnhancedDownload::EnhancedDownloadItem item;
+        QPointer<QWebEngineDownloadRequest> webEngineRequest;
+        QNetworkReply* networkReply = nullptr;
+        QString tempFile;
+    };
     
     const QList<DownloadItem>& items() const { return m_items; }
     
