@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Test WebEngineWidgets Svg WebChannel Network)
+find_package(Qt6 REQUIRED COMPONENTS Core Sql Test WebEngineWidgets Svg WebChannel Network)
 
 # Same AGL strip as the top level (see CMakeLists.txt): directory properties
 # do not propagate into this scope, so repeat it for the test targets.

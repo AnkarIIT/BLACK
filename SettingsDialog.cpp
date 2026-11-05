@@ -13,6 +13,9 @@
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QCheckBox>
+#include <QRadioButton>
+#include <QFontComboBox>
+#include <QButtonGroup>
 #include <QComboBox>
 #include <QLineEdit>
 #include <QPushButton>

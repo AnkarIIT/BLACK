@@ -51,7 +51,7 @@ endif()
 # previously REQUIRED but never linked or used, which only made configure
 # harder on machines without those modules installed. Test is needed by the
 # fuzz harnesses (they reuse the QtTest macros).
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets Svg WebChannel Network Test)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets Svg WebChannel Network Sql Test)
 
 # Qt 6.8's WebEngine imported targets propagate `-framework AGL`, which Apple
 # removed from the macOS 15 SDK, so every link fails with
@@ -283,6 +283,7 @@ target_link_libraries(BLACK PRIVATE
     Qt6::Svg
     Qt6::WebChannel
     Qt6::Network
+    Qt6::Sql
 )
 
 target_include_directories(BLACK PRIVATE ${CMAKE_CURRENT_BINARY_DIR})

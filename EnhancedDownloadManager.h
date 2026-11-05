@@ -178,7 +178,6 @@ signals:
     void itemAdded(const EnhancedDownload::EnhancedDownloadItem& item);
     void itemUpdated(const EnhancedDownload::EnhancedDownloadItem& item);
     void itemRemoved(int index);
-    void buttonTooltipChanged(const QString& tip);
     void m3u8QualitiesFetched(const QString& m3u8Url, const QStringList& qualities);
     void m3u8ParseFailed(const QString& m3u8Url, const QString& error);
     void m3u8DownloadStarted(const QString& downloadId);

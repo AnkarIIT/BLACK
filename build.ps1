@@ -1,7 +1,7 @@
 # build.ps1 - Build BLACK Browser on Windows
 
 param(
-    [string]$QtPath = "C:\Qt\6.7.2\msvc2022_64",  # CHANGE THIS to your Qt path
+    [string]$QtPath = "C:\Qt\6.7.3\msvc2022_64",  # CHANGE THIS to your Qt path
     [string]$Config = "Release"
 )
 
@@ -45,7 +45,7 @@ Write-Host "`nUsing Qt at: $QtPath" -ForegroundColor Green
 Write-Host "`nConfiguring with CMake..." -ForegroundColor Yellow
 mkdir build -ErrorAction SilentlyContinue
 cd build
-cmake .. -DCMAKE_PREFIX_PATH="$QtPath" -G "Visual Studio 17 2022" -A x64
+cmake .. -DCMAKE_PREFIX_PATH="$QtPath" -G "Visual Studio 17 2022" -A x64 -T v145
 if ($LASTEXITCODE) { Write-Host "CMake configure failed" -ForegroundColor Red; exit 1 }
 
 # Build
