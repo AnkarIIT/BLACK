@@ -17,6 +17,7 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QUuid>
+#include <QQueue>
 
 namespace {
 const QString kDbFileName = "bookmarks.db";
