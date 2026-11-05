@@ -1,4 +1,4 @@
-name: CI/CD
+ÿþname: CI/CD
 
 on:
   push:
@@ -162,4 +162,4 @@ jobs:
     - name: Run Tests
       env:
         QTWEBENGINE_CHROMIUM_FLAGS: "--no-sandbox --disable-gpu --use-gl=angle --disable-dev-shm-usage"
-      run: ctest --test-dir build --output-on-failure -C Release
+      run: ctest --test-dir build --output-on-failure -C Releasýÿ
