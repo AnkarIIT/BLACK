@@ -1,4 +1,4 @@
-ÿþname: CI/CD
+name: CI/CD
 
 on:
   push:
@@ -19,6 +19,8 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
       
     - name: Install Qt
       uses: jurplel/install-qt-action@v4
@@ -84,6 +86,8 @@ jobs:
     # bundled browser. So no Qt install and no build are required here.
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
     - name: Install Node.js
       uses: actions/setup-node@v4
       with:
@@ -112,6 +116,8 @@ jobs:
     timeout-minutes: 90
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
     - name: Install Dependencies
       run: |
         sudo apt-get update
@@ -145,6 +151,8 @@ jobs:
         shell: pwsh
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
     - name: Install Qt
       uses: jurplel/install-qt-action@v4
       with:
@@ -162,4 +170,4 @@ jobs:
     - name: Run Tests
       env:
         QTWEBENGINE_CHROMIUM_FLAGS: "--no-sandbox --disable-gpu --use-gl=angle --disable-dev-shm-usage"
-      run: ctest --test-dir build --output-on-failure -C Releasýÿ
+      run: ctest --test-dir build --output-on-failure -C Release
