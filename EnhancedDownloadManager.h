@@ -138,7 +138,7 @@ public:
     using EnhancedItem = EnhancedDownload::EnhancedDownloadItem;
     using ItemList = QList<EnhancedItem>;
     
-    const QList<EnhancedItem>& items() const { return m_items; }
+    const QList<DownloadItem>& items() const { return m_items; }
     
     // Core management
     void clearCompleted();
