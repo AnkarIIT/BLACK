@@ -138,6 +138,8 @@ public:
     using EnhancedItem = EnhancedDownload::EnhancedDownloadItem;
     using ItemList = QList<EnhancedItem>;
     
+    struct DownloadItem;  // Forward declaration
+    
     const QList<DownloadItem>& items() const { return m_items; }
     
     // Core management
