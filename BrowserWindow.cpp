@@ -4533,7 +4533,7 @@ void BrowserWindow::setupKeyboardShortcuts()
         s->deleteLater();
     }
 
-    auto shortcutFor = [this](const QString &action, const QString &defaultSeq) -> QString {
+    auto shortcutFor = [this](const QString &action, const QString &) -> QString {
         return BrowserSettings::instance().getShortcut(action);
     };
 

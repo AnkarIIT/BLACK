@@ -9,11 +9,14 @@
 #include <QDateTime>
 #include <QSet>
 #include <QMap>
+#include <QQueue>
+#include <QNetworkReply>
 
 class QWebEngineProfile;
 class QWebEngineDownloadRequest;
 class QToolButton;
 class QWidget;
+class QNetworkAccessManager;
 class M3U8Parser;
 
 namespace EnhancedDownload {
@@ -91,6 +94,7 @@ struct EnhancedDownloadItem {
     // Timing
     QDateTime startTime;
     QDateTime lastUpdateTime;
+    QDateTime completedTime;
     
     // Progress
     double progress = 0.0;  // 0.0 - 1.0
@@ -107,10 +111,6 @@ struct EnhancedDownloadItem {
     int retryCount = 0;
     int maxRetries = 3;
     QDateTime lastRetryTime;
-    
-    QDateTime startTime;
-    QDateTime lastUpdateTime;
-    QDateTime completedTime;
 };
 
 } // namespace EnhancedDownload
