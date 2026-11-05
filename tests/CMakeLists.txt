@@ -63,6 +63,7 @@ target_link_libraries(black_testlib PUBLIC
     Qt6::Svg
     Qt6::WebChannel
     Qt6::Network
+    Qt6::Sql
 )
 
 if(WIN32)
