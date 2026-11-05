@@ -1,4 +1,4 @@
-ÿþname: CI/CD
+name: CI/CD
 
 on:
   push:
@@ -23,7 +23,7 @@ jobs:
         fetch-depth: 0
       
     - name: Install Qt
-      uses: jurplel/install-qt-action@v4
+      uses: jurplel/install-qt-action@v4.5.0
       with:
         version: ${{ matrix.qt_version }}
         host: mac
@@ -123,7 +123,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y libgl1-mesa-dev libglib2.0-dev libnss3-dev libatk-bridge2.0-dev libdrm-dev libxkbcommon-dev libxcomposite-dev libxcursor-dev libxdamage-dev libxrandr-dev libgbm-dev libasound2-dev libpulse-dev libsecret-1-dev libssl-dev pkgconf xvfb libxcb-cursor0
     - name: Install Qt
-      uses: jurplel/install-qt-action@v4
+      uses: jurplel/install-qt-action@v4.5.0
       with:
         version: 6.8.3
         host: linux
@@ -154,7 +154,7 @@ jobs:
       with:
         fetch-depth: 0
     - name: Install Qt
-      uses: jurplel/install-qt-action@v4
+      uses: jurplel/install-qt-action@v4.5.0
       with:
         version: 6.8.3
         host: windows
@@ -170,4 +170,4 @@ jobs:
     - name: Run Tests
       env:
         QTWEBENGINE_CHROMIUM_FLAGS: "--no-sandbox --disable-gpu --use-gl=angle --disable-dev-shm-usage"
-      run: ctest --test-dir build --output-on-failure -C Releasýÿ
+      run: ctest --test-dir build --output-on-failure -C Release
