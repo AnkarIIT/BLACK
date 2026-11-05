@@ -200,12 +200,6 @@ signals:
     void ffmpegStatusChanged(bool available);
     
 private:
-    struct DownloadItem {
-        EnhancedDownload::EnhancedDownloadItem item;
-        QPointer<QWebEngineDownloadRequest> webEngineRequest;
-        QNetworkReply* networkReply = nullptr;
-        QString tempFile;
-    };
     
     void onDownloadRequested(QWebEngineDownloadRequest* download);
     void onNetworkReplyFinished(QNetworkReply* reply);
