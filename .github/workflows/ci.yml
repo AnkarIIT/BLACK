@@ -1,4 +1,4 @@
-ÿþname: CI/CD
+name: CI/CD
 
 on:
   push:
@@ -156,7 +156,7 @@ jobs:
     - name: Install Qt
       uses: jurplel/install-qt-action@v4.5.0
       with:
-        version: 6.8.3
+        version: 6.7.3
         host: windows
         target: desktop
         arch: win64_msvc2022_64
@@ -164,10 +164,10 @@ jobs:
         cache: false
     - name: Configure CMake
       run: |
-        cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH="$env:GITHUB_WORKSPACE/../Qt/6.8.3/msvc2022_64" -DCMAKE_BUILD_TYPE=Release
+        cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH="$env:GITHUB_WORKSPACE/../Qt/6.7.3/msvc2022_64" -DCMAKE_BUILD_TYPE=Release
     - name: Build
       run: cmake --build build --config Release --parallel $env:NUMBER_OF_PROCESSORS
     - name: Run Tests
       env:
         QTWEBENGINE_CHROMIUM_FLAGS: "--no-sandbox --disable-gpu --use-gl=angle --disable-dev-shm-usage"
-      run: ctest --test-dir build --output-on-failure -C Releasýÿ
+      run: ctest --test-dir build --output-on-failure -C Release
