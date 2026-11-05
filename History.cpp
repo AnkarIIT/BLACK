@@ -3,6 +3,11 @@
 #include <QUrl>
 #include <QDateTime>
 
+static QString HistoryEntry::normalizedUrl(const QString& url)
+{
+    return ShelfStore::normalizedUrl(url);
+}
+
 QString HistoryEntry::domain() const
 {
     QUrl qurl(url);

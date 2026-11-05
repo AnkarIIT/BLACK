@@ -30,6 +30,7 @@ struct HistoryEntry
     QString timeAgo() const;
     bool isValid() const;
     bool operator==(const HistoryEntry& other) const;
+    static QString normalizedUrl(const QString& url);
 };
 
 // Typed visit transition types (matching Chrome/Chromium)
