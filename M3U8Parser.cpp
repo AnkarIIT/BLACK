@@ -12,12 +12,12 @@
 #include <QDebug>
 
 namespace {
-const QRegularExpression EXT_X_KEY_RE(R"(#EXT-X-KEY:([^,\n]+)(?:,(.*))?)");
-const QRegularExpression EXT_X_MEDIA_RE(R"(#EXT-X-MEDIA:([^,\n]+)(?:,(.*))?)");
-const QRegularExpression EXT_X_STREAM_INF_RE(R"(#EXT-X-STREAM-INF:([^,\n]+)(?:,(.*))?)");
-const QRegularExpression EXTINF_RE(R"(#EXTINF:([0-9.]+)(?:,(.*))?)");
-const QRegularExpression EXT_X_BYTERANGE_RE(R"(#EXT-X-BYTERANGE:([^,\n]+))");
-const QRegularExpression ATTRIBUTE_RE(R"(([A-Z0-9-]+)=("(?:[^"]*)"|[^,]*))");
+const QRegularExpression EXT_X_KEY_RE(R"delim(#EXT-X-KEY:([^,\n]+)(?:,(.*))?)delim");
+const QRegularExpression EXT_X_MEDIA_RE(R"delim(#EXT-X-MEDIA:([^,\n]+)(?:,(.*))?)delim");
+const QRegularExpression EXT_X_STREAM_INF_RE(R"delim(#EXT-X-STREAM-INF:([^,\n]+)(?:,(.*))?)delim");
+const QRegularExpression EXTINF_RE(R"delim(#EXTINF:([0-9.]+)(?:,(.*))?)delim");
+const QRegularExpression EXT_X_BYTERANGE_RE(R"delim(#EXT-X-BYTERANGE:([^,\n]+))delim");
+const QRegularExpression ATTRIBUTE_RE(R"delim(([A-Z0-9-]+)=(\"(?:[^\"]*)\"|[^,]*))delim");
 }
 
 M3U8Parser::Playlist M3U8Parser::parse(const QString& content, const QString& baseUrl)
