@@ -1,7 +1,7 @@
 #include "Bookmark.h"
 #include "ShelfStore.h"
 
-QString Bookmark::normalizedUrl() const
+static QString Bookmark::normalizedUrl(const QString& url)
 {
     return ShelfStore::normalizedUrl(url);
 }

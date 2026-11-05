@@ -22,7 +22,7 @@ struct Bookmark
 
     // For UI
     QIcon favicon;
-    QString normalizedUrl() const;
+    static QString normalizedUrl(const QString& url);
     bool isValid() const;
 
     bool operator==(const Bookmark& other) const;
