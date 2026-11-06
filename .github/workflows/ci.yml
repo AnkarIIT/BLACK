@@ -162,6 +162,7 @@ jobs:
         arch: win64_msvc2022_64
         modules: qtwebengine qtwebchannel qtpositioning
         cache: false
+        mirror: official
     - name: Configure CMake
       run: |
         cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH="$env:GITHUB_WORKSPACE/../Qt/6.7.2/msvc2022_64" -DCMAKE_BUILD_TYPE=Release
