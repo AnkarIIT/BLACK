@@ -8,11 +8,6 @@ static QString HistoryEntry::normalizedUrl(const QString& url)
     return ShelfStore::normalizedUrl(url);
 }
 
-static QString HistoryEntry::normalizedUrl(const QString& url)
-{
-    return ShelfStore::normalizedUrl(url);
-}
-
 QString HistoryEntry::domain() const
 {
     QUrl qurl(url);
@@ -41,7 +36,7 @@ QString HistoryEntry::timeAgo() const
     } else {
         QDateTime dt;
         dt.setMSecsSinceEpoch(visitTime);
-        return dt.toString(Qt::SystemLocaleShortDate);
+        return dt.toString(QLocale::ShortFormat);
     }
 }
 
