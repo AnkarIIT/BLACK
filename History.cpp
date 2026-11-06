@@ -8,6 +8,11 @@ static QString HistoryEntry::normalizedUrl(const QString& url)
     return ShelfStore::normalizedUrl(url);
 }
 
+static QString HistoryEntry::normalizedUrl(const QString& url)
+{
+    return ShelfStore::normalizedUrl(url);
+}
+
 QString HistoryEntry::domain() const
 {
     QUrl qurl(url);

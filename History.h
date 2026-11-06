@@ -13,7 +13,7 @@ struct HistoryEntry
     qint64 id = 0;                    // Primary key, auto-generated
     QString title;
     QString url;
-    QString normalizedUrl;            // Normalized for deduplication
+    QString normalizedUrlValue;       // Normalized for deduplication
     qint64 visitTime = 0;             // Milliseconds since epoch
     qint64 lastVisitTime = 0;         // Most recent visit
     int visitCount = 0;               // Number of visits
